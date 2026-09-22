@@ -2657,6 +2657,441 @@ function _call_oc(type,...args) {
     }
 }
 
+/*
+================================================================================
+================================================================================
+SILVIA PELLICANO - MIGRAZIONE SKG-IF
+Tutto il codice SOTTO questa riga e' mio (migrazione alle API SKG-IF di
+OpenCitations). Tutto il codice SOPRA e' l'implementazione originale di
+Pietro Tisci, lasciata invariata.
+================================================================================
+================================================================================
+*/
 
+/*
+################################################################################
+# 1. CONFIGURAZIONE ENDPOINT SKG-IF + PAGINAZIONE (condivisa tra le risorse)
+################################################################################
+*/
+/*
+--------------------------------
+SKG-IF ENDPOINT CONFIGURATION
+--------------------------------
+Registers how LUCINDA talks to the OpenCitations SKG-IF REST API
+(GET + JSON, instead of the default SPARQL GET/POST handling in lucinda.js).
+*/
+Lucinda.add_endpoint_handler({
+  id: "https://api.opencitations.net/skg-if/v1/persons",
+  requests: {
+    get: {
+      url_param: "?[[sparql]]",
+      args: {
+        headers: {
+          "Accept": "application/json"
+        },
+        method: "GET"
+      },
+      success_controller: "reqhandler_skgif_persons"
+    }
+  }
+});
 
+/*
+--------------------------------
+SKG-IF GENERIC PAGINATION (reusable across resources)
+--------------------------------
+SKG-IF search endpoints default to 10 results per page (max 50), and
+already handle the slicing/counting themselves - we don't need our own
+result-limiting logic, just a small UI to move between pages. This module
+is resource-agnostic: aut_free_text uses it today, doc_free_text and
+venue_free_text can reuse it unchanged by giving their own containerId,
+buildFetchUrls and renderItem.
 
+A single delegated click listener (registered once, here) drives every
+paginated results container, instead of one inline onclick per search -
+that's what makes this reusable without name clashes between resources.
+*/
+const SKGIF_DEFAULT_PAGE_SIZE = 10; // matches the API's own default; not sent as a query param unless overridden
+
+const _skgifPaginators = {};
+
+/*
+Cache of SKG-IF responses already received in this page, keyed by their
+normalized page URL. The API always echoes the full page URL in
+meta.local_identifier (with &page=1&page_size=10 even when the request had
+none), so the response fetched by the .hf block (needed anyway: LUCINDA only
+renders the template after a #sparql block completes) is stored here by its
+success controller and reused for page 1 instead of being fetched again.
+Responses fetched by the paginator are stored too, so going back to an
+already visited page costs no request.
+*/
+const _skgifResponseCache = {};
+
+function _skgifNormalizeUrl(url) {
+  let u = String(url || "").replace(/\+/g, " ");
+  try { u = decodeURIComponent(u); } catch (e) { /* keep as is */ }
+  return u.trim().toLowerCase();
+}
+
+function skgifCacheResponse(data, url) {
+  const key = _skgifNormalizeUrl(url || data?.meta?.local_identifier);
+  if (key) _skgifResponseCache[key] = data;
+}
+
+document.addEventListener('click', function (e) {
+  const btn = e.target.closest('.skgif-page-btn');
+  if (!btn || btn.disabled) return;
+  const paginator = _skgifPaginators[btn.dataset.skgifContainer];
+  const page = parseInt(btn.dataset.skgifPage, 10);
+  if (paginator && page >= 1) paginator.goToPage(page);
+});
+
+/*
+config:
+  containerId   - id of the element the results (and pagination bar) render into
+  buildFetchUrls(page, pageSize) -> array of SKG-IF URLs to fetch for that page
+                  (more than one only when merging results from multiple filters,
+                  e.g. a single free-text term searched as given_name OR family_name)
+  dedupeKey(item) -> a string key used to drop duplicates across buildFetchUrls' URLs
+  renderItem(item) -> HTML string for one result card
+  emptyMessage   - optional text shown when a page has zero results
+  pageSize       - optional, defaults to SKGIF_DEFAULT_PAGE_SIZE
+  totalCountId   - optional id of the element showing the results count in the
+                   page title; overwritten with the same total the pagination
+                   uses, so title and "Page X of Y" always agree
+*/
+function createSkgifPaginatedSearch(config) {
+  const pageSize = config.pageSize || SKGIF_DEFAULT_PAGE_SIZE;
+
+  function fetchPage(page) {
+    const container = document.getElementById(config.containerId);
+    if (container) {
+      container.innerHTML = '<div class="col-12 text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading...</p></div>';
+    }
+
+    const emptyResponse = { "@graph": [], meta: { part_of: { total_items: 0 } } };
+    const safeFetch = (url) => {
+      const cached = _skgifResponseCache[_skgifNormalizeUrl(url)];
+      if (cached) return Promise.resolve(cached);
+      return fetch(url)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data) return emptyResponse;
+          skgifCacheResponse(data, url);
+          return data;
+        })
+        .catch(() => emptyResponse);
+    };
+
+    const urls = config.buildFetchUrls(page, pageSize);
+
+    Promise.all(urls.map(safeFetch))
+      .then(responses => {
+        const seen = new Set();
+        const items = [];
+        let totalItems = 0;
+
+        responses.forEach(resp => {
+          const graph = Array.isArray(resp?.["@graph"]) ? resp["@graph"] : [];
+          totalItems = Math.max(totalItems, resp?.meta?.part_of?.total_items || 0);
+          graph.forEach(item => {
+            const key = config.dedupeKey(item);
+            if (seen.has(key)) return;
+            seen.add(key);
+            items.push(item);
+          });
+        });
+
+        // buildFetchUrls may hit more than one endpoint (e.g. a single free-
+        // text term searched as given_name OR family_name) and get merged
+        // above - cap to pageSize here so a "page" is always what it says,
+        // regardless of how many sources contributed to it.
+        if (config.totalCountId) {
+          const countEl = document.getElementById(config.totalCountId);
+          if (countEl) countEl.textContent = totalItems;
+        }
+
+        _render(container, items.slice(0, pageSize), page, totalItems);
+      })
+      .catch(error => {
+        console.error("SKG-IF search failed:", error);
+        if (container) container.innerHTML = `<div class="col-12"><div class="alert alert-danger">Error: ${error.message}</div></div>`;
+      });
+  }
+
+  function _render(container, items, page, totalItems) {
+    if (!container) return;
+
+    if (items.length === 0) {
+      container.innerHTML = `<div class="col-12"><p>${config.emptyMessage || 'No results found.'}</p></div>`;
+      return;
+    }
+
+    // container is already a Bootstrap .row (see aut_free_text.html); an
+    // extra nested .row here caused the horizontal scrollbar bug (negative
+    // row margins compounding), so we render the .col-* items directly.
+    let html = items.map(config.renderItem).join('');
+
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const prevBtn = page > 1
+      ? `<button type="button" class="btn btn-outline-secondary skgif-page-btn" data-skgif-page="${page - 1}" data-skgif-container="${config.containerId}">&laquo; Previous</button>`
+      : `<span></span>`;
+    const nextBtn = page < totalPages
+      ? `<button type="button" class="btn btn-outline-primary skgif-page-btn" data-skgif-page="${page + 1}" data-skgif-container="${config.containerId}">Next &raquo;</button>`
+      : `<span></span>`;
+
+    html += `
+      <div class="col-12">
+        <nav class="skgif-pagination" aria-label="Search results pages">
+          ${prevBtn}
+          <span class="skgif-page-info">Page ${page} of ${totalPages}</span>
+          ${nextBtn}
+        </nav>
+      </div>`;
+
+    container.innerHTML = html;
+  }
+
+  const paginator = { goToPage: fetchPage };
+  _skgifPaginators[config.containerId] = paginator;
+  return { search: () => fetchPage(1) };
+}
+
+/*
+################################################################################
+# 2. RICERCA AUTORI (aut_free_text)
+################################################################################
+*/
+// ---aut_free_text (SKG-IF)---
+// Converts a SKG-IF /persons response (JSON-LD "@graph") into the
+// [header, ...rows] matrix format expected by Lucinda.postprocess().
+// total_items (the real total match count, independent of page_size) is
+// denormalized onto every row so it survives Lucinda.postprocess()'s
+// column-filtering step - see post_search_ids_skgif() below, which reads
+// it back out for pagination.
+Lucinda.reqhandler_skgif_persons = function (data) {
+  skgifCacheResponse(data); // reused by api_search_author_skgif() for page 1
+  const header = ["local_identifier", "name", "given_name", "family_name", "orcid", "other_ids", "total_items"];
+  const graph = (data && Array.isArray(data["@graph"])) ? data["@graph"] : [];
+  const totalItems = String(data?.meta?.part_of?.total_items ?? 0);
+
+  const rows = graph.map(person => {
+    const identifiers = Array.isArray(person.identifiers) ? person.identifiers : [];
+    const orcid = identifiers.find(i => i.scheme === "orcid")?.value || "";
+    const otherIds = identifiers
+      .filter(i => i.scheme !== "orcid")
+      .map(i => `${i.scheme}:${i.value}`)
+      .join("|");
+
+    return [
+      person.local_identifier || "",
+      person.name || "",
+      person.given_name || "",
+      person.family_name || "",
+      orcid,
+      otherIds,
+      totalItems
+    ];
+  });
+
+  return [header, ...rows];
+};
+
+// ---aut_free_text (SKG-IF)---
+// Builds the SKG-IF "filter=..." clause for the search_ids bootstrap call.
+// NOTE: cf.search.name does NOT work against the real API (persons only
+// have given_name/family_name, verified live: always 0 results), and a
+// single request can't OR given_name/family_name together (comma = AND).
+// So here we use a simple heuristic for the count: a single term is
+// assumed to be a family name, 2+ terms are "given... family". The
+// api_search_author_skgif() callfun below additionally covers the
+// single-term "could also be a given name" case for the actual results.
+// Must return a plain OBJECT, not an array: in the actual engine copy
+// loaded by browser.html (example/oc/static/js/lucinda.js), the
+// Array.isArray(newValues) branch in Lucinda.preprocess() is empty (a
+// leftover stub) - only the "typeof newValues === 'object'" branch
+// actually writes the value back into param (see pre_oci() above for the
+// same convention already in use).
+function pre_search_authors_skgif(search_query) {
+  if (typeof search_query !== 'string') return { search_query: '' };
+
+  let clean;
+  try {
+    clean = decodeURIComponent(search_query).trim();
+  } catch (e) {
+    clean = search_query.replace(/%20/g, ' ').trim();
+  }
+
+  const terms = clean.split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return { search_query: '' };
+
+  let filterExpr;
+  if (terms.length === 1) {
+    filterExpr = `cf.search.family_name:${encodeURIComponent(terms[0])}`;
+  } else {
+    const family = encodeURIComponent(terms[terms.length - 1]);
+    const given = encodeURIComponent(terms.slice(0, -1).join(' '));
+    filterExpr = `cf.search.given_name:${given},cf.search.family_name:${family}`;
+  }
+
+  return { search_query: filterExpr };
+}
+
+// ---aut_free_text (SKG-IF)---
+// Aggregates the per-person rows coming from reqhandler_skgif_persons into
+// a single row, following the same convention used across this file (e.g.
+// post_ocmeta_call's "; "-joined columns). total_items is the same value
+// on every input row (denormalized by reqhandler_skgif_persons), so it's
+// read once as a plain number rather than pipe-joined - it feeds
+// getVal(search_ids.total_items) in aut_free_text.html for the real
+// result count (independent of the page_size cap on this bootstrap call).
+function post_search_ids_skgif(args) {
+  const header = ["ids", "names", "given_names", "family_names", "orcids", "ids_extra", "total_items"];
+
+  if (!Array.isArray(args) || args.length <= 1) {
+    return [header, ["", "", "", "", "", "", "0"]];
+  }
+
+  const rows = args.slice(1);
+
+  const ids = [];
+  const names = [];
+  const givenNames = [];
+  const familyNames = [];
+  const orcids = [];
+  const idsExtra = [];
+
+  rows.forEach(row => {
+    const rawId = row[0] || "";
+    const match = rawId.match(/ra\/([\w\d]+)$/);
+    const shortId = match ? match[1] : rawId;
+
+    ids.push(shortId);
+    names.push(row[1] || "");
+    givenNames.push(row[2] || "");
+    familyNames.push(row[3] || "");
+    orcids.push(row[4] || "");
+    idsExtra.push(row[5] || "");
+  });
+
+  const totalItems = rows[0][6] || "0";
+
+  return [
+    header,
+    [
+      ids.join("|"),
+      names.join("|"),
+      givenNames.join("|"),
+      familyNames.join("|"),
+      orcids.join("|"),
+      idsExtra.join("|"),
+      totalItems
+    ]
+  ];
+}
+
+// ---aut_free_text (SKG-IF)---
+// #callfun args are (per the convention documented near ocapi_citations()
+// below): args[0] = declared-params header, args[1] = Lucinda.data.main
+// (has search_query), args[2] = this block's own id.
+//
+// SKG-IF's convenience filters can't OR given_name/family_name together in
+// one request (comma = AND, verified live against the real API), so a
+// single free-text term is searched against BOTH fields in parallel here
+// and the results are merged/deduplicated by local_identifier - this is
+// what actually satisfies "full name, given name, or family name" from the
+// user's requirements. For 2+ terms we assume "given... family" order.
+// SKG-IF already returns full person metadata (name, ORCID, ...) in the
+// search response itself, so there's no need for OpenCitations Meta at all.
+//
+// Pagination is delegated to createSkgifPaginatedSearch() above (shared,
+// resource-agnostic). A single free-text term hits two independent
+// paginated endpoints (given_name and family_name) that get merged and
+// deduplicated, so a "page" here can show anywhere from ~10 to ~20 cards -
+// a known simplification (SKG-IF has no cross-field OR), and total_items
+// is approximated as the larger of the two endpoints' totals.
+function api_search_author_skgif(...args) {
+  const lucinda_main_data = args[1] || {};
+
+  let rawQuery = lucinda_main_data.search_query || "";
+  rawQuery = Array.isArray(rawQuery) ? rawQuery[0] : rawQuery;
+
+  let cleanQuery;
+  try {
+    cleanQuery = decodeURIComponent(rawQuery).trim();
+  } catch (e) {
+    cleanQuery = String(rawQuery).replace(/%20/g, ' ').trim();
+  }
+
+  const resultsContainer = document.getElementById('search-results-container');
+  if (!cleanQuery) {
+    if (resultsContainer) resultsContainer.innerHTML = '<div class="col-12"><p>No results found.</p></div>';
+    return;
+  }
+
+  const terms = cleanQuery.split(/\s+/).filter(Boolean);
+  const base = "https://api.opencitations.net/skg-if/v1/persons";
+
+  const paginator = createSkgifPaginatedSearch({
+    containerId: 'search-results-container',
+    totalCountId: 'search-total-count',
+    buildFetchUrls(page, pageSize) {
+      if (terms.length === 1) {
+        const term = encodeURIComponent(terms[0]);
+        return [
+          `${base}?filter=cf.search.given_name:${term}&page=${page}&page_size=${pageSize}`,
+          `${base}?filter=cf.search.family_name:${term}&page=${page}&page_size=${pageSize}`
+        ];
+      }
+      const family = encodeURIComponent(terms[terms.length - 1]);
+      const given = encodeURIComponent(terms.slice(0, -1).join(' '));
+      return [`${base}?filter=cf.search.given_name:${given},cf.search.family_name:${family}&page=${page}&page_size=${pageSize}`];
+    },
+    dedupeKey: person => person.local_identifier || JSON.stringify(person),
+    renderItem: _renderAuthorCard
+  });
+
+  paginator.search();
+}
+
+function _renderAuthorCard(person) {
+  const rawId = person.local_identifier || "";
+  const match = rawId.match(/ra\/([\w\d]+)$/);
+  const shortId = match ? match[1] : rawId;
+  if (!shortId) return "";
+
+  const identifiers = Array.isArray(person.identifiers) ? person.identifiers : [];
+  const orcidVal = identifiers.find(i => i.scheme === "orcid")?.value || "";
+
+  const fullname = (person.name || "").trim()
+    || `${person.given_name || ""} ${person.family_name || ""}`.trim()
+    || "Unknown Name";
+
+  const orcidHtml = orcidVal
+    ? `<a href="https://orcid.org/${orcidVal}" target="_blank" class="text-dark text-decoration-none">${orcidVal}</a>`
+    : '<span class="text-muted p-4"><em>No ORCID found</em></span>';
+
+  const linkUrl = `browser.html?value=ra/${shortId}`;
+
+  return `
+    <div class="col-12 mb-3">
+      <div class="card shadow-sm p-2">
+        <div class="card-body p-3 d-flex flex-column">
+          <h5 class="card-title mb-2">
+            <a href="${linkUrl}" target="_blank">${fullname}</a>
+          </h5>
+          <hr>
+
+          <div class="mb-2">
+            <span class="metadata-label fw-bold">ORCID:</span><br>
+            <span>${orcidHtml}</span>
+          </div>
+
+          <div class="mb-2">
+            <span class="metadata-label fw-bold">Other identifiers:</span><br>
+            <span><a href="https://w3id.org/oc/meta/ra/${shortId}" target="_blank">omid:ra/${shortId}</a></span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}

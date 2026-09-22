@@ -2,31 +2,12 @@
 #url value=author/{search_query}
 
 #id search_ids
-#endpoint https://sparql.opencitations.net/meta
-#preprocess pre_search_authors(search_query)
-#postprocess post_search_ids(agent)
+#endpoint https://api.opencitations.net/skg-if/v1/persons
+#preprocess pre_search_authors_skgif(search_query)
+#postprocess post_search_ids_skgif(local_identifier,name,given_name,family_name,orcid,other_ids,total_items)
 #method get
-#sparql PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-
-SELECT DISTINCT ?agent
-WHERE {
-    ?agent a foaf:Agent .
-
-    {
-        ?agent foaf:name ?fullName .
-        ?fullName bif:contains [[search_query]] .
-    } UNION {
-        ?agent foaf:givenName ?gName .
-        ?gName bif:contains [[search_query_gname]] .
-        FILTER([[is_single_term]])
-    } UNION {
-        ?agent foaf:familyName ?fName .
-        ?fName bif:contains [[search_query_fname]] .
-        FILTER([[is_single_term]])
-    }
-}
-LIMIT 100
+#sparql filter=[[search_query]]
 
 
 #id api_search
-#callfun api_search_author()
+#callfun api_search_author_skgif()
