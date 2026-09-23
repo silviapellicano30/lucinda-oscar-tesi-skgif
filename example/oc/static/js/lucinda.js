@@ -1059,6 +1059,8 @@ class Lucinda {
         const current_resource_hfconf = Lucinda.current_resource["hfconf"];
         if (current_resource_hfconf.length <= 1) {
           if(Lucinda.conf.verbose){console.log("Warning: no queries are specified");}
+          // SILVIA (SKG-IF): build the page anyway, instead of hanging on the loading banner
+          Lucinda.build_success_html_page();
           return null;
         }
 
@@ -1073,6 +1075,14 @@ class Lucinda {
 
         // do sparql queries
         const l_callsparql = Lucinda_util.get_hf_callsparql(current_resource_hfconf);
+
+        // SILVIA (SKG-IF): no #sparql blocks -> build the page right away;
+        // #callfun blocks (SKG-IF fetches) are then run by run_extdata()
+        if (l_callsparql.length === 0) {
+          Lucinda.build_success_html_page();
+          return null;
+        }
+
         for (let i = 0; i < l_callsparql.length; i++) {
             const cr_query_block = l_callsparql[i];
             if ( (cr_query_block.id == undefined) || (cr_query_block.endpoint == undefined) || (cr_query_block.sparql == undefined) || (cr_query_block.method == undefined) ) {

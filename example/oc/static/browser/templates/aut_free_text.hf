@@ -1,13 +1,5 @@
 #id main
 #url value=author/{search_query}
 
-#id search_ids
-#endpoint https://api.opencitations.net/skg-if/v1/persons
-#preprocess pre_search_authors_skgif(search_query)
-#postprocess post_search_ids_skgif(local_identifier,name,given_name,family_name,orcid,other_ids,total_items)
-#method get
-#sparql filter=[[search_query]]
-
-
 #id api_search
 #callfun api_search_author_skgif()

@@ -2670,32 +2670,9 @@ Pietro Tisci, lasciata invariata.
 
 /*
 ################################################################################
-# 1. CONFIGURAZIONE ENDPOINT SKG-IF + PAGINAZIONE (condivisa tra le risorse)
+# 1. PAGINAZIONE SKG-IF (condivisa tra le risorse)
 ################################################################################
 */
-/*
---------------------------------
-SKG-IF ENDPOINT CONFIGURATION
---------------------------------
-Registers how LUCINDA talks to the OpenCitations SKG-IF REST API
-(GET + JSON, instead of the default SPARQL GET/POST handling in lucinda.js).
-*/
-Lucinda.add_endpoint_handler({
-  id: "https://api.opencitations.net/skg-if/v1/persons",
-  requests: {
-    get: {
-      url_param: "?[[sparql]]",
-      args: {
-        headers: {
-          "Accept": "application/json"
-        },
-        method: "GET"
-      },
-      success_controller: "reqhandler_skgif_persons"
-    }
-  }
-});
-
 /*
 --------------------------------
 SKG-IF GENERIC PAGINATION (reusable across resources)
@@ -2719,10 +2696,9 @@ const _skgifPaginators = {};
 Cache of SKG-IF responses already received in this page, keyed by their
 normalized page URL. The API always echoes the full page URL in
 meta.local_identifier (with &page=1&page_size=10 even when the request had
-none), so the response fetched by the .hf block (needed anyway: LUCINDA only
-renders the template after a #sparql block completes) is stored here by its
-success controller and reused for page 1 instead of being fetched again.
-Responses fetched by the paginator are stored too, so going back to an
+none). Page-1 responses fetched ahead of the paginator (e.g. the author
+exact-match check) are stored here and reused instead of being fetched
+again, and so are the pages fetched by the paginator, so going back to an
 already visited page costs no request.
 */
 const _skgifResponseCache = {};
@@ -2980,134 +2956,6 @@ function createSkgifPaginatedSearch(config) {
 ################################################################################
 */
 // ---aut_free_text (SKG-IF)---
-// Converts a SKG-IF /persons response (JSON-LD "@graph") into the
-// [header, ...rows] matrix format expected by Lucinda.postprocess().
-// total_items (the real total match count, independent of page_size) is
-// denormalized onto every row so it survives Lucinda.postprocess()'s
-// column-filtering step - see post_search_ids_skgif() below, which reads
-// it back out for pagination.
-Lucinda.reqhandler_skgif_persons = function (data) {
-  skgifCacheResponse(data); // reused by api_search_author_skgif() for page 1
-  const header = ["local_identifier", "name", "given_name", "family_name", "orcid", "other_ids", "total_items"];
-  const graph = (data && Array.isArray(data["@graph"])) ? data["@graph"] : [];
-  const totalItems = String(data?.meta?.part_of?.total_items ?? 0);
-
-  const rows = graph.map(person => {
-    const identifiers = Array.isArray(person.identifiers) ? person.identifiers : [];
-    const orcid = identifiers.find(i => i.scheme === "orcid")?.value || "";
-    const otherIds = identifiers
-      .filter(i => i.scheme !== "orcid")
-      .map(i => `${i.scheme}:${i.value}`)
-      .join("|");
-
-    return [
-      person.local_identifier || "",
-      person.name || "",
-      person.given_name || "",
-      person.family_name || "",
-      orcid,
-      otherIds,
-      totalItems
-    ];
-  });
-
-  return [header, ...rows];
-};
-
-// ---aut_free_text (SKG-IF)---
-// Builds the SKG-IF "filter=..." clause for the search_ids bootstrap call.
-// NOTE: cf.search.name does NOT work against the real API (persons only
-// have given_name/family_name, verified live: always 0 results), and a
-// single request can't OR given_name/family_name together (comma = AND).
-// So here we use a simple heuristic for the count: a single term is
-// assumed to be a family name, 2+ terms are "given... family". The
-// api_search_author_skgif() callfun below additionally covers the
-// single-term "could also be a given name" case for the actual results.
-// Must return a plain OBJECT, not an array: in the actual engine copy
-// loaded by browser.html (example/oc/static/js/lucinda.js), the
-// Array.isArray(newValues) branch in Lucinda.preprocess() is empty (a
-// leftover stub) - only the "typeof newValues === 'object'" branch
-// actually writes the value back into param (see pre_oci() above for the
-// same convention already in use).
-function pre_search_authors_skgif(search_query) {
-  if (typeof search_query !== 'string') return { search_query: '' };
-
-  let clean;
-  try {
-    clean = decodeURIComponent(search_query).trim();
-  } catch (e) {
-    clean = search_query.replace(/%20/g, ' ').trim();
-  }
-
-  const terms = clean.split(/\s+/).filter(Boolean);
-  if (terms.length === 0) return { search_query: '' };
-
-  let filterExpr;
-  if (terms.length === 1) {
-    filterExpr = `cf.search.family_name:${encodeURIComponent(terms[0])}`;
-  } else {
-    const family = encodeURIComponent(terms[terms.length - 1]);
-    const given = encodeURIComponent(terms.slice(0, -1).join(' '));
-    filterExpr = `cf.search.given_name:${given},cf.search.family_name:${family}`;
-  }
-
-  return { search_query: filterExpr };
-}
-
-// ---aut_free_text (SKG-IF)---
-// Aggregates the per-person rows coming from reqhandler_skgif_persons into
-// a single row, following the same convention used across this file (e.g.
-// post_ocmeta_call's "; "-joined columns). total_items is the same value
-// on every input row (denormalized by reqhandler_skgif_persons), so it's
-// read once as a plain number rather than pipe-joined - it feeds
-// getVal(search_ids.total_items) in aut_free_text.html for the real
-// result count (independent of the page_size cap on this bootstrap call).
-function post_search_ids_skgif(args) {
-  const header = ["ids", "names", "given_names", "family_names", "orcids", "ids_extra", "total_items"];
-
-  if (!Array.isArray(args) || args.length <= 1) {
-    return [header, ["", "", "", "", "", "", "0"]];
-  }
-
-  const rows = args.slice(1);
-
-  const ids = [];
-  const names = [];
-  const givenNames = [];
-  const familyNames = [];
-  const orcids = [];
-  const idsExtra = [];
-
-  rows.forEach(row => {
-    const rawId = row[0] || "";
-    const match = rawId.match(/ra\/([\w\d]+)$/);
-    const shortId = match ? match[1] : rawId;
-
-    ids.push(shortId);
-    names.push(row[1] || "");
-    givenNames.push(row[2] || "");
-    familyNames.push(row[3] || "");
-    orcids.push(row[4] || "");
-    idsExtra.push(row[5] || "");
-  });
-
-  const totalItems = rows[0][6] || "0";
-
-  return [
-    header,
-    [
-      ids.join("|"),
-      names.join("|"),
-      givenNames.join("|"),
-      familyNames.join("|"),
-      orcids.join("|"),
-      idsExtra.join("|"),
-      totalItems
-    ]
-  ];
-}
-
-// ---aut_free_text (SKG-IF)---
 // #callfun args are (per the convention documented near ocapi_citations()
 // below): args[0] = declared-params header, args[1] = Lucinda.data.main
 // (has search_query), args[2] = this block's own id.
@@ -3149,9 +2997,9 @@ function api_search_author_skgif(...args) {
     return;
   }
 
-  // The title count was filled by the search_ids block (family_name only for
-  // a single term): keep LUCINDA's loading banner until the paginator has
-  // the real total and the first results, then show everything at once.
+  // The .hf has no #sparql block (lucinda.js renders the template right
+  // away): keep LUCINDA's loading banner until the paginator has the total
+  // and the first results, then show title count and results at once.
   holdSkgifPage();
 
   const terms = cleanQuery.split(/\s+/).filter(Boolean);
@@ -3203,9 +3051,20 @@ function api_search_author_skgif(...args) {
       .catch(() => null);
   }))
     .then(responses => {
-      const exactSplits = allSplits.filter((split, i) =>
-        _authorSplitHasExactMatch(split, responses[i]));
-      startSearch((exactSplits.length ? exactSplits : allSplits).map(splitSource));
+      // Sorted by total (largest first), then by name, so that the same
+      // person searched in any word order gets the same sources in the same
+      // order, i.e. the same total and the same pages.
+      const found = allSplits.map((split, i) => ({
+        split,
+        total: responses[i]?.meta?.part_of?.total_items || 0,
+        exact: _authorSplitHasExactMatch(split, responses[i])
+      }));
+      const exact = found.filter(f => f.exact);
+      const chosen = (exact.length ? exact : found)
+        .sort((a, b) => b.total - a.total
+          || `${a.split.given}|${a.split.family}`.localeCompare(`${b.split.given}|${b.split.family}`))
+        .map(f => f.split);
+      startSearch(chosen.map(splitSource));
     });
 }
 
@@ -3221,13 +3080,17 @@ function _authorSplitHasExactMatch(split, response) {
 
 // ---aut_free_text (SKG-IF)---
 // Returns the {given, family} pairs to search for a 2+ term query: every
-// split point, in both "given... family" and "family... given" order (e.g.
-// "Maria De Rosa" -> Maria|De Rosa, Maria De|Rosa, De Rosa|Maria, Rosa|Maria
-// De), i.e. 2*(n-1) requests. The standard "given... family" split (last
-// term = family) comes first so page 1 reuses the response already fetched
-// by the search_ids block (see _skgifResponseCache). Above
-// AUTHOR_MAX_SPLIT_TERMS only that standard split is used, to keep the
-// number of parallel requests bounded.
+// split point of every ROTATION of the terms (e.g. "Maria De Rosa" ->
+// rotations "Maria De Rosa", "De Rosa Maria", "Rosa Maria De" -> Maria|De
+// Rosa, Maria De|Rosa, De|Rosa Maria, De Rosa|Maria, Rosa|Maria De, Rosa
+// Maria|De), i.e. n*(n-1) requests. Rotations (not just "head|tail" and
+// "tail|head" of the query as typed) make the set of pairs the same for any
+// word order: with the old approach "Tim Van De Cruys" found the mis-split
+// record given "Tim Van De" / family "Cruys" (15 results) but "Van De Cruys
+// Tim" could not (14 results), verified live. The standard "given... family"
+// split (last term = family) comes first. Above AUTHOR_MAX_SPLIT_TERMS only
+// that standard split is used, to keep the number of parallel requests
+// bounded.
 const AUTHOR_MAX_SPLIT_TERMS = 4;
 
 function _authorNameSplits(terms) {
@@ -3236,11 +3099,11 @@ function _authorNameSplits(terms) {
   if (n > AUTHOR_MAX_SPLIT_TERMS) return [standard];
 
   const splits = [standard];
-  for (let k = 1; k < n; k++) {
-    const head = terms.slice(0, k).join(' ');
-    const tail = terms.slice(k).join(' ');
-    splits.push({ given: head, family: tail });
-    splits.push({ given: tail, family: head });
+  for (let r = 0; r < n; r++) {
+    const rotation = terms.slice(r).concat(terms.slice(0, r));
+    for (let k = 1; k < n; k++) {
+      splits.push({ given: rotation.slice(0, k).join(' '), family: rotation.slice(k).join(' ') });
+    }
   }
   const seen = new Set();
   return splits.filter(s => {
