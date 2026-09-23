@@ -2705,7 +2705,7 @@ already handle the slicing/counting themselves - we don't need our own
 result-limiting logic, just a small UI to move between pages. This module
 is resource-agnostic: aut_free_text uses it today, doc_free_text and
 venue_free_text can reuse it unchanged by giving their own containerId,
-buildFetchUrls and renderItem.
+sources and renderItem.
 
 A single delegated click listener (registered once, here) drives every
 paginated results container, instead of one inline onclick per search -
@@ -2746,76 +2746,169 @@ document.addEventListener('click', function (e) {
   if (paginator && page >= 1) paginator.goToPage(page);
 });
 
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter') return;
+  const input = e.target.closest('.skgif-page-input');
+  if (!input) return;
+  const paginator = _skgifPaginators[input.dataset.skgifContainer];
+  const max = parseInt(input.max, 10);
+  const page = parseInt(input.value, 10);
+  if (!paginator || isNaN(page)) return;
+  paginator.goToPage(Math.min(Math.max(page, 1), max));
+});
+
 /*
 config:
   containerId   - id of the element the results (and pagination bar) render into
-  buildFetchUrls(page, pageSize) -> array of SKG-IF URLs to fetch for that page
-                  (more than one only when merging results from multiple filters,
-                  e.g. a single free-text term searched as given_name OR family_name)
-  dedupeKey(item) -> a string key used to drop duplicates across buildFetchUrls' URLs
+  sources        - array of SKG-IF search URLs WITHOUT page/page_size (e.g.
+                   ".../persons?filter=cf.search.given_name:Serena"). They are
+                   paginated as ONE list, one after the other (all of
+                   sources[0], then all of sources[1], ...): page N is computed
+                   from each source's total_items, so every result is
+                   reachable and a page that straddles two sources takes the
+                   tail of one and the head of the next. (Merging page N of
+                   every source and cutting to pageSize, as done before, made
+                   every source but the first unreachable.)
+  overlapUrl     - optional SKG-IF URL (without page params) whose total_items
+                   is the number of results shared by the sources (e.g. the
+                   AND of the two filters), subtracted from the displayed
+                   total so it's exact. Those shared results can still show
+                   up twice, on different pages.
+  dedupeKey(item) -> a string key used to drop duplicates within a page
   renderItem(item) -> HTML string for one result card
-  emptyMessage   - optional text shown when a page has zero results
+  rankItems(items) -> optional, reorders the items of a page before rendering
+  emptyMessage  - optional text shown when a page has zero results
   pageSize       - optional, defaults to SKGIF_DEFAULT_PAGE_SIZE
   totalCountId   - optional id of the element showing the results count in the
-                   page title; overwritten with the same total the pagination
-                   uses, so title and "Page X of Y" always agree
+                   page title; filled with the total once the first page
+                   is rendered (together with releaseSkgifPage(), see
+                   holdSkgifPage())
 */
+// Keeps LUCINDA's own "Loading the resource..." banner on screen until the
+// first page of results is ready, so title, count and results appear all at
+// once. LUCINDA replaces the banner with the template and runs the #callfun
+// blocks in the same tick (build_success_html_page() in lucinda.js), so the
+// template is hidden here before the browser ever paints it. The banner
+// markup is the same as Lucinda.add_main_loading_banner() (not called
+// directly: it would overwrite the template), styled by lucinda.css.
+let _skgifHeldPage = null;
+
+function holdSkgifPage() {
+  const root = document.getElementById('__lucinda__');
+  if (!root || _skgifHeldPage) return;
+  const children = Array.from(root.children).map(el => ({ el, display: el.style.display }));
+  children.forEach(({ el }) => { el.style.display = 'none'; });
+  const banner = document.createElement('div');
+  banner.id = 'lucinda_pendinghtml_main_loading';
+  banner.innerHTML = "Loading the resource<br><span class='loading-dots'><span>.</span><span>.</span><span>.</span> </span>";
+  root.appendChild(banner);
+  _skgifHeldPage = { banner, children };
+}
+
+function releaseSkgifPage() {
+  if (!_skgifHeldPage) return;
+  _skgifHeldPage.banner.remove();
+  _skgifHeldPage.children.forEach(({ el, display }) => { el.style.display = display; });
+  _skgifHeldPage = null;
+}
+
 function createSkgifPaginatedSearch(config) {
   const pageSize = config.pageSize || SKGIF_DEFAULT_PAGE_SIZE;
+  const sources = config.sources || [];
+  let sourceTotals = null; // total_items of each source, read once on the first page
+
+  const emptyResponse = { "@graph": [], meta: { part_of: { total_items: 0 } } };
+  const safeFetch = (url) => {
+    const cached = _skgifResponseCache[_skgifNormalizeUrl(url)];
+    if (cached) return Promise.resolve(cached);
+    return fetch(url)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return emptyResponse;
+        skgifCacheResponse(data, url);
+        return data;
+      })
+      .catch(() => emptyResponse);
+  };
+  const pageUrl = (src, apiPage) => `${src}&page=${apiPage}&page_size=${pageSize}`;
+  const totalOf = resp => resp?.meta?.part_of?.total_items || 0;
+
+  let displayTotal = 0;
+
+  // Writes the total into the title and reveals the page held by
+  // holdSkgifPage() (if any), so count and results appear together.
+  function showCount() {
+    const countEl = config.totalCountId ? document.getElementById(config.totalCountId) : null;
+    if (countEl) countEl.textContent = displayTotal;
+    releaseSkgifPage();
+  }
+
+  // Page 1 of every source (needed anyway for the first page, and cached)
+  // gives each source's total_items; the optional overlap request makes the
+  // displayed total exact.
+  function loadTotals() {
+    if (sourceTotals) return Promise.resolve();
+    const requests = sources.map(src => safeFetch(pageUrl(src, 1)));
+    if (config.overlapUrl) requests.push(safeFetch(`${config.overlapUrl}&page=1&page_size=1`));
+    return Promise.all(requests).then(responses => {
+      sourceTotals = responses.slice(0, sources.length).map(totalOf);
+      const listed = sourceTotals.reduce((a, b) => a + b, 0);
+      const overlap = config.overlapUrl ? totalOf(responses[sources.length]) : 0;
+      displayTotal = Math.max(0, listed - overlap);
+    });
+  }
+
+  // Global item range of `page` -> for each source it touches, the (at most
+  // two) API pages covering it, then the exact slice of their items.
+  function itemsForPage(page) {
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    const parts = [];
+    let offset = 0;
+    sources.forEach((src, i) => {
+      const total = sourceTotals[i];
+      const from = Math.max(start, offset) - offset;
+      const to = Math.min(end, offset + total) - offset;
+      offset += total;
+      if (from >= to) return;
+      const firstApiPage = Math.floor(from / pageSize) + 1;
+      const lastApiPage = Math.floor((to - 1) / pageSize) + 1;
+      const apiPages = [];
+      for (let p = firstApiPage; p <= lastApiPage; p++) apiPages.push(p);
+      parts.push(Promise.all(apiPages.map(p => safeFetch(pageUrl(src, p)))).then(responses => {
+        const items = responses.flatMap(r => Array.isArray(r?.["@graph"]) ? r["@graph"] : []);
+        const skip = from - (firstApiPage - 1) * pageSize;
+        return items.slice(skip, skip + (to - from));
+      }));
+    });
+    return Promise.all(parts).then(lists => lists.flat());
+  }
 
   function fetchPage(page) {
     const container = document.getElementById(config.containerId);
     if (container) {
-      container.innerHTML = '<div class="col-12 text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading...</p></div>';
+      container.innerHTML = "<div class='col-12 skgif-page-loading'>Loading the results<br><span class='loading-dots'><span>.</span><span>.</span><span>.</span> </span></div>";
     }
 
-    const emptyResponse = { "@graph": [], meta: { part_of: { total_items: 0 } } };
-    const safeFetch = (url) => {
-      const cached = _skgifResponseCache[_skgifNormalizeUrl(url)];
-      if (cached) return Promise.resolve(cached);
-      return fetch(url)
-        .then(r => r.ok ? r.json() : null)
-        .then(data => {
-          if (!data) return emptyResponse;
-          skgifCacheResponse(data, url);
-          return data;
-        })
-        .catch(() => emptyResponse);
-    };
-
-    const urls = config.buildFetchUrls(page, pageSize);
-
-    Promise.all(urls.map(safeFetch))
-      .then(responses => {
+    loadTotals()
+      .then(() => itemsForPage(page))
+      .then(pageItems => {
         const seen = new Set();
-        const items = [];
-        let totalItems = 0;
-
-        responses.forEach(resp => {
-          const graph = Array.isArray(resp?.["@graph"]) ? resp["@graph"] : [];
-          totalItems = Math.max(totalItems, resp?.meta?.part_of?.total_items || 0);
-          graph.forEach(item => {
-            const key = config.dedupeKey(item);
-            if (seen.has(key)) return;
-            seen.add(key);
-            items.push(item);
-          });
+        const items = pageItems.filter(item => {
+          const key = config.dedupeKey(item);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
         });
-
-        // buildFetchUrls may hit more than one endpoint (e.g. a single free-
-        // text term searched as given_name OR family_name) and get merged
-        // above - cap to pageSize here so a "page" is always what it says,
-        // regardless of how many sources contributed to it.
-        if (config.totalCountId) {
-          const countEl = document.getElementById(config.totalCountId);
-          if (countEl) countEl.textContent = totalItems;
-        }
-
-        _render(container, items.slice(0, pageSize), page, totalItems);
+        const ranked = config.rankItems ? config.rankItems(items) : items;
+        const listedTotal = sourceTotals.reduce((a, b) => a + b, 0);
+        _render(container, ranked, page, listedTotal);
+        showCount();
       })
       .catch(error => {
         console.error("SKG-IF search failed:", error);
         if (container) container.innerHTML = `<div class="col-12"><div class="alert alert-danger">Error: ${error.message}</div></div>`;
+        showCount();
       });
   }
 
@@ -2833,26 +2926,50 @@ function createSkgifPaginatedSearch(config) {
     let html = items.map(config.renderItem).join('');
 
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-    const prevBtn = page > 1
-      ? `<button type="button" class="btn btn-outline-secondary skgif-page-btn" data-skgif-page="${page - 1}" data-skgif-container="${config.containerId}">&laquo; Previous</button>`
+    const btn = (target, label, cls) =>
+      `<button type="button" class="btn ${cls} skgif-page-btn" data-skgif-page="${target}" data-skgif-container="${config.containerId}">${label}</button>`;
+    const prevBtns = page > 1
+      ? `<span class="skgif-page-group">${btn(1, '&laquo; First', 'btn-outline-secondary')}${btn(page - 1, '&lsaquo; Previous', 'btn-outline-secondary')}</span>`
       : `<span></span>`;
-    const nextBtn = page < totalPages
-      ? `<button type="button" class="btn btn-outline-primary skgif-page-btn" data-skgif-page="${page + 1}" data-skgif-container="${config.containerId}">Next &raquo;</button>`
+    const nextBtns = page < totalPages
+      ? `<span class="skgif-page-group">${btn(page + 1, 'Next &rsaquo;', 'btn-outline-primary')}${btn(totalPages, 'Last &raquo;', 'btn-outline-primary')}</span>`
       : `<span></span>`;
+    // Typing a page number + Enter jumps there (handled by the delegated
+    // listener next to the click one).
+    const pageInput = totalPages > 1
+      ? `<input type="number" class="form-control form-control-sm skgif-page-input" min="1" max="${totalPages}" value="${page}" aria-label="Go to page" data-skgif-container="${config.containerId}">`
+      : `${page}`;
 
     html += `
       <div class="col-12">
         <nav class="skgif-pagination" aria-label="Search results pages">
-          ${prevBtn}
-          <span class="skgif-page-info">Page ${page} of ${totalPages}</span>
-          ${nextBtn}
+          ${prevBtns}
+          <span class="skgif-page-info">Page ${pageInput} of ${totalPages}</span>
+          ${nextBtns}
         </nav>
       </div>`;
 
     container.innerHTML = html;
   }
 
-  const paginator = { goToPage: fetchPage };
+  // Changing page (buttons or page input) scrolls back to the start of the
+  // results - the title card with the count if there is one, else the
+  // results container - so the new page is read from its first item instead
+  // of from wherever the (shorter, while loading) list left the scroll.
+  // Focus moves there too, for keyboard/screen reader users. Not done on the
+  // first load (search()), where the page is already at the top.
+  function goToPage(page) {
+    const countEl = config.totalCountId ? document.getElementById(config.totalCountId) : null;
+    const target = (countEl && countEl.closest('.card')) || document.getElementById(config.containerId);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+      target.focus({ preventScroll: true });
+    }
+    fetchPage(page);
+  }
+
+  const paginator = { goToPage };
   _skgifPaginators[config.containerId] = paginator;
   return { search: () => fetchPage(1) };
 }
@@ -3000,16 +3117,19 @@ function post_search_ids_skgif(args) {
 // single free-text term is searched against BOTH fields in parallel here
 // and the results are merged/deduplicated by local_identifier - this is
 // what actually satisfies "full name, given name, or family name" from the
-// user's requirements. For 2+ terms we assume "given... family" order.
+// user's requirements. For 2+ terms the order is unknown ("Silvio Peroni"
+// vs "Peroni Silvio", verified live: the swapped filter returns 0), so every
+// given/family split is tried in both orders - see _authorNameSplits().
 // SKG-IF already returns full person metadata (name, ORCID, ...) in the
 // search response itself, so there's no need for OpenCitations Meta at all.
 //
 // Pagination is delegated to createSkgifPaginatedSearch() above (shared,
 // resource-agnostic). A single free-text term hits two independent
-// paginated endpoints (given_name and family_name) that get merged and
-// deduplicated, so a "page" here can show anywhere from ~10 to ~20 cards -
-// a known simplification (SKG-IF has no cross-field OR), and total_items
-// is approximated as the larger of the two endpoints' totals.
+// endpoints (given_name and family_name), paginated one after the other;
+// the total is given + family - (given AND family), so it's exact (verified
+// live for "Serena": 28567 + 1430 - 1). For 2+ terms only the exact-match
+// splits are paginated (see below); with no exact match every split is, and
+// the total can count a person more than once.
 function api_search_author_skgif(...args) {
   const lucinda_main_data = args[1] || {};
 
@@ -3029,29 +3149,134 @@ function api_search_author_skgif(...args) {
     return;
   }
 
+  // The title count was filled by the search_ids block (family_name only for
+  // a single term): keep LUCINDA's loading banner until the paginator has
+  // the real total and the first results, then show everything at once.
+  holdSkgifPage();
+
   const terms = cleanQuery.split(/\s+/).filter(Boolean);
   const base = "https://api.opencitations.net/skg-if/v1/persons";
+  const splitSource = ({ given, family }) =>
+    `${base}?filter=cf.search.given_name:${encodeURIComponent(given)},cf.search.family_name:${encodeURIComponent(family)}`;
+  const splitUrl = (split, page, pageSize) => `${splitSource(split)}&page=${page}&page_size=${pageSize}`;
 
-  const paginator = createSkgifPaginatedSearch({
+  const startSearch = (sources, overlapUrl) => createSkgifPaginatedSearch({
     containerId: 'search-results-container',
     totalCountId: 'search-total-count',
-    buildFetchUrls(page, pageSize) {
-      if (terms.length === 1) {
-        const term = encodeURIComponent(terms[0]);
-        return [
-          `${base}?filter=cf.search.given_name:${term}&page=${page}&page_size=${pageSize}`,
-          `${base}?filter=cf.search.family_name:${term}&page=${page}&page_size=${pageSize}`
-        ];
-      }
-      const family = encodeURIComponent(terms[terms.length - 1]);
-      const given = encodeURIComponent(terms.slice(0, -1).join(' '));
-      return [`${base}?filter=cf.search.given_name:${given},cf.search.family_name:${family}&page=${page}&page_size=${pageSize}`];
-    },
+    sources,
+    overlapUrl,
     dedupeKey: person => person.local_identifier || JSON.stringify(person),
+    rankItems: items => _rankAuthorsByQuery(items, terms),
     renderItem: _renderAuthorCard
-  });
+  }).search();
 
-  paginator.search();
+  // Single term: all given_name matches, then all family_name matches; the
+  // AND of the two (e.g. "Serena Serena") is subtracted for an exact total.
+  if (terms.length === 1) {
+    const term = encodeURIComponent(terms[0]);
+    startSearch(
+      [`${base}?filter=cf.search.given_name:${term}`, `${base}?filter=cf.search.family_name:${term}`],
+      `${base}?filter=cf.search.given_name:${term},cf.search.family_name:${term}`
+    );
+    return;
+  }
+
+  // Keep only the splits whose page 1 contains an exact full-name match, so
+  // "Maria De Rosa" and "De Rosa Maria" both end up on Maria|De Rosa (same
+  // total, same pages) instead of the partial-match noise of the other
+  // splits. The page-1 responses go into _skgifResponseCache, so the
+  // paginator reuses them. No exact match anywhere (typo, partial name) ->
+  // fall back to merging every split.
+  const allSplits = _authorNameSplits(terms);
+  if (allSplits.length === 1) {
+    startSearch(allSplits.map(splitSource));
+    return;
+  }
+
+  Promise.all(allSplits.map(split => {
+    const url = splitUrl(split, 1, SKGIF_DEFAULT_PAGE_SIZE);
+    const cached = _skgifResponseCache[_skgifNormalizeUrl(url)];
+    if (cached) return Promise.resolve(cached);
+    return fetch(url)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) skgifCacheResponse(data, url); return data; })
+      .catch(() => null);
+  }))
+    .then(responses => {
+      const exactSplits = allSplits.filter((split, i) =>
+        _authorSplitHasExactMatch(split, responses[i]));
+      startSearch((exactSplits.length ? exactSplits : allSplits).map(splitSource));
+    });
+}
+
+// ---aut_free_text (SKG-IF)---
+// True if a /persons response contains someone whose given_name and
+// family_name are exactly split.given / split.family (case-insensitive).
+function _authorSplitHasExactMatch(split, response) {
+  const norm = s => String(s || "").toLowerCase().split(/\s+/).filter(Boolean).join(' ');
+  const graph = Array.isArray(response?.["@graph"]) ? response["@graph"] : [];
+  return graph.some(p =>
+    norm(p.given_name) === norm(split.given) && norm(p.family_name) === norm(split.family));
+}
+
+// ---aut_free_text (SKG-IF)---
+// Returns the {given, family} pairs to search for a 2+ term query: every
+// split point, in both "given... family" and "family... given" order (e.g.
+// "Maria De Rosa" -> Maria|De Rosa, Maria De|Rosa, De Rosa|Maria, Rosa|Maria
+// De), i.e. 2*(n-1) requests. The standard "given... family" split (last
+// term = family) comes first so page 1 reuses the response already fetched
+// by the search_ids block (see _skgifResponseCache). Above
+// AUTHOR_MAX_SPLIT_TERMS only that standard split is used, to keep the
+// number of parallel requests bounded.
+const AUTHOR_MAX_SPLIT_TERMS = 4;
+
+function _authorNameSplits(terms) {
+  const n = terms.length;
+  const standard = { given: terms.slice(0, -1).join(' '), family: terms[n - 1] };
+  if (n > AUTHOR_MAX_SPLIT_TERMS) return [standard];
+
+  const splits = [standard];
+  for (let k = 1; k < n; k++) {
+    const head = terms.slice(0, k).join(' ');
+    const tail = terms.slice(k).join(' ');
+    splits.push({ given: head, family: tail });
+    splits.push({ given: tail, family: head });
+  }
+  const seen = new Set();
+  return splits.filter(s => {
+    const key = `${s.given}\u0000${s.family}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+// ---aut_free_text (SKG-IF)---
+// cf.search.given_name/family_name match on single words, not on the whole
+// field (verified live: given_name:"Rosa Maria",family_name:"De" also
+// returns "Rosa Maria Vieira De Freitas"), so the less plausible splits of a
+// 3+ term query bring in partial matches. Stable-sorts the merged page so
+// that exact full-name matches (in either order) come first, then people
+// whose family name is exactly one end of the query, then everything else.
+function _rankAuthorsByQuery(items, terms) {
+  const norm = s => String(s || "").toLowerCase().split(/\s+/).filter(Boolean).join(' ');
+  const query = norm(terms.join(' '));
+  const ends = new Set();
+  for (let k = 1; k < terms.length; k++) {
+    ends.add(norm(terms.slice(0, k).join(' ')));
+    ends.add(norm(terms.slice(k).join(' ')));
+  }
+  const score = person => {
+    const given = norm(person.given_name);
+    const family = norm(person.family_name);
+    if (`${given} ${family}` === query || `${family} ${given}` === query) return 0;
+    if (ends.has(family)) return 1;
+    return 2;
+  };
+  return items
+    .map((item, i) => ({ item, i, s: score(item) }))
+    .sort((a, b) => a.s - b.s || a.i - b.i)
+    .map(x => x.item);
 }
 
 function _renderAuthorCard(person) {

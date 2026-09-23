@@ -189,6 +189,66 @@ a.anyid-doi{
 .skgif-pagination .skgif-page-info {
   font-weight: bold;
   color: black;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  white-space: nowrap;
+}
+
+/* First+Previous / Next+Last pairs */
+.skgif-pagination .skgif-page-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+}
+
+/* Loading message while changing page: same look as LUCINDA's initial
+   "Loading the resource..." banner (#lucinda_pendinghtml_main_loading in
+   lucinda.css, which is id-scoped so it can't be reused as is); the blinking
+   dots come from lucinda.css's #__lucinda__ .loading-dots rules. */
+#__lucinda__ .skgif-page-loading {
+  text-align: center;
+  font-size: 1.2em;
+  color: var(--link-text-color);
+  font-weight: bold;
+  padding: 1.5em 0;
+}
+
+#__lucinda__ .skgif-page-loading .loading-dots {
+  font-size: 2em;
+}
+
+/* The results title card gets focus (tabindex="-1") when changing page, so
+   screen readers restart from it: no focus ring, it isn't a control. */
+#__lucinda__ .card[tabindex="-1"]:focus {
+  outline: none;
+}
+
+/* "Page [n] of N": type a page number + Enter to jump there */
+.skgif-pagination .skgif-page-input {
+  width: 6em;
+  text-align: center;
+  font-weight: bold;
+  border-color: #9a31fc;
+}
+
+.skgif-pagination .skgif-page-input:focus {
+  border-color: #9a31fc;
+  box-shadow: 0 0 0 0.2rem rgba(154, 49, 252, 0.25);
+}
+
+/* Phone width: buttons + input don't fit on one row, stack them centered */
+@media (max-width: 576px) {
+  .skgif-pagination {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 0.75em 0;
+  }
+
+  .skgif-pagination > :first-child,
+  .skgif-pagination > :last-child {
+    justify-self: center;
+  }
 }
 
 @media (max-width: 768px) {
