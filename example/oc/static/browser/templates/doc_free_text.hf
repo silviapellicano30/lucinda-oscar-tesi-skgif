@@ -1,31 +1,5 @@
 #id main
 #url value=document/{search_query}
 
-#id search_ids
-#endpoint https://sparql.opencitations.net/meta
-#method get
-#preprocess remove_per(search_query)
-#postprocess post_search_ids(work)
-#sparql PREFIX dcterms: <http://purl.org/dc/terms/>
-PREFIX fabio: <http://purl.org/spar/fabio/>
-
-SELECT ?work 
-WHERE {
-  ?work a fabio:Expression ;
-        dcterms:title ?title .
-  
- 
-  ?title bif:contains [[search_query]] .
-}
-LIMIT 100
-
 #id api_search
-#callfun api_search()
-
-
-
-
-
-
-
-
+#callfun api_search_doc_skgif()
