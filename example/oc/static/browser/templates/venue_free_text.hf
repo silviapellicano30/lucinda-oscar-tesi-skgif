@@ -1,22 +1,5 @@
 #id main
 #url value=venue/{search_query}
 
-#id search_ids
-#endpoint https://sparql.opencitations.net/meta
-#preprocess remove_per(search_query)
-#postprocess post_search_ids(ids)
-#method get
-#sparql PREFIX dcterms: <http://purl.org/dc/terms/>
-PREFIX fabio: <http://purl.org/spar/fabio/>
-
-SELECT DISTINCT ?ids
-WHERE {
-    VALUES ?type { fabio:Journal fabio:Series }
-    ?ids a ?type .
-    ?ids dcterms:title ?title .
-    ?title bif:contains [[search_query]] .
-}
-
-
 #id api_search
-#callfun api_search_venue()
+#callfun api_search_venue_skgif()

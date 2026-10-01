@@ -3170,7 +3170,7 @@ function _renderAuthorCard(person) {
 // field of the card (title, authors with ORCID, identifiers, publication
 // date, venue), and total_items is the real number of matches, not capped
 // at 100. Pagination is the shared createSkgifPaginatedSearch() (section 1)
-// with one source.
+// with one source (two if the query has accents, see below).
 //
 // #callfun args: args[1] = Lucinda.data.main (has search_query), see
 // api_search_author_skgif().
@@ -3205,10 +3205,16 @@ function api_search_doc_skgif(...args) { //Coordina la ricerca documenti
   // until the count and the first page are ready.
   holdSkgifPage();
 
+  // The API matches accent-sensitively ("citation índex" 0, "citation index"
+  // 1009): a query with accents is also searched without them, as typed first.
+  const base = "https://api.opencitations.net/skg-if/v1/products?filter=cf.search.title:";
+  const sources = [...new Set([cleanQuery, _foldAccents(cleanQuery)])]
+    .map(q => base + encodeURIComponent(q));
+
   createSkgifPaginatedSearch({
     containerId: 'search-results-container',
     totalCountId: 'search-total-count',
-    sources: [`https://api.opencitations.net/skg-if/v1/products?filter=cf.search.title:${encodeURIComponent(cleanQuery)}`],
+    sources,
     dedupeKey: product => product.local_identifier || JSON.stringify(product),
     renderItem: _renderDocumentCard
   }).search();
@@ -3363,6 +3369,139 @@ function _renderDocumentCard(product) {
         <div class="d-flex justify-content-end px-3 pb-2 gap-2">
           <a href="${refUrl}" class="btn btn-sm" target="_blank">Go to References</a>
           <a href="${citUrl}" class="btn btn-sm" target="_blank">Go to Citations</a>
+        </div>
+      </div>
+    </div>`;
+}
+
+/*
+################################################################################
+# 4. CITAZIONI E RIFERIMENTI (doc_citations, doc_references)
+################################################################################
+*/
+// ---doc_citations---doc_references (SKG-IF)---
+// Replace Pietro's SPARQL on the Index (cito:hasCitingEntity /
+// cito:hasCitedEntity) + load_metadata_async() (Meta REST API in batches of
+// 20 OMIDs) with one paginated /products request, using two filters of the
+// API (same counts as the Index citation-count / reference-count):
+//   cf.cites:<omid>     -> products that cite the document   (citations)
+//   cf.cited_by:<omid>  -> products cited by the document    (references)
+// The value must be the full OMID URL ("cf.cites:br/..." returns 0).
+// Cards are the same as the document search (_renderDocumentCard()).
+//
+// #callfun args: args[1] = Lucinda.data.main (has the id of
+// "doc_cit/br/{id}" / "doc_ref/br/{id}"), see api_search_author_skgif().
+function api_doc_citations_skgif(...args) {
+  _skgifCitationList(args[1], 'cf.cites', 'No citations found.');
+}
+
+function api_doc_references_skgif(...args) {
+  _skgifCitationList(args[1], 'cf.cited_by', 'No references found.');
+}
+
+function _skgifCitationList(lucinda_main_data, filter, emptyMessage) {
+  let id = (lucinda_main_data || {}).id || "";
+  id = String(Array.isArray(id) ? id[0] : id).trim();
+
+  const resultsContainer = document.getElementById('search-results-container');
+  if (!id) {
+    if (resultsContainer) resultsContainer.innerHTML = `<div class="col-12"><p>${emptyMessage}</p></div>`;
+    return;
+  }
+
+  holdSkgifPage();
+
+  const omidUrl = `https://w3id.org/oc/meta/br/${id}`;
+  createSkgifPaginatedSearch({
+    containerId: 'search-results-container',
+    totalCountId: 'search-total-count',
+    sources: [`https://api.opencitations.net/skg-if/v1/products?filter=${filter}:${encodeURIComponent(omidUrl)}`],
+    dedupeKey: product => product.local_identifier || JSON.stringify(product),
+    renderItem: _renderDocumentCard,
+    emptyMessage
+  }).search();
+}
+
+/*
+################################################################################
+# 5. RICERCA RIVISTE (venue_free_text)
+################################################################################
+*/
+// ---venue_free_text (SKG-IF)---
+// Replaces Pietro's search_ids SPARQL block (bif:contains on the title of
+// fabio:Journal / fabio:Series, no longer supported by the Meta endpoint) +
+// api_search_venue() (Meta REST API in batches of 20 OMIDs) with one
+// paginated /venues request:
+//   venue/<text>        -> cf.search.name:<text>,type:journal
+//   venue/issn=<issn>   -> identifiers.scheme:issn,identifiers.value:<issn>
+//                          (from home.js; the same ISSN can belong to
+//                          several venue records, like the ORCID)
+// Only journals for the name search, as Pietro's results (fabio:Series is
+// not used in Meta: book series are fabio:BookSeries, type "other" in
+// SKG-IF). SKG-IF venues have only name, type and identifiers: Pietro's
+// date/publisher/editor are empty on Meta journal records anyway.
+// Accents and special characters as in the document search.
+//
+// #callfun args: args[1] = Lucinda.data.main (has search_query), see
+// api_search_author_skgif().
+function api_search_venue_skgif(...args) {
+  let rawQuery = (args[1] || {}).search_query || "";
+  rawQuery = String(Array.isArray(rawQuery) ? rawQuery[0] : rawQuery);
+  let query;
+  try { query = decodeURIComponent(rawQuery); } catch (e) { query = rawQuery; }
+  const issn = query.startsWith('issn=') ? new URLSearchParams(query).get('issn').trim() : "";
+  const name = issn ? "" : _skgifSafeTerm(query);
+
+  const label = document.getElementById('search-query-label');
+  if (label) label.textContent = issn ? `ISSN: ${issn}` : name;
+
+  const resultsContainer = document.getElementById('search-results-container');
+  if (!issn && !name) {
+    if (resultsContainer) resultsContainer.innerHTML = '<div class="col-12"><p>No results found.</p></div>';
+    return;
+  }
+
+  holdSkgifPage();
+
+  const base = "https://api.opencitations.net/skg-if/v1/venues?filter=";
+  const sources = issn
+    ? [`${base}identifiers.scheme:issn,identifiers.value:${encodeURIComponent(issn)}`]
+    : [...new Set([name, _foldAccents(name)])]
+        .map(q => `${base}cf.search.name:${encodeURIComponent(q)},type:journal`);
+
+  createSkgifPaginatedSearch({
+    containerId: 'search-results-container',
+    totalCountId: 'search-total-count',
+    sources,
+    dedupeKey: venue => venue.local_identifier || JSON.stringify(venue),
+    renderItem: _renderVenueCard
+  }).search();
+}
+
+// ---venue_free_text (SKG-IF)---
+// HTML card for one venue of the results page: same layout and title link
+// as Pietro's api_search_venue() cards, plus the venue type.
+function _renderVenueCard(venue) {
+  const omid = _skgifOmid(venue.local_identifier);
+  if (!omid) return "";
+
+  const type = venue.type
+    ? `<div class="mb-2"><span class="metadata-label fw-bold">Type:</span><br><span>${_skgifEscape(venue.type)}</span></div>`
+    : '';
+
+  return `
+    <div class="col-12 mb-3">
+      <div class="card shadow-sm p-2">
+        <div class="card-body p-3 d-flex flex-column">
+          <h5 class="card-title mb-2">
+            <a href="browser.html?value=${omid}" target="_blank">${_skgifEscape(venue.name || 'Unknown Title')}</a>
+          </h5>
+          <hr>
+          <div class="mb-2">
+            <span class="metadata-label fw-bold">Identifiers:</span><br>
+            <span>${_skgifIdList(venue.identifiers, omid)}</span>
+          </div>
+          ${type}
         </div>
       </div>
     </div>`;

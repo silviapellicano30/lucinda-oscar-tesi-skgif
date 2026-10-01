@@ -2,16 +2,4 @@
 #url value=doc_ref/br/{id}
 
 #id references_list
-#endpoint https://sparql.opencitations.net/index
-#method get
-#postprocess post_search_ids2(cited_entity)
-#sparql PREFIX cito: <http://purl.org/spar/cito/>
-SELECT DISTINCT ?cited_entity WHERE {
-  BIND(<https://w3id.org/oc/meta/br/[[id]]> AS ?citing_entity)
-  ?citation a cito:Citation .
-  ?citation cito:hasCitingEntity ?citing_entity .
-  ?citation cito:hasCitedEntity ?cited_entity .
-}
-
-#id render_trigger
-#callfun load_metadata_async(references_list)
+#callfun api_doc_references_skgif()

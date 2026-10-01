@@ -65,9 +65,24 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    // SILVIA (SKG-IF): an ISSN in "Venue" shows the cards of every venue record
+    // with that ISSN (like the ORCID), read by api_search_venue_skgif()
+    if (category === "venue" && issnRegex.test(query)) {
+      const issn = query.replace(/^issn:/i, "").toUpperCase(); // final x -> X, as stored
+      window.location.href = `http://127.0.0.1:5500/example/oc/html_template/browser.html?value=venue/${encodeURIComponent(`issn=${issn}`)}`;
+      return;
+    }
+
     // If it looks like an ID (DOI, ORCID, etc.), resolve it
     if (isDirectLucindaQuery(query)) {
       await openLucinda(query, category);
+      return;
+    }
+
+    // SILVIA (SKG-IF): citations/references need a document ID, not free text
+    // (doc_cit/<text> matches no template)
+    if (category === "doc_cit" || category === "doc_ref") {
+      alert("Please enter a DOI, PMID (pmid:...), OpenAlex ID (openalex:W...) or OMID (br/...).");
       return;
     }
 
