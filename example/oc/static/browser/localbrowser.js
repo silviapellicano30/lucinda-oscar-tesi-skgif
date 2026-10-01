@@ -2711,20 +2711,27 @@ function _skgifNormalizeUrl(url) {  //normalizza un URL per poterlo confrontare 
   return u.trim().toLowerCase();
 }
 
+// Requests still in flight, by the same key: asking again for a URL that
+// is already loading (e.g. clicking Next while that page is being
+// prefetched) waits for that request instead of sending a second one.
+const _skgifPendingRequests = {};
+
 // Fetches an SKG-IF URL through the cache. Never rejects: a failed request
 // resolves to an empty response (0 results), which is not cached.
 //Se la risposta è in cache, la restituisce subito, altrimenti fa la query e restuisce il formato in json se tutto va bene, altrimenti restutuisce risposta vuota
 function skgifFetch(url) {
   const key = _skgifNormalizeUrl(url);
   if (_skgifResponseCache[key]) return Promise.resolve(_skgifResponseCache[key]);
-  return fetch(url)
+  if (_skgifPendingRequests[key]) return _skgifPendingRequests[key]; //richiesta già in corso: aspetta quella
+  return _skgifPendingRequests[key] = fetch(url)
     .then(r => r.ok ? r.json() : null)
     .then(data => {
       if (!data) return SKGIF_EMPTY_RESPONSE;
       _skgifResponseCache[key] = data;
       return data;
     })
-    .catch(() => SKGIF_EMPTY_RESPONSE);
+    .catch(() => SKGIF_EMPTY_RESPONSE)
+    .finally(() => { delete _skgifPendingRequests[key]; });
 }
 
 // Makes a user-typed value safe for a cf.search.* filter, before
@@ -2793,13 +2800,6 @@ config:
                    tail of one and the head of the next. (Merging page N of
                    every source and cutting to pageSize, as done before, made
                    every source but the first unreachable.)
-  overlapUrl     - optional SKG-IF URL (without page params) whose total_items
-                   is the number of results shared by the sources (e.g. the
-                   AND of the two filters), subtracted from the displayed
-                   total so it's exact. Those shared results can still show
-                   up twice, on different pages. Can also be an array of
-                   URLs (one per pair of sources that overlap): all their
-                   total_items are subtracted.
   dedupeKey(item) -> a string key used to drop duplicates within a page
   renderItem(item) -> HTML string for one result card
   rankItems(items) -> optional, reorders the items of a page before rendering
@@ -2814,35 +2814,28 @@ function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
   const pageSize = config.pageSize || SKGIF_DEFAULT_PAGE_SIZE;
   const sources = config.sources || [];
   let sourceTotals = null; // total_items of each source, read once on the first page
-  let listedTotal = 0;     // sum of sourceTotals: what the pages are computed on= Somma dei total_items di ogni fonte SKG-I
-  let displayTotal = 0;    // listedTotal minus the overlap: what the title shows = listedTotal - overlap (NUMERO CORRETTO DA MOSTRARE)
+  let listedTotal = 0;     // sum of sourceTotals: shown in the title, pages are computed on it = Somma dei total_items di ogni fonte SKG-IF
 
   const pageUrl = (src, apiPage) => `${src}&page=${apiPage}&page_size=${pageSize}`; //costruzione url di ciascuna pagina
 
   // Writes the total into the title and reveals the page held by
   // holdSkgifPage() (if any), so count and results appear together.
-  //scrive displayTotal (numero dei risultati da mostrare) nel titolo e rilascia la pagina
+  //scrive listedTotal (numero dei risultati da mostrare) nel titolo e rilascia la pagina
   //riempie search-total-count in html
   function showCount() {
     const countEl = config.totalCountId ? document.getElementById(config.totalCountId) : null;
-    if (countEl) countEl.textContent = displayTotal;
+    if (countEl) countEl.textContent = listedTotal;
     releaseSkgifPage();
   }
 
   // Page 1 of every source (needed anyway for the first page, and cached)
-  // gives each source's total_items; the optional overlap request makes the
-  // displayed total exact.
-  //carica i totali di ogni fonte e calcola listedTotal e displayTotal (senza overlap) = il totale mostrato nel titolo deve essere esatto
+  // gives each source's total_items.
+  //carica i totali di ogni fonte e calcola listedTotal
   function loadTotals() {
     if (sourceTotals) return Promise.resolve();
-    const overlapUrls = [].concat(config.overlapUrl || []); //stringa o array di URL
-    const requests = sources.map(src => skgifFetch(pageUrl(src, 1)));
-    overlapUrls.forEach(url => requests.push(skgifFetch(`${url}&page=1&page_size=1`)));
-    return Promise.all(requests).then(responses => {
-      sourceTotals = responses.slice(0, sources.length).map(skgifTotal);
+    return Promise.all(sources.map(src => skgifFetch(pageUrl(src, 1)))).then(responses => {
+      sourceTotals = responses.map(skgifTotal);
       listedTotal = sourceTotals.reduce((a, b) => a + b, 0);
-      const overlap = responses.slice(sources.length).map(skgifTotal).reduce((a, b) => a + b, 0);
-      displayTotal = Math.max(0, listedTotal - overlap);
     });
   }
 
@@ -2893,11 +2886,15 @@ function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
         const ranked = config.rankItems ? config.rankItems(items) : items;
         _render(container, ranked, page, listedTotal); //chiama render (creazione template) in cui LISTEDTOTAL= totalitems
         showCount(); //mostra numero di risorse e rilascia il template
+        // The API is slow on URLs it hasn't served before (20-60 s, then
+        // cached): load the next page in the background while this one is
+        // read, so Next usually finds it in _skgifResponseCache.
+        if (page * pageSize < listedTotal) itemsForPage(page + 1); //precarica la pagina successiva
       })
       .catch(error => {
         console.error("SKG-IF search failed:", error);
         if (container) container.innerHTML = `<div class="col-12"><div class="alert alert-danger">Error: ${error.message}</div></div>`;
-        showCount(); //chiama show count per mostrare il conteggio da mostrare (displaytotal) e dopo rilascia il template coi dati (funzione già inclusa in showcount)
+        showCount(); //chiama show count per mostrare il conteggio da mostrare (listedTotal) e dopo rilascia il template coi dati (funzione già inclusa in showcount)
       });
   }
 
@@ -2993,68 +2990,41 @@ document.addEventListener('keydown', function (e) {
 */
 // ---aut_free_text (SKG-IF)---
 // #callfun args are (per the convention documented near ocapi_citations()
-// above): args[0] = declared-params header, args[1] = Lucinda.data.main
-// (has search_query), args[2] = this block's own id.
+// above): args[1] = Lucinda.data.main (has search_query), args[2] = this
+// block's own id.
 //
-// SKG-IF's convenience filters can't OR given_name/family_name together in
-// one request (comma = AND, verified live against the real API), so a
-// single free-text term is searched against BOTH fields in parallel here
-// and the results are merged/deduplicated by local_identifier - this is
-// what actually satisfies "full name, given name, or family name" from the
-// user's requirements. For 2+ terms the order is unknown ("Silvio Peroni"
-// vs "Peroni Silvio", verified live: the swapped filter returns 0), so every
-// given/family split is tried in both orders - see _authorNameSplits().
-// SKG-IF already returns full person metadata (name, ORCID, ...) in the
-// search response itself, so there's no need for OpenCitations Meta at all.
+// The home page has separate given name / family name / ORCID fields, so
+// search_query is a URL-encoded query string (see home.js):
+//   given=Silvio&family=Peroni  -> cf.search.given_name AND cf.search.family_name
+//   family=Peroni               -> cf.search.family_name only (given only alike)
+//   orcid=0000-0003-0530-4305   -> identifiers.id (exact; the same ORCID can
+//                                  belong to several person records)
+// cf.search.* matches the beginning of words, so an abbreviated field
+// ("Peroni" + "S", "Silvio" + "P") already works with no extra logic.
+// SKG-IF returns full person metadata (name, ORCID, ...) in the search
+// response itself, so there's no need for OpenCitations Meta at all.
 //
-// Pagination is delegated to createSkgifPaginatedSearch() above (shared,
-// resource-agnostic). A single free-text term hits two independent
-// endpoints (given_name and family_name), paginated one after the other;
-// the total is given + family - (given AND family), so it's exact (verified
-// live for "Serena": 28567 + 1430 - 1). For 2+ terms only the exact-match
-// splits are paginated (see below); with no exact match every split is, and
-// the total can count a person more than once.
+// Accents: the API matches accent-sensitively (given_name:Nicolò 7082,
+// Nicolo 1953, disjoint sets), but the same person is often recorded both
+// with and without accents (same ORCID as "Maria Jose Hierro" and "María
+// José Hierro"). So a name with accents is also searched without them
+// (_foldAccents()), the spelling typed by the user first. The variants are
+// disjoint, so the total is just their sum.
 //
-// Accents: the API matches words accent-sensitively (verified live:
-// given_name:Nicolò 7082, Nicolo 1953, disjoint sets), but the same person
-// is often recorded both with and without accents (same ORCID
-// 0000-0003-4165-9947 as "Maria Jose Hierro" and "María José Hierro"). So a
-// query with accents is also searched without them (_foldAccents()), as
-// accent-insensitive search engines do (Lucene/Solr ASCIIFoldingFilter),
-// and the spelling typed by the user always comes first: its sources are
-// paginated before the unaccented ones. The opposite direction (Nicolo ->
-// Nicolò) can't be done client-side: which letters carry which accent is
-// unknown. The query is also normalized to NFC, because the API stores
-// composed characters (decomposed "Nicolò" = o + U+0300 returns 1 result).
-//
-// Flow: _foldAccents() -> _authorNameSplits() -> _authorSplitVariants() ->
-// _authorSplitHasExactMatch() -> createSkgifPaginatedSearch() with
-// _rankAuthorsByQuery() and _renderAuthorCard() (defined below, in this order).
+// Flow: _authorSearchFields() -> createSkgifPaginatedSearch() with
+// _rankAuthorsByQuery() and _renderAuthorCard() (defined below).
 function api_search_author_skgif(...args) { //Coordina la ricerca autori
-  const lucinda_main_data = args[1] || {};
+  const fields = _authorSearchFields((args[1] || {}).search_query);
 
-  let rawQuery = lucinda_main_data.search_query || "";
-  rawQuery = Array.isArray(rawQuery) ? rawQuery[0] : rawQuery;
-
-  let cleanQuery;  //pulizia query
-  try {
-    cleanQuery = decodeURIComponent(rawQuery).trim();
-  } catch (e) {
-    cleanQuery = String(rawQuery).replace(/%20/g, ' ').trim();
+  const label = document.getElementById('search-query-label'); //titolo leggibile: "Given name: ... · Family name: ..."
+  if (label) {
+    label.textContent = fields.orcid ? `ORCID: ${fields.orcid}`
+      : [fields.given && `Given name: ${fields.given}`, fields.family && `Family name: ${fields.family}`]
+        .filter(Boolean).join(' · ');
   }
-  cleanQuery = cleanQuery.normalize('NFC'); //accenti in forma composta, come nei dati dell'API
 
-  // Words are split on spaces BEFORE the characters that break the request
-  // are removed, and are cleaned only in the URLs (apiTerm): "D'Angelo"
-  // stays one word, sent as family_name:"D Angelo" (10999 results, the
-  // "D'Angelo"s), instead of becoming two words "D" and "Angelo". Words
-  // made only of such characters (a lone "&") are dropped.
-  const terms = cleanQuery.split(/\s+/).filter(t => _skgifSafeTerm(t)); //divide query in singole parole
-  const apiTerm = s => encodeURIComponent(_skgifSafeTerm(s)); //parola pulita e codificata per l'URL
-
-  //controllo: se la query è vuota mostra no results found
   const resultsContainer = document.getElementById('search-results-container');
-  if (!terms.length) {
+  if (!fields.orcid && !fields.given && !fields.family) {
     if (resultsContainer) resultsContainer.innerHTML = '<div class="col-12"><p>No results found.</p></div>';
     return;
   }
@@ -3065,78 +3035,54 @@ function api_search_author_skgif(...args) { //Coordina la ricerca autori
   holdSkgifPage(); //trattiene caricamento template finchè non arrivano i dati
 
   const base = "https://api.opencitations.net/skg-if/v1/persons"; //base url
-  const splitSource = ({ given, family }) =>
-    `${base}?filter=cf.search.given_name:${apiTerm(given)},cf.search.family_name:${apiTerm(family)}`;
+  let sources;
+  if (fields.orcid) {
+    sources = [`${base}?filter=identifiers.id:${encodeURIComponent(fields.orcid)}`];
+  } else {
+    // One filter per filled field, for each spelling (as typed, unaccented).
+    const spellings = s => s ? [...new Set([s, _foldAccents(s)])] : [null];
+    const apiTerm = s => encodeURIComponent(_skgifSafeTerm(s));
+    sources = [];
+    spellings(fields.given).forEach(given => spellings(fields.family).forEach(family => {
+      const filters = [];
+      if (given) filters.push(`cf.search.given_name:${apiTerm(given)}`);
+      if (family) filters.push(`cf.search.family_name:${apiTerm(family)}`);
+      sources.push(`${base}?filter=${filters.join(',')}`);
+    }));
+  }
 
-  const startSearch = (sources, overlapUrl) => createSkgifPaginatedSearch({ //avvia paginator
+  createSkgifPaginatedSearch({ //avvia paginator
     containerId: 'search-results-container', //riempire template hmtl
     totalCountId: 'search-total-count', //riempire numero di display
     sources,
-    overlapUrl,
     dedupeKey: person => person.local_identifier || JSON.stringify(person),
-    rankItems: items => _rankAuthorsByQuery(items, terms), //funzione che ordina gli autori
+    rankItems: items => _rankAuthorsByQuery(items, fields), //funzione che ordina gli autori
     renderItem: _renderAuthorCard  //funzione che costruisce le cards
   }).search();
+}
 
-  // Single term: all given_name matches, then all family_name matches, for
-  // the term as typed and then (if it has accents) for its unaccented form.
-  // Every given AND family pair (e.g. "Serena Serena", "Nicolò Nicolo") is
-  // subtracted for an exact total; given_name:Nicolò and given_name:Nicolo
-  // don't overlap (the API is accent-sensitive), so nothing else is shared.
-  if (terms.length === 1) { //un solo termine: given e family per ogni variante (con/senza accenti)
-    const variants = [...new Set([terms[0], _foldAccents(terms[0])])].map(apiTerm);
-    const sources = [];
-    const overlaps = [];
-    variants.forEach(v => {
-      sources.push(`${base}?filter=cf.search.given_name:${v}`, `${base}?filter=cf.search.family_name:${v}`);
-      variants.forEach(w => overlaps.push(`${base}?filter=cf.search.given_name:${v},cf.search.family_name:${w}`));
-    });
-    startSearch(sources, overlaps);
-    return;
+// ---aut_free_text (SKG-IF)---
+// Reads {given, family, orcid} from search_query ("given=...&family=..." or
+// "orcid=...", URL-encoded by home.js). Names are normalized to NFC (accents
+// as single composed characters, like the API data).
+function _authorSearchFields(rawQuery) {
+  rawQuery = Array.isArray(rawQuery) ? rawQuery[0] : rawQuery;
+  let query = String(rawQuery || "");
+  try { query = decodeURIComponent(query); } catch (e) { /* keep as is */ }
+  if (!query.includes('=')) { //testo libero (es. "author/carfagna"): ultima parola = cognome, le altre = nome
+    const words = query.normalize('NFC').trim().split(/\s+/).filter(Boolean);
+    return { given: words.slice(0, -1).join(' '), family: words[words.length - 1] || "", orcid: "" };
   }
-
-  // Keep only the splits whose page 1 contains an exact full-name match, so
-  // "Maria De Rosa" and "De Rosa Maria" both end up on Maria|De Rosa (same
-  // total, same pages) instead of the partial-match noise of the other
-  // splits. The page-1 responses go into _skgifResponseCache, so the
-  // paginator reuses them. No exact match anywhere (typo, partial name) ->
-  // fall back to merging every split.
-  //se ci sono due+ termini genera tutti gli splits possibili
-  const allSplits = _authorNameSplits(terms).flatMap(split => _authorSplitVariants(split, terms.length));
-  if (allSplits.length === 1) {
-    startSearch(allSplits.map(splitSource));
-    return;
-  }
-  //varifica quali splits hanno un metch esatto
-  Promise.all(allSplits.map(split =>
-    skgifFetch(`${splitSource(split)}&page=1&page_size=${SKGIF_DEFAULT_PAGE_SIZE}`)))
-    .then(responses => {
-      // Sorted by spelling (as typed first, then unaccented), by total
-      // (largest first), then by name, so that the same person searched in
-      // any word order gets the same sources in the same order, i.e. the
-      // same total and the same pages.
-      const found = allSplits.map((split, i) => ({
-        split,
-        total: skgifTotal(responses[i]),
-        exact: _authorSplitHasExactMatch(split, responses[i])
-      }));
-      const exact = found.filter(f => f.exact);
-      const chosen = (exact.length ? exact : found)
-        .sort((a, b) => a.split.folded - b.split.folded //prima la grafia digitata, poi le varianti senza accenti
-          || b.total - a.total //ordina gli split prima quelli con risultati e poi ordina alfabetico
-          || `${a.split.given}|${a.split.family}`.localeCompare(`${b.split.given}|${b.split.family}`))
-        .map(f => f.split);
-      startSearch(chosen.map(splitSource));//avvio ricerca
-    });
+  const params = new URLSearchParams(query);
+  const get = key => (params.get(key) || "").normalize('NFC').trim();
+  return { given: get('given'), family: get('family'), orcid: get('orcid') };
 }
 
 // ---aut_free_text (SKG-IF)---
 // Lowercased, single-spaced name, used to compare names from the API with
-// the query.
-// Apostrophes (' and the typographic ’), hyphens and the characters that
-// _skgifSafeTerm() removes count as spaces, as they do for the API: "D'Angelo",
-// "D’Angelo" and "D Angelo" are the same name, and so are "Garcia-Hierro"
-// and "Garcia Hierro".
+// the query. Apostrophes (' and ’), hyphens and the characters that
+// _skgifSafeTerm() removes count as spaces, as they do for the API:
+// "D'Angelo" = "D Angelo", "Garcia-Hierro" = "Garcia Hierro".
 function _normName(s) {
   return String(s || "").toLowerCase()
     .replace(/[,"'\\*&#%\u2019-]/g, ' ') //apostrofi, trattini e caratteri tolti dagli URL
@@ -3146,109 +3092,27 @@ function _normName(s) {
 // ---aut_free_text (SKG-IF)---
 // Removes accents and other diacritics ("Nicolò" -> "Nicolo", "Müller" ->
 // "Muller"): NFD splits a letter from its combining marks (\p{M}), which
-// are dropped. Written with an ASCII-only regex so it works whatever
-// encoding the browser reads this file with. Letters with no decomposition (ø, ł, ß) are unchanged.
+// are dropped. Letters with no decomposition (ø, ł, ß) are unchanged.
 function _foldAccents(s) {
   return String(s || "").normalize('NFD').replace(/\p{M}/gu, '').normalize('NFC');
 }
 
 // ---aut_free_text (SKG-IF)---
-// Returns the {given, family} pairs to search for a 2+ term query: every
-// split point of every ROTATION of the terms (e.g. "Maria De Rosa" ->
-// rotations "Maria De Rosa", "De Rosa Maria", "Rosa Maria De" -> Maria|De
-// Rosa, Maria De|Rosa, De|Rosa Maria, De Rosa|Maria, Rosa|Maria De, Rosa
-// Maria|De), i.e. n*(n-1) requests. Rotations (not just "head|tail" and
-// "tail|head" of the query as typed) make the set of pairs the same for any
-// word order: with the old approach "Tim Van De Cruys" found the mis-split
-// record given "Tim Van De" / family "Cruys" (15 results) but "Van De Cruys
-// Tim" could not (14 results), verified live. The standard "given... family"
-// split (last term = family) comes first. Above AUTHOR_MAX_SPLIT_TERMS only
-// that standard split is used, to keep the number of parallel requests
-// bounded.
-const AUTHOR_MAX_SPLIT_TERMS = 4;
-
-function _authorNameSplits(terms) { //data una lista di termini genera tutti i modi possibili di dividerli in given e family
-  const n = terms.length;
-  const standard = { given: terms.slice(0, -1).join(' '), family: terms[n - 1] };
-  if (n > AUTHOR_MAX_SPLIT_TERMS) return [standard];
-
-  const splits = [standard];
-  for (let r = 0; r < n; r++) {
-    const rotation = terms.slice(r).concat(terms.slice(0, r));
-    for (let k = 1; k < n; k++) {
-      splits.push({ given: rotation.slice(0, k).join(' '), family: rotation.slice(k).join(' ') });
-    }
-  }
-  const seen = new Set();
-  return splits.filter(s => {
-    const key = `${s.given}\u0000${s.family}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-// ---aut_free_text (SKG-IF)---
-// Spelling variants of one {given, family} split, each with `folded` = how
-// many of the two parts lost their accents (0 = as typed): as typed, then
-// fully unaccented. For a 2-term query the mixed ones are added too
-// ("Jörg Müller" -> also "Jorg Müller" and "Jörg Muller": records like
-// "Jorg Müller" exist, verified live); for longer queries they would
-// multiply the parallel requests (up to 4 x 12 splits), so they're skipped.
-// No accents -> just the split itself.
-function _authorSplitVariants(split, termCount) {
-  const givens = [...new Set([split.given, _foldAccents(split.given)])];
-  const families = [...new Set([split.family, _foldAccents(split.family)])];
-  const variants = [];
-  givens.forEach((given, gi) => families.forEach((family, fi) => {
-    if (termCount > 2 && gi !== fi && givens.length > 1 && families.length > 1) return; //niente varianti miste
-    variants.push({ given, family, folded: gi + fi });
-  }));
-  return variants;
-}
-
-// ---aut_free_text (SKG-IF)---
-// True if a /persons response contains someone whose given_name and
-// family_name are exactly split.given / split.family (case-insensitive).
-function _authorSplitHasExactMatch(split, response) {
-  const graph = Array.isArray(response?.["@graph"]) ? response["@graph"] : [];
-  return graph.some(p =>
-    _normName(p.given_name) === _normName(split.given) && _normName(p.family_name) === _normName(split.family));
-}
-
-// ---aut_free_text (SKG-IF)---
-// cf.search.given_name/family_name match on single words, not on the whole
-// field (verified live: given_name:"Rosa Maria",family_name:"De" also
-// returns "Rosa Maria Vieira De Freitas"), so the less plausible splits of a
-// 3+ term query bring in partial matches. Stable-sorts the merged page so
-// that exact full-name matches (in either order) come first, then people
-// whose family name is exactly one end of the query, then everything else.
-// At each level the spelling typed by the user (accents included) comes
-// before the same name without accents.
-function _rankAuthorsByQuery(items, terms) { //ordina i risultati in base alla loro rilevanza rispetto alla query e definisce una funzione esatta di punteggio
-  const query = _normName(terms.join(' '));
-  const ends = new Set();
-  for (let k = 1; k < terms.length; k++) {
-    ends.add(_normName(terms.slice(0, k).join(' ')));
-    ends.add(_normName(terms.slice(k).join(' ')));
-  }
-  const fold = s => _foldAccents(s);
-  const foldedQuery = fold(query);
-  const foldedEnds = new Set([...ends].map(fold));
-  const score = person => { //0/1 nome esatto (con/senza accenti), 2/3 cognome esatto, 4 il resto
-    const given = _normName(person.given_name);
-    const family = _normName(person.family_name);
-    if (`${given} ${family}` === query || `${family} ${given}` === query) return 0;
-    if (fold(`${given} ${family}`) === foldedQuery || fold(`${family} ${given}`) === foldedQuery) return 1;
-    if (ends.has(family)) return 2;
-    if (foldedEnds.has(fold(family))) return 3;
-    return 4;
-  };
+// cf.search.* also returns partial matches ("Peroni" finds "Peronin" too),
+// so each page is stable-sorted by how many of the filled fields match
+// exactly (accents ignored): e.g. family "Peroni" + given "S" -> the Peroni
+// first, then "Peronin". The ORCID search needs no ranking.
+function _rankAuthorsByQuery(items, fields) { //match esatti in cima e parziali sotto
+  if (fields.orcid) return items;
+  const same = (a, b) => _foldAccents(_normName(a)) === _foldAccents(_normName(b));
+  const score = person =>
+    (fields.family && !same(person.family_name, fields.family) ? 1 : 0) +
+    (fields.given && !same(person.given_name, fields.given) ? 1 : 0);
   return items
     .map((item, i) => ({ item, i, s: score(item) }))
     .sort((a, b) => a.s - b.s || a.i - b.i)
     .map(x => x.item);
-} //match esatti in cima e parziali sotto
+}
 
 // ---aut_free_text (SKG-IF)---
 // HTML card for one person of the results page.

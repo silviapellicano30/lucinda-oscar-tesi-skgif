@@ -21,6 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Initialize and listen for changes
   updatePlaceholder();
   categorySelect.addEventListener("change", updatePlaceholder);
+  skgifInitAuthorFields(searchForm, searchInput, categorySelect); // SILVIA (SKG-IF): campi nome/cognome/ORCID
 
 
   // --- 2. Regex Definitions ---
@@ -54,6 +55,9 @@ document.addEventListener("DOMContentLoaded", () => {
     event.preventDefault(); 
 
     const category = categorySelect.value;
+
+    if (category === "author") return skgifAuthorSearch(); // SILVIA (SKG-IF): ricerca autori con campi separati
+
     const query = searchInput.value.trim();
 
     if (!query) {
@@ -156,7 +160,7 @@ async function openLucinda(identifier, category) {
       orcidRegex.test(identifier) ||
       issnRegex.test(identifier)
     ) {
-      omid = await idToOmid(identifier);
+      omid = await skgifIdToOmid(identifier); // SILVIA (SKG-IF): was idToOmid() (SPARQL)
     } else {
       // Input is already a Lucinda ID (br/..., ra/...)
       omid = identifier;
@@ -185,4 +189,94 @@ async function openLucinda(identifier, category) {
     console.error("Error:", err.message);
     alert("Error: " + err.message);
   }
+}
+
+/*
+################################################################################
+# SILVIA (SKG-IF)
+################################################################################
+*/
+// SILVIA (SKG-IF): replaces Pietro's idToOmid() above, used by openLucinda().
+// Resolves an external identifier to an OMID through the
+// SKG-IF API (was a SPARQL query on Meta). Each scheme is looked up on the
+// entity it identifies; the first record is taken, as the old LIMIT 1 did
+// (the same ORCID/ISSN can belong to several records). The ID filter is
+// identifiers.id on /products and /persons, identifiers.value on /venues
+// (that's how the API is configured).
+const SKGIF_ID_LOOKUP = [
+  { test: /^doi:|^10\.\d{4,9}\//i, scheme: "doi", entity: "products", field: "identifiers.id" },
+  { test: /^pmid:/i, scheme: "pmid", entity: "products", field: "identifiers.id" },
+  { test: /^openalex:/i, scheme: "openalex", entity: "products", field: "identifiers.id" },
+  { test: /^orcid:|\d{4}-\d{4}-\d{4}-\d{3}[0-9X]/i, scheme: "orcid", entity: "persons", field: "identifiers.id" },
+  { test: /^issn:|\d{4}-\d{3}[0-9X]/i, scheme: "issn", entity: "venues", field: "identifiers.value" }
+];
+
+async function skgifIdToOmid(identifier) {
+  const lookup = SKGIF_ID_LOOKUP.find(l => l.test.test(identifier));
+  if (!lookup) throw new Error("Unknown identifier type: " + identifier);
+  const value = identifier.replace(new RegExp(`^${lookup.scheme}:`, "i"), "");
+
+  const url = `https://api.opencitations.net/skg-if/v1/${lookup.entity}` +
+    `?filter=identifiers.scheme:${lookup.scheme},${lookup.field}:${encodeURIComponent(value)}&page_size=1`;
+  const response = await fetch(url);
+  if (!response.ok && response.status !== 404) { //404 = nessun record con quell'ID
+    throw new Error(`The SKG-IF API returned an error (${response.status}).`);
+  }
+
+  const omid = response.ok ? (await response.json())["@graph"]?.[0]?.local_identifier : null;
+  if (!omid) throw new Error(`No OMID found for ${identifier}`);
+  return omid;
+}
+
+// SILVIA (SKG-IF): "Author Record" shows given name / family name / ORCID
+// fields (in home.html) instead of the single search box. Names and ORCID are
+// alternative: typing in one side disables the other.
+function skgifInitAuthorFields(searchForm, searchInput, categorySelect) {
+  const givenInput = document.getElementById("givenName");
+  const familyInput = document.getElementById("familyName");
+  const orcidInput = document.getElementById("orcidQuery");
+  const authorFields = searchForm.querySelectorAll(".author-field");
+
+  function toggleFields() {
+    const isAuthor = categorySelect.value === "author";
+    searchInput.classList.toggle("d-none", isAuthor);
+    authorFields.forEach(el => el.classList.toggle("d-none", !isAuthor));
+  }
+
+  function updateAuthorFields() {
+    const hasName = givenInput.value.trim() || familyInput.value.trim();
+    orcidInput.disabled = !!hasName;
+    givenInput.disabled = familyInput.disabled = !hasName && !!orcidInput.value.trim();
+  }
+
+  toggleFields();
+  categorySelect.addEventListener("change", toggleFields);
+  [givenInput, familyInput, orcidInput].forEach(el => el.addEventListener("input", updateAuthorFields));
+}
+
+// SILVIA (SKG-IF): author search -> author/<given=...&family=...> or
+// author/<orcid=...>, read by api_search_author_skgif() in localbrowser.js.
+// An ORCID typed in a name field is searched as ORCID.
+function skgifAuthorSearch() {
+  const orcidRegex = /^\d{4}-\d{4}-\d{4}-\d{3}[0-9X]$/i;
+  const orcidOf = s => s.trim().replace(/^https?:\/\/orcid\.org\//i, "").replace(/^orcid:/i, "");
+  const orcidInput = document.getElementById("orcidQuery");
+  const given = document.getElementById("givenName").value.trim();
+  const family = document.getElementById("familyName").value.trim();
+  const orcid = [orcidInput.value, given, family].map(orcidOf).find(s => orcidRegex.test(s));
+  let params;
+  if (orcid) {
+    params = new URLSearchParams({ orcid });
+  } else if (orcidInput.value.trim()) {
+    alert("Please enter a valid ORCID (e.g. 0000-0003-0530-4305).");
+    return;
+  } else if (given || family) {
+    params = new URLSearchParams();
+    if (given) params.set("given", given);
+    if (family) params.set("family", family);
+  } else {
+    alert("Please enter a given name, a family name or an ORCID.");
+    return;
+  }
+  window.location.href = `http://127.0.0.1:5500/example/oc/html_template/browser.html?value=author/${encodeURIComponent(params.toString())}`;
 }
