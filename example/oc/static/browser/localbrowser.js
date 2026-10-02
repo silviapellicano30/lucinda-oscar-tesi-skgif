@@ -2676,9 +2676,8 @@ SKG-IF GENERIC PAGINATION (reusable across resources)
 SKG-IF search endpoints default to 10 results per page (max 50), and
 already handle the slicing/counting themselves - we don't need our own
 result-limiting logic, just a small UI to move between pages. This module
-is resource-agnostic: aut_free_text uses it today, doc_free_text and
-venue_free_text can reuse it unchanged by giving their own containerId,
-sources and renderItem.
+is resource-agnostic: every search (authors, documents, citations,
+venues) uses it by giving its own sources and renderItem.
 
 A single delegated click listener (registered once, at the end of this
 section) drives every paginated results container, instead of one inline
@@ -2687,9 +2686,15 @@ between resources.
 
 GLOBAL CONSTANTS
 */
+const SKGIF_API = "https://api.opencitations.net/skg-if/v1"; //base url di tutte le richieste SKG-IF
+
 const SKGIF_DEFAULT_PAGE_SIZE = 10; // matches the API's own default; not sent as a query param unless overridden, usato per calcolare pagesize
 
-const SKGIF_EMPTY_RESPONSE = { "@graph": [], meta: { part_of: { total_items: 0 } } }; //quando la fetch fallisce
+// Shown instead of the results when the API doesn't answer: e.g. a venue
+// name of several common words ("journal of humanities") makes the API's
+// own SPARQL query time out (HTTP 408 after ~3 minutes). Without this the
+// failed search looked like "No results found".
+const SKGIF_FAILED_MESSAGE = "The search failed or took too long (the API did not answer). Try again or use a shorter query.";
 
 // total_items of a search response (0 if missing).
 function skgifTotal(response) {
@@ -2698,10 +2703,9 @@ function skgifTotal(response) {
 
 /*
 Cache of SKG-IF responses already received in this page, keyed by their
-normalized page URL. Page-1 responses fetched ahead of the paginator (e.g.
-the author exact-match check) are stored here and reused instead of being
-fetched again, and so are the pages fetched by the paginator, so going back
-to an already visited page costs no request.
+normalized URL. The pages fetched by the paginator (and the venues'
+publisher/editor requests) are stored here, so going back to an already
+visited page costs no request.
 */
 const _skgifResponseCache = {}; //per controllare se una risposta è già in cache per evitare di fare le stesse fetch
 
@@ -2717,8 +2721,9 @@ function _skgifNormalizeUrl(url) {  //normalizza un URL per poterlo confrontare 
 const _skgifPendingRequests = {};
 
 // Fetches an SKG-IF URL through the cache. Never rejects: a failed request
-// resolves to an empty response (0 results), which is not cached.
-//Se la risposta è in cache, la restituisce subito, altrimenti fa la query e restuisce il formato in json se tutto va bene, altrimenti restutuisce risposta vuota
+// (HTTP error, timeout, network error) resolves to null and is not cached,
+// so it is tried again the next time.
+//Se la risposta è in cache, la restituisce subito, altrimenti fa la query e restituisce il json se tutto va bene, altrimenti null
 function skgifFetch(url) {
   const key = _skgifNormalizeUrl(url);
   if (_skgifResponseCache[key]) return Promise.resolve(_skgifResponseCache[key]);
@@ -2726,12 +2731,277 @@ function skgifFetch(url) {
   return _skgifPendingRequests[key] = fetch(url)
     .then(r => r.ok ? r.json() : null)
     .then(data => {
-      if (!data) return SKGIF_EMPTY_RESPONSE;
-      _skgifResponseCache[key] = data;
+      if (data) _skgifResponseCache[key] = data;
       return data;
     })
-    .catch(() => SKGIF_EMPTY_RESPONSE)
+    .catch(() => null)
     .finally(() => { delete _skgifPendingRequests[key]; });
+}
+
+// Keeps LUCINDA's own "Loading the resource..." banner on screen until the
+// first page of results is ready, so title, count and results appear all at
+// once. LUCINDA replaces the banner with the template and runs the #callfun
+// blocks in the same tick (build_success_html_page() in lucinda.js), so the
+// template is hidden here before the browser ever paints it. The banner
+// markup is the same as Lucinda.add_main_loading_banner() (not called
+// directly: it would overwrite the template), styled by lucinda.css.
+let _skgifHeldPage = null;
+
+function holdSkgifPage() {  //trattiene il rendering della pagina (nasconde il template e carica il banner di loading)= evitare che l'utente veda il template vuoto mentre skgif carica i dati
+  const root = document.getElementById('__lucinda__');
+  if (!root || _skgifHeldPage) return;
+  const children = Array.from(root.children).map(el => ({ el, display: el.style.display }));
+  children.forEach(({ el }) => { el.style.display = 'none'; });
+  const banner = document.createElement('div');
+  banner.id = 'lucinda_pendinghtml_main_loading';
+  banner.innerHTML = "Loading the resource<br><span class='loading-dots'><span>.</span><span>.</span><span>.</span> </span>";
+  root.appendChild(banner);
+  _skgifHeldPage = { banner, children };
+}
+
+function releaseSkgifPage() { //ricarica la pagina dopo che abbiamo tutti i dati: rimuove il banner e rimostra il template con i dati
+  if (!_skgifHeldPage) return;
+  _skgifHeldPage.banner.remove();
+  _skgifHeldPage.children.forEach(({ el, display }) => { el.style.display = display; });
+  _skgifHeldPage = null;
+}
+
+const _skgifPaginators = {};
+
+/*
+config:
+  sources        - array of SKG-IF search URLs WITHOUT page/page_size (e.g.
+                   ".../persons?filter=cf.search.given_name:Serena"). They are
+                   paginated as ONE list, one after the other (all of
+                   sources[0], then all of sources[1], ...): page N is computed
+                   from each source's total_items, so every result is
+                   reachable and a page that straddles two sources takes the
+                   tail of one and the head of the next. (Merging page N of
+                   every source and cutting to pageSize, as done before, made
+                   every source but the first unreachable.)
+  renderItem(item) -> HTML string for one result card
+  rankItems(items) -> optional, reorders the items of a page before rendering
+  emptyMessage  - optional text shown when a page has zero results
+  pageSize       - optional, defaults to SKGIF_DEFAULT_PAGE_SIZE
+  containerId   - optional, id of the element the results (and pagination
+                   bar) render into; defaults to 'search-results-container',
+                   the one of every search template
+  totalCountId   - optional, id of the element showing the results count in
+                   the page title (default 'search-total-count'); filled with
+                   the total once the first page is rendered (together with
+                   releaseSkgifPage(), see holdSkgifPage())
+  dedupeKey(item) -> optional, key used to drop duplicates within a page;
+                   defaults to the item's local_identifier
+*/
+function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
+  const containerId = config.containerId || 'search-results-container';
+  const totalCountId = config.totalCountId || 'search-total-count';
+  const dedupeKey = config.dedupeKey || (item => item.local_identifier || JSON.stringify(item));
+  const pageSize = config.pageSize || SKGIF_DEFAULT_PAGE_SIZE;
+  const sources = config.sources || [];
+  let sourceTotals = null; // total_items of each source, read once on the first page
+  let listedTotal = 0;     // sum of sourceTotals: shown in the title, pages are computed on it = Somma dei total_items di ogni fonte SKG-IF
+
+  const pageUrl = (src, apiPage) => `${src}&page=${apiPage}&page_size=${pageSize}`; //costruzione url di ciascuna pagina
+
+  // Fetches API pages; rejects if any of them failed, so that a failed
+  // request is reported as such instead of as a page with no results.
+  const fetchAll = urls => Promise.all(urls.map(skgifFetch)).then(responses => {
+    if (responses.some(r => !r)) throw new Error(SKGIF_FAILED_MESSAGE);
+    return responses;
+  });
+
+  // Writes the total into the title and reveals the page held by
+  // holdSkgifPage() (if any), so count and results appear together.
+  //scrive listedTotal (numero dei risultati da mostrare) nel titolo e rilascia la pagina
+  //riempie search-total-count in html
+  function showCount() {
+    const countEl = document.getElementById(totalCountId);
+    if (countEl) countEl.textContent = listedTotal;
+    releaseSkgifPage();
+  }
+
+  // Page 1 of every source (needed anyway for the first page, and cached)
+  // gives each source's total_items.
+  //carica i totali di ogni fonte e calcola listedTotal
+  function loadTotals() {
+    if (sourceTotals) return Promise.resolve();
+    return fetchAll(sources.map(src => pageUrl(src, 1))).then(responses => {
+      sourceTotals = responses.map(skgifTotal);
+      listedTotal = sourceTotals.reduce((a, b) => a + b, 0);
+    });
+  }
+
+  // Global item range of `page` -> for each source it touches, the (at most
+  // two) API pages covering it, then the exact slice of their items.
+  //INTERVALLO DELLA PAGINA, calcola quali item mostrare in una pagina, CONCATENAZIONE DELLE FONTI NELLA STESSA PAGINA
+  //GENERICA CHE FUNZIONA PER UNA O PIU FONTI
+  function itemsForPage(page) {
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    const parts = [];
+    let offset = 0;
+    sources.forEach((src, i) => {
+      const total = sourceTotals[i];
+      const from = Math.max(start, offset) - offset;
+      const to = Math.min(end, offset + total) - offset;
+      offset += total;
+      if (from >= to) return;
+      const firstApiPage = Math.floor(from / pageSize) + 1;
+      const lastApiPage = Math.floor((to - 1) / pageSize) + 1;
+      const urls = [];
+      for (let p = firstApiPage; p <= lastApiPage; p++) urls.push(pageUrl(src, p));
+      parts.push(fetchAll(urls).then(responses => {
+        const items = responses.flatMap(r => Array.isArray(r["@graph"]) ? r["@graph"] : []);
+        const skip = from - (firstApiPage - 1) * pageSize;
+        return items.slice(skip, skip + (to - from));
+      }));
+    });
+    return Promise.all(parts).then(lists => lists.flat());
+  }
+
+  function fetchPage(page) { //funzione orchestratrice delle altre
+    const container = document.getElementById(containerId);
+    if (container) {
+      container.innerHTML = "<div class='col-12 skgif-page-loading'>Loading the results<br><span class='loading-dots'><span>.</span><span>.</span><span>.</span> </span></div>";
+    }
+
+    loadTotals() //chiama load total che calcola i numeri
+      .then(() => itemsForPage(page))
+      .then(pageItems => {
+        const seen = new Set();
+        const items = pageItems.filter(item => {
+          const key = dedupeKey(item);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        const ranked = config.rankItems ? config.rankItems(items) : items;
+        _render(container, ranked, page, listedTotal); //chiama render (creazione template) in cui LISTEDTOTAL= totalitems
+        showCount(); //mostra numero di risorse e rilascia il template
+        // The API is slow on URLs it hasn't served before (20-60 s, then
+        // cached): load the next page in the background while this one is
+        // read, so Next usually finds it in _skgifResponseCache.
+        if (page * pageSize < listedTotal) itemsForPage(page + 1).catch(() => {}); //precarica la pagina successiva
+      })
+      .catch(error => {
+        console.error("SKG-IF search failed:", error);
+        if (container) container.innerHTML = `<div class="col-12"><div class="alert alert-danger">${_skgifEscape(error.message)}</div></div>`;
+        releaseSkgifPage(); //nessun conteggio nel titolo: la ricerca non è riuscita
+      });
+  }
+
+  function _render(container, items, page, totalItems) { //calcola il numero delle pagine in cui dividere i risultati usando listedtotal
+    if (!container) return;
+
+    if (items.length === 0) { // se non ci sono items
+      _skgifShowMessage(config.emptyMessage || 'No results found.', containerId);
+      return;
+    }
+
+    // container is already a Bootstrap .row (see aut_free_text.html); an
+    // extra nested .row here caused the horizontal scrollbar bug (negative
+    // row margins compounding), so we render the .col-* items directly.
+    let html = items.map(config.renderItem).join(''); //(html= rendering delle cards)
+
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize)); //calcolo numero pagine
+    const btn = (target, label, cls) => //creazione pulsanti
+      `<button type="button" class="btn ${cls} skgif-page-btn" data-skgif-page="${target}" data-skgif-container="${containerId}">${label}</button>`;
+    const prevBtns = page > 1
+      ? `<span class="skgif-page-group">${btn(1, '&laquo; First', 'btn-outline-secondary')}${btn(page - 1, '&lsaquo; Previous', 'btn-outline-secondary')}</span>`
+      : `<span></span>`;
+    const nextBtns = page < totalPages
+      ? `<span class="skgif-page-group">${btn(page + 1, 'Next &rsaquo;', 'btn-outline-primary')}${btn(totalPages, 'Last &raquo;', 'btn-outline-primary')}</span>`
+      : `<span></span>`;
+    // Typing a page number + Enter jumps there (handled by the delegated
+    // listener next to the click one).
+    const pageInput = totalPages > 1
+      ? `<input type="number" class="form-control form-control-sm skgif-page-input" min="1" max="${totalPages}" value="${page}" aria-label="Go to page" data-skgif-container="${containerId}">`
+      : `${page}`;
+
+    //Costruisce la barra di paginazione e la aggiunge all'HTML (contenente già le cards)
+    html += `
+      <div class="col-12">
+        <nav class="skgif-pagination" aria-label="Search results pages">
+          ${prevBtns}
+          <span class="skgif-page-info">Page ${pageInput} of ${totalPages}</span>
+          ${nextBtns}
+        </nav>
+      </div>`;
+
+    container.innerHTML = html; //la funzione render riempie in html search-results-container con template html qui generato (cards + barra sotto)
+
+  }
+
+  // Changing page (buttons or page input) scrolls back to the start of the
+  // results - the title card with the count if there is one, else the
+  // results container - so the new page is read from its first item instead
+  // of from wherever the (shorter, while loading) list left the scroll.
+  // Focus moves there too, for keyboard/screen reader users. Not done on the
+  // first load (search()), where the page is already at the top.
+  function goToPage(page) {
+    const countEl = document.getElementById(totalCountId);
+    const target = (countEl && countEl.closest('.card')) || document.getElementById(containerId);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+      target.focus({ preventScroll: true });
+    }
+    fetchPage(page);
+  }
+
+  _skgifPaginators[containerId] = { goToPage };
+  // The .hf files have no #sparql block (lucinda.js renders the template
+  // right away): the search keeps LUCINDA's loading banner until the total
+  // and the first results are ready, then shows them at once.
+  return {
+    search: () => {
+      holdSkgifPage(); //trattiene caricamento template finchè non arrivano i dati
+      fetchPage(1);
+    }
+  };
+}
+
+// Page changes: one delegated listener for the buttons and one for the
+// page-number input (Enter), shared by every paginated container.
+document.addEventListener('click', function (e) {
+  const btn = e.target.closest('.skgif-page-btn');
+  if (!btn || btn.disabled) return;
+  const paginator = _skgifPaginators[btn.dataset.skgifContainer];
+  const page = parseInt(btn.dataset.skgifPage, 10);
+  if (paginator && page >= 1) paginator.goToPage(page);
+});
+
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter') return;
+  const input = e.target.closest('.skgif-page-input');
+  if (!input) return;
+  const paginator = _skgifPaginators[input.dataset.skgifContainer];
+  const max = parseInt(input.max, 10);
+  const page = parseInt(input.value, 10);
+  if (!paginator || isNaN(page)) return;
+  paginator.goToPage(Math.min(Math.max(page, 1), max));
+});
+
+/*
+################################################################################
+# 2. UTILITÀ COMUNI (query, testo, identificativi, card)
+################################################################################
+*/
+// Value of a parameter of the page URL as LUCINDA gives it to #callfun
+// (args[1] = Lucinda.data.main, where a value can be an array), decoded:
+// search_query of "author/...", "document/...", "venue/...", id of
+// "doc_cit/br/{id}" / "doc_ref/br/{id}".
+function _skgifUrlParam(lucinda_main_data, key) {
+  let value = (lucinda_main_data || {})[key] || "";
+  value = String(Array.isArray(value) ? value[0] : value);
+  try { return decodeURIComponent(value); } catch (e) { return value; }
+}
+
+// Plain message in place of the results (e.g. empty query).
+function _skgifShowMessage(text, containerId = 'search-results-container') {
+  const container = document.getElementById(containerId);
+  if (container) container.innerHTML = `<div class="col-12"><p>${text}</p></div>`;
 }
 
 // Makes a user-typed value safe for a cf.search.* filter, before
@@ -2758,470 +3028,20 @@ function _skgifSafeTerm(s) {
     .split(/\s+/).filter(Boolean).join(' ');
 }
 
-// Keeps LUCINDA's own "Loading the resource..." banner on screen until the
-// first page of results is ready, so title, count and results appear all at
-// once. LUCINDA replaces the banner with the template and runs the #callfun
-// blocks in the same tick (build_success_html_page() in lucinda.js), so the
-// template is hidden here before the browser ever paints it. The banner
-// markup is the same as Lucinda.add_main_loading_banner() (not called
-// directly: it would overwrite the template), styled by lucinda.css.
-let _skgifHeldPage = null;
-
-function holdSkgifPage() {  //trattiene il rendering della pagina (nasconde il template e carica il banner di loading)= evitare che l'utente veda il template vuoto mentre skgif carica i dati
-  const root = document.getElementById('__lucinda__');
-  if (!root || _skgifHeldPage) return;
-  const children = Array.from(root.children).map(el => ({ el, display: el.style.display }));
-  children.forEach(({ el }) => { el.style.display = 'none'; });
-  const banner = document.createElement('div');
-  banner.id = 'lucinda_pendinghtml_main_loading';
-  banner.innerHTML = "Loading the resource<br><span class='loading-dots'><span>.</span><span>.</span><span>.</span> </span>";
-  root.appendChild(banner);
-  _skgifHeldPage = { banner, children };
-}
-
-function releaseSkgifPage() { //ricarica la pagina dopo che abbiamo tutti i dati: rimuove il banner e rimostra il template con i dati 
-  if (!_skgifHeldPage) return;
-  _skgifHeldPage.banner.remove();
-  _skgifHeldPage.children.forEach(({ el, display }) => { el.style.display = display; });
-  _skgifHeldPage = null;
-}
-
-const _skgifPaginators = {};
-
-/*
-config:
-  containerId   - id of the element the results (and pagination bar) render into
-  sources        - array of SKG-IF search URLs WITHOUT page/page_size (e.g.
-                   ".../persons?filter=cf.search.given_name:Serena"). They are
-                   paginated as ONE list, one after the other (all of
-                   sources[0], then all of sources[1], ...): page N is computed
-                   from each source's total_items, so every result is
-                   reachable and a page that straddles two sources takes the
-                   tail of one and the head of the next. (Merging page N of
-                   every source and cutting to pageSize, as done before, made
-                   every source but the first unreachable.)
-  dedupeKey(item) -> a string key used to drop duplicates within a page
-  renderItem(item) -> HTML string for one result card
-  rankItems(items) -> optional, reorders the items of a page before rendering
-  emptyMessage  - optional text shown when a page has zero results
-  pageSize       - optional, defaults to SKGIF_DEFAULT_PAGE_SIZE
-  totalCountId   - optional id of the element showing the results count in the
-                   page title; filled with the total once the first page
-                   is rendered (together with releaseSkgifPage(), see
-                   holdSkgifPage())
-*/
-function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
-  const pageSize = config.pageSize || SKGIF_DEFAULT_PAGE_SIZE;
-  const sources = config.sources || [];
-  let sourceTotals = null; // total_items of each source, read once on the first page
-  let listedTotal = 0;     // sum of sourceTotals: shown in the title, pages are computed on it = Somma dei total_items di ogni fonte SKG-IF
-
-  const pageUrl = (src, apiPage) => `${src}&page=${apiPage}&page_size=${pageSize}`; //costruzione url di ciascuna pagina
-
-  // Writes the total into the title and reveals the page held by
-  // holdSkgifPage() (if any), so count and results appear together.
-  //scrive listedTotal (numero dei risultati da mostrare) nel titolo e rilascia la pagina
-  //riempie search-total-count in html
-  function showCount() {
-    const countEl = config.totalCountId ? document.getElementById(config.totalCountId) : null;
-    if (countEl) countEl.textContent = listedTotal;
-    releaseSkgifPage();
-  }
-
-  // Page 1 of every source (needed anyway for the first page, and cached)
-  // gives each source's total_items.
-  //carica i totali di ogni fonte e calcola listedTotal
-  function loadTotals() {
-    if (sourceTotals) return Promise.resolve();
-    return Promise.all(sources.map(src => skgifFetch(pageUrl(src, 1)))).then(responses => {
-      sourceTotals = responses.map(skgifTotal);
-      listedTotal = sourceTotals.reduce((a, b) => a + b, 0);
-    });
-  }
-
-  // Global item range of `page` -> for each source it touches, the (at most
-  // two) API pages covering it, then the exact slice of their items.
-  //INTERVALLO DELLA PAGINA, calcola quali item mostrare in una pagina, CONCATENAZIONE DELLE FONTI NELLA STESSA PAGINA
-  //GENERICA CHE FUNZIONA PER UNA O PIU FONTI
-  function itemsForPage(page) {
-    const start = (page - 1) * pageSize;
-    const end = start + pageSize;
-    const parts = [];
-    let offset = 0;
-    sources.forEach((src, i) => {
-      const total = sourceTotals[i];
-      const from = Math.max(start, offset) - offset;
-      const to = Math.min(end, offset + total) - offset;
-      offset += total;
-      if (from >= to) return;
-      const firstApiPage = Math.floor(from / pageSize) + 1;
-      const lastApiPage = Math.floor((to - 1) / pageSize) + 1;
-      const apiPages = [];
-      for (let p = firstApiPage; p <= lastApiPage; p++) apiPages.push(p);
-      parts.push(Promise.all(apiPages.map(p => skgifFetch(pageUrl(src, p)))).then(responses => {
-        const items = responses.flatMap(r => Array.isArray(r?.["@graph"]) ? r["@graph"] : []);
-        const skip = from - (firstApiPage - 1) * pageSize;
-        return items.slice(skip, skip + (to - from));
-      }));
-    });
-    return Promise.all(parts).then(lists => lists.flat());
-  }
-
-  function fetchPage(page) { //funzione orchestratrice delle altre
-    const container = document.getElementById(config.containerId);
-    if (container) {
-      container.innerHTML = "<div class='col-12 skgif-page-loading'>Loading the results<br><span class='loading-dots'><span>.</span><span>.</span><span>.</span> </span></div>";
-    }
-
-    loadTotals() //chiama load total che calcola i numeri
-      .then(() => itemsForPage(page))
-      .then(pageItems => {
-        const seen = new Set();
-        const items = pageItems.filter(item => {
-          const key = config.dedupeKey(item);
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-        const ranked = config.rankItems ? config.rankItems(items) : items;
-        _render(container, ranked, page, listedTotal); //chiama render (creazione template) in cui LISTEDTOTAL= totalitems
-        showCount(); //mostra numero di risorse e rilascia il template
-        // The API is slow on URLs it hasn't served before (20-60 s, then
-        // cached): load the next page in the background while this one is
-        // read, so Next usually finds it in _skgifResponseCache.
-        if (page * pageSize < listedTotal) itemsForPage(page + 1); //precarica la pagina successiva
-      })
-      .catch(error => {
-        console.error("SKG-IF search failed:", error);
-        if (container) container.innerHTML = `<div class="col-12"><div class="alert alert-danger">Error: ${error.message}</div></div>`;
-        showCount(); //chiama show count per mostrare il conteggio da mostrare (listedTotal) e dopo rilascia il template coi dati (funzione già inclusa in showcount)
-      });
-  }
-
-  function _render(container, items, page, totalItems) { //calcola il numero delle pagine in cui dividere i risultati usando listedtotal
-    if (!container) return;
-
-    if (items.length === 0) { // se non ci sono items
-      container.innerHTML = `<div class="col-12"><p>${config.emptyMessage || 'No results found.'}</p></div>`;
-      return;
-    }
-
-    // container is already a Bootstrap .row (see aut_free_text.html); an
-    // extra nested .row here caused the horizontal scrollbar bug (negative
-    // row margins compounding), so we render the .col-* items directly.
-    let html = items.map(config.renderItem).join(''); //(html= rendering delle cards)
-
-    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize)); //calcolo numero pagine
-    const btn = (target, label, cls) => //creazione pulsanti
-      `<button type="button" class="btn ${cls} skgif-page-btn" data-skgif-page="${target}" data-skgif-container="${config.containerId}">${label}</button>`;
-    const prevBtns = page > 1
-      ? `<span class="skgif-page-group">${btn(1, '&laquo; First', 'btn-outline-secondary')}${btn(page - 1, '&lsaquo; Previous', 'btn-outline-secondary')}</span>`
-      : `<span></span>`;
-    const nextBtns = page < totalPages
-      ? `<span class="skgif-page-group">${btn(page + 1, 'Next &rsaquo;', 'btn-outline-primary')}${btn(totalPages, 'Last &raquo;', 'btn-outline-primary')}</span>`
-      : `<span></span>`;
-    // Typing a page number + Enter jumps there (handled by the delegated
-    // listener next to the click one).
-    const pageInput = totalPages > 1
-      ? `<input type="number" class="form-control form-control-sm skgif-page-input" min="1" max="${totalPages}" value="${page}" aria-label="Go to page" data-skgif-container="${config.containerId}">`
-      : `${page}`;
-
-    //Costruisce la barra di paginazione e la aggiunge all'HTML (contenente già le cards)
-    html += `
-      <div class="col-12">
-        <nav class="skgif-pagination" aria-label="Search results pages">
-          ${prevBtns}
-          <span class="skgif-page-info">Page ${pageInput} of ${totalPages}</span>
-          ${nextBtns}
-        </nav>
-      </div>`;
-
-    container.innerHTML = html; //la funzione render riempie in html search-results-container con template html qui generato (cards + barra sotto)
-
-  }
-
-  // Changing page (buttons or page input) scrolls back to the start of the
-  // results - the title card with the count if there is one, else the
-  // results container - so the new page is read from its first item instead
-  // of from wherever the (shorter, while loading) list left the scroll.
-  // Focus moves there too, for keyboard/screen reader users. Not done on the
-  // first load (search()), where the page is already at the top.
-  function goToPage(page) {
-    const countEl = config.totalCountId ? document.getElementById(config.totalCountId) : null;
-    const target = (countEl && countEl.closest('.card')) || document.getElementById(config.containerId);
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
-      target.focus({ preventScroll: true });
-    }
-    fetchPage(page);
-  }
-
-  const paginator = { goToPage };
-  _skgifPaginators[config.containerId] = paginator;
-  return { search: () => fetchPage(1) };
-}
-
-// Page changes: one delegated listener for the buttons and one for the
-// page-number input (Enter), shared by every paginated container.
-document.addEventListener('click', function (e) {
-  const btn = e.target.closest('.skgif-page-btn');
-  if (!btn || btn.disabled) return;
-  const paginator = _skgifPaginators[btn.dataset.skgifContainer];
-  const page = parseInt(btn.dataset.skgifPage, 10);
-  if (paginator && page >= 1) paginator.goToPage(page);
-});
-
-document.addEventListener('keydown', function (e) {
-  if (e.key !== 'Enter') return;
-  const input = e.target.closest('.skgif-page-input');
-  if (!input) return;
-  const paginator = _skgifPaginators[input.dataset.skgifContainer];
-  const max = parseInt(input.max, 10);
-  const page = parseInt(input.value, 10);
-  if (!paginator || isNaN(page)) return;
-  paginator.goToPage(Math.min(Math.max(page, 1), max));
-});
-
-/*
-################################################################################
-# 2. RICERCA AUTORI (aut_free_text)
-################################################################################
-*/
-// ---aut_free_text (SKG-IF)---
-// #callfun args are (per the convention documented near ocapi_citations()
-// above): args[1] = Lucinda.data.main (has search_query), args[2] = this
-// block's own id.
-//
-// The home page has separate given name / family name / ORCID fields, so
-// search_query is a URL-encoded query string (see home.js):
-//   given=Silvio&family=Peroni  -> cf.search.given_name AND cf.search.family_name
-//   family=Peroni               -> cf.search.family_name only (given only alike)
-//   orcid=0000-0003-0530-4305   -> identifiers.id (exact; the same ORCID can
-//                                  belong to several person records)
-// cf.search.* matches the beginning of words, so an abbreviated field
-// ("Peroni" + "S", "Silvio" + "P") already works with no extra logic.
-// SKG-IF returns full person metadata (name, ORCID, ...) in the search
-// response itself, so there's no need for OpenCitations Meta at all.
-//
-// Accents: the API matches accent-sensitively (given_name:Nicolò 7082,
-// Nicolo 1953, disjoint sets), but the same person is often recorded both
-// with and without accents (same ORCID as "Maria Jose Hierro" and "María
-// José Hierro"). So a name with accents is also searched without them
-// (_foldAccents()), the spelling typed by the user first. The variants are
-// disjoint, so the total is just their sum.
-//
-// Flow: _authorSearchFields() -> createSkgifPaginatedSearch() with
-// _rankAuthorsByQuery() and _renderAuthorCard() (defined below).
-function api_search_author_skgif(...args) { //Coordina la ricerca autori
-  const fields = _authorSearchFields((args[1] || {}).search_query);
-
-  const label = document.getElementById('search-query-label'); //titolo leggibile: "Given name: ... · Family name: ..."
-  if (label) {
-    label.textContent = fields.orcid ? `ORCID: ${fields.orcid}`
-      : [fields.given && `Given name: ${fields.given}`, fields.family && `Family name: ${fields.family}`]
-        .filter(Boolean).join(' · ');
-  }
-
-  const resultsContainer = document.getElementById('search-results-container');
-  if (!fields.orcid && !fields.given && !fields.family) {
-    if (resultsContainer) resultsContainer.innerHTML = '<div class="col-12"><p>No results found.</p></div>';
-    return;
-  }
-
-  // The .hf has no #sparql block (lucinda.js renders the template right
-  // away): keep LUCINDA's loading banner until the paginator has the total
-  // and the first results, then show title count and results at once.
-  holdSkgifPage(); //trattiene caricamento template finchè non arrivano i dati
-
-  const base = "https://api.opencitations.net/skg-if/v1/persons"; //base url
-  let sources;
-  if (fields.orcid) {
-    sources = [`${base}?filter=identifiers.id:${encodeURIComponent(fields.orcid)}`];
-  } else {
-    // One filter per filled field, for each spelling (as typed, unaccented).
-    const spellings = s => s ? [...new Set([s, _foldAccents(s)])] : [null];
-    const apiTerm = s => encodeURIComponent(_skgifSafeTerm(s));
-    sources = [];
-    spellings(fields.given).forEach(given => spellings(fields.family).forEach(family => {
-      const filters = [];
-      if (given) filters.push(`cf.search.given_name:${apiTerm(given)}`);
-      if (family) filters.push(`cf.search.family_name:${apiTerm(family)}`);
-      sources.push(`${base}?filter=${filters.join(',')}`);
-    }));
-  }
-
-  createSkgifPaginatedSearch({ //avvia paginator
-    containerId: 'search-results-container', //riempire template hmtl
-    totalCountId: 'search-total-count', //riempire numero di display
-    sources,
-    dedupeKey: person => person.local_identifier || JSON.stringify(person),
-    rankItems: items => _rankAuthorsByQuery(items, fields), //funzione che ordina gli autori
-    renderItem: _renderAuthorCard  //funzione che costruisce le cards
-  }).search();
-}
-
-// ---aut_free_text (SKG-IF)---
-// Reads {given, family, orcid} from search_query ("given=...&family=..." or
-// "orcid=...", URL-encoded by home.js). Names are normalized to NFC (accents
-// as single composed characters, like the API data).
-function _authorSearchFields(rawQuery) {
-  rawQuery = Array.isArray(rawQuery) ? rawQuery[0] : rawQuery;
-  let query = String(rawQuery || "");
-  try { query = decodeURIComponent(query); } catch (e) { /* keep as is */ }
-  if (!query.includes('=')) { //testo libero (es. "author/carfagna"): ultima parola = cognome, le altre = nome
-    const words = query.normalize('NFC').trim().split(/\s+/).filter(Boolean);
-    return { given: words.slice(0, -1).join(' '), family: words[words.length - 1] || "", orcid: "" };
-  }
-  const params = new URLSearchParams(query);
-  const get = key => (params.get(key) || "").normalize('NFC').trim();
-  return { given: get('given'), family: get('family'), orcid: get('orcid') };
-}
-
-// ---aut_free_text (SKG-IF)---
-// Lowercased, single-spaced name, used to compare names from the API with
-// the query. Apostrophes (' and ’), hyphens and the characters that
-// _skgifSafeTerm() removes count as spaces, as they do for the API:
-// "D'Angelo" = "D Angelo", "Garcia-Hierro" = "Garcia Hierro".
-function _normName(s) {
-  return String(s || "").toLowerCase()
-    .replace(/[,"'\\*&#%\u2019-]/g, ' ') //apostrofi, trattini e caratteri tolti dagli URL
-    .split(/\s+/).filter(Boolean).join(' ');
-}
-
-// ---aut_free_text (SKG-IF)---
 // Removes accents and other diacritics ("Nicolò" -> "Nicolo", "Müller" ->
 // "Muller"): NFD splits a letter from its combining marks (\p{M}), which
 // are dropped. Letters with no decomposition (ø, ł, ß) are unchanged.
+// The API matches accent-sensitively (given_name:Nicolò 7082, Nicolo 1953,
+// disjoint sets; "citation índex" 0 titles, "citation index" 1009), so the
+// searches look for a query with accents also without them.
 function _foldAccents(s) {
   return String(s || "").normalize('NFD').replace(/\p{M}/gu, '').normalize('NFC');
 }
 
-// ---aut_free_text (SKG-IF)---
-// cf.search.* also returns partial matches ("Peroni" finds "Peronin" too),
-// so each page is stable-sorted by how many of the filled fields match
-// exactly (accents ignored): e.g. family "Peroni" + given "S" -> the Peroni
-// first, then "Peronin". The ORCID search needs no ranking.
-function _rankAuthorsByQuery(items, fields) { //match esatti in cima e parziali sotto
-  if (fields.orcid) return items;
-  const same = (a, b) => _foldAccents(_normName(a)) === _foldAccents(_normName(b));
-  const score = person =>
-    (fields.family && !same(person.family_name, fields.family) ? 1 : 0) +
-    (fields.given && !same(person.given_name, fields.given) ? 1 : 0);
-  return items
-    .map((item, i) => ({ item, i, s: score(item) }))
-    .sort((a, b) => a.s - b.s || a.i - b.i)
-    .map(x => x.item);
+// The query as typed and, if different, without accents (see _foldAccents()).
+function _skgifSpellings(s) {
+  return [...new Set([s, _foldAccents(s)])];
 }
-
-// ---aut_free_text (SKG-IF)---
-// HTML card for one person of the results page.
-function _renderAuthorCard(person) {
-  const rawId = person.local_identifier || "";
-  const match = rawId.match(/ra\/([\w\d]+)$/);
-  const shortId = match ? match[1] : rawId;
-  if (!shortId) return "";
-
-  const identifiers = Array.isArray(person.identifiers) ? person.identifiers : [];
-  const orcidVal = identifiers.find(i => i.scheme === "orcid")?.value || "";
-
-  const fullname = (person.name || "").trim()
-    || `${person.given_name || ""} ${person.family_name || ""}`.trim()
-    || "Unknown Name";
-
-  const orcidHtml = orcidVal
-    ? `<a href="https://orcid.org/${orcidVal}" target="_blank" class="text-dark text-decoration-none">${orcidVal}</a>`
-    : '<span class="text-muted p-4"><em>No ORCID found</em></span>';
-
-  const linkUrl = `browser.html?value=ra/${shortId}`;
-
-  return `
-    <div class="col-12 mb-3">
-      <div class="card shadow-sm p-2">
-        <div class="card-body p-3 d-flex flex-column">
-          <h5 class="card-title mb-2">
-            <a href="${linkUrl}" target="_blank">${fullname}</a>
-          </h5>
-          <hr>
-
-          <div class="mb-2">
-            <span class="metadata-label fw-bold">ORCID:</span><br>
-            <span>${orcidHtml}</span>
-          </div>
-
-          <div class="mb-2">
-            <span class="metadata-label fw-bold">Other identifiers:</span><br>
-            <span><a href="https://w3id.org/oc/meta/ra/${shortId}" target="_blank">omid:ra/${shortId}</a></span>
-          </div>
-        </div>
-      </div>
-    </div>`;
-}
-
-/*
-################################################################################
-# 3. RICERCA DOCUMENTI (doc_free_text)
-################################################################################
-*/
-// ---doc_free_text (SKG-IF)---
-// Replaces Pietro's search_ids SPARQL block (bif:contains on the title,
-// LIMIT 100) + api_search() (Meta REST API in batches of 20 OMIDs): a single
-// SKG-IF /products?filter=cf.search.title:... request already returns every
-// field of the card (title, authors with ORCID, identifiers, publication
-// date, venue), and total_items is the real number of matches, not capped
-// at 100. Pagination is the shared createSkgifPaginatedSearch() (section 1)
-// with one source (two if the query has accents, see below).
-//
-// #callfun args: args[1] = Lucinda.data.main (has search_query), see
-// api_search_author_skgif().
-//
-// Characters that break the request (commas, quotes, apostrophes, &, #, ...)
-// are replaced with spaces by _skgifSafeTerm() (section 1), which also
-// normalizes the query to NFC.
-//
-// Flow: api_search_doc_skgif() -> createSkgifPaginatedSearch() with
-// _renderDocumentCard() (defined below).
-function api_search_doc_skgif(...args) { //Coordina la ricerca documenti
-  const lucinda_main_data = args[1] || {};
-
-  let rawQuery = lucinda_main_data.search_query || "";
-  rawQuery = Array.isArray(rawQuery) ? rawQuery[0] : rawQuery;
-
-  let cleanQuery;
-  try {
-    cleanQuery = decodeURIComponent(rawQuery);
-  } catch (e) {
-    cleanQuery = String(rawQuery).replace(/%20/g, ' ');
-  }
-  cleanQuery = _skgifSafeTerm(cleanQuery); //NFC + caratteri che rompono la richiesta
-
-  const resultsContainer = document.getElementById('search-results-container');
-  if (!cleanQuery) {
-    if (resultsContainer) resultsContainer.innerHTML = '<div class="col-12"><p>No results found.</p></div>';
-    return;
-  }
-
-  // Same as the author search: LUCINDA's loading banner stays on screen
-  // until the count and the first page are ready.
-  holdSkgifPage();
-
-  // The API matches accent-sensitively ("citation índex" 0, "citation index"
-  // 1009): a query with accents is also searched without them, as typed first.
-  const base = "https://api.opencitations.net/skg-if/v1/products?filter=cf.search.title:";
-  const sources = [...new Set([cleanQuery, _foldAccents(cleanQuery)])]
-    .map(q => base + encodeURIComponent(q));
-
-  createSkgifPaginatedSearch({
-    containerId: 'search-results-container',
-    totalCountId: 'search-total-count',
-    sources,
-    dedupeKey: product => product.local_identifier || JSON.stringify(product),
-    renderItem: _renderDocumentCard
-  }).search();
-}
-
-// ---doc_free_text (SKG-IF)---
-// Shared helpers for the SKG-IF cards (documents now, venues/profiles later).
 
 // Escapes text coming from the API before putting it into HTML.
 function _skgifEscape(s) {
@@ -3280,9 +3100,222 @@ function _skgifIdList(identifiers, omid) {
     .join(' • ');
 }
 
+// Agents of a product with one role (author, editor, publisher), from its
+// contributions: [{ role, by: { name, family_name, given_name,
+// local_identifier, identifiers }, rank }], used by the document cards
+// (authors) and by the venue cards (publisher, editor). By rank, separated
+// by " • " as in Pietro's cards; the name links to agentUrl(<short OMID>),
+// the ORCID follows in brackets when present. "" if there are none.
+function _skgifAgents(contributions, role, agentUrl) {
+  return (Array.isArray(contributions) ? contributions : [])
+    .filter(c => c && c.role === role && c.by)
+    .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
+    .map(c => {
+      const by = c.by;
+      const name = _skgifEscape((by.name || "").trim()
+        || [by.family_name, by.given_name].filter(Boolean).join(', ')
+        || 'Unknown Name');
+      const agentOmid = _skgifOmid(by.local_identifier);
+      const orcid = (Array.isArray(by.identifiers) ? by.identifiers : []).find(i => i.scheme === 'orcid')?.value;
+      let html = agentOmid
+        ? `<a href="${agentUrl(agentOmid)}" target="_blank" class="text-dark text-decoration-none">${name}</a>`
+        : `<span>${name}</span>`;
+      if (orcid) html += ` (<a href="https://orcid.org/${_skgifEscape(orcid)}" target="_blank">${_skgifEscape(orcid)}</a>)`;
+      return html;
+    })
+    .join(' • ');
+}
+
+/*
+################################################################################
+# 3. RICERCA AUTORI (aut_free_text)
+################################################################################
+*/
+// ---aut_free_text (SKG-IF)---
+// #callfun args are (per the convention documented near ocapi_citations()
+// above): args[1] = Lucinda.data.main (has search_query), args[2] = this
+// block's own id.
+//
+// The home page has separate given name / family name / ORCID fields, so
+// search_query is a URL-encoded query string (see home.js):
+//   given=Silvio&family=Peroni  -> cf.search.given_name AND cf.search.family_name
+//   family=Peroni               -> cf.search.family_name only (given only alike)
+//   orcid=0000-0003-0530-4305   -> identifiers.id (exact; the same ORCID can
+//                                  belong to several person records)
+// cf.search.* matches the beginning of words, so an abbreviated field
+// ("Peroni" + "S", "Silvio" + "P") already works with no extra logic.
+// SKG-IF returns full person metadata (name, ORCID, ...) in the search
+// response itself, so there's no need for OpenCitations Meta at all.
+//
+// Accents: the same person is often recorded both with and without accents
+// (same ORCID as "Maria Jose Hierro" and "María José Hierro"), so a name
+// with accents is also searched without them (_skgifSpellings()), the
+// spelling typed by the user first. The variants are disjoint, so the total
+// is just their sum.
+//
+// Flow: _authorSearchFields() -> createSkgifPaginatedSearch() with
+// _rankAuthorsByQuery() and _renderAuthorCard() (defined below).
+function api_search_author_skgif(...args) { //Coordina la ricerca autori
+  const fields = _authorSearchFields(_skgifUrlParam(args[1], 'search_query'));
+
+  const label = document.getElementById('search-query-label'); //titolo leggibile: "Given name: ... · Family name: ..."
+  if (label) {
+    label.textContent = fields.orcid ? `ORCID: ${fields.orcid}`
+      : [fields.given && `Given name: ${fields.given}`, fields.family && `Family name: ${fields.family}`]
+        .filter(Boolean).join(' · ');
+  }
+
+  if (!fields.orcid && !fields.given && !fields.family) {
+    _skgifShowMessage('No results found.');
+    return;
+  }
+
+  const base = `${SKGIF_API}/persons`; //base url
+  let sources;
+  if (fields.orcid) {
+    sources = [`${base}?filter=identifiers.id:${encodeURIComponent(fields.orcid)}`];
+  } else {
+    // One filter per filled field, for each spelling (as typed, unaccented).
+    const spellings = s => s ? _skgifSpellings(s) : [null];
+    const apiTerm = s => encodeURIComponent(_skgifSafeTerm(s));
+    sources = [];
+    spellings(fields.given).forEach(given => spellings(fields.family).forEach(family => {
+      const filters = [];
+      if (given) filters.push(`cf.search.given_name:${apiTerm(given)}`);
+      if (family) filters.push(`cf.search.family_name:${apiTerm(family)}`);
+      sources.push(`${base}?filter=${filters.join(',')}`);
+    }));
+  }
+
+  createSkgifPaginatedSearch({ //avvia paginator
+    sources,
+    rankItems: items => _rankAuthorsByQuery(items, fields), //funzione che ordina gli autori
+    renderItem: _renderAuthorCard  //funzione che costruisce le cards
+  }).search();
+}
+
+// ---aut_free_text (SKG-IF)---
+// Reads {given, family, orcid} from the decoded search_query
+// ("given=...&family=..." or "orcid=...", see home.js). Names are
+// normalized to NFC (accents as single composed characters, like the API
+// data).
+function _authorSearchFields(query) {
+  if (!query.includes('=')) { //testo libero (es. "author/carfagna"): ultima parola = cognome, le altre = nome
+    const words = query.normalize('NFC').trim().split(/\s+/).filter(Boolean);
+    return { given: words.slice(0, -1).join(' '), family: words[words.length - 1] || "", orcid: "" };
+  }
+  const params = new URLSearchParams(query);
+  const get = key => (params.get(key) || "").normalize('NFC').trim();
+  return { given: get('given'), family: get('family'), orcid: get('orcid') };
+}
+
+// ---aut_free_text (SKG-IF)---
+// Lowercased, single-spaced name, used to compare names from the API with
+// the query. Apostrophes (' and ’), hyphens and the characters that
+// _skgifSafeTerm() removes count as spaces, as they do for the API:
+// "D'Angelo" = "D Angelo", "Garcia-Hierro" = "Garcia Hierro".
+function _normName(s) {
+  return String(s || "").toLowerCase()
+    .replace(/[,"'\\*&#%\u2019-]/g, ' ') //apostrofi, trattini e caratteri tolti dagli URL
+    .split(/\s+/).filter(Boolean).join(' ');
+}
+
+// ---aut_free_text (SKG-IF)---
+// cf.search.* also returns partial matches ("Peroni" finds "Peronin" too),
+// so each page is stable-sorted by how many of the filled fields match
+// exactly (accents ignored): e.g. family "Peroni" + given "S" -> the Peroni
+// first, then "Peronin". The ORCID search needs no ranking.
+function _rankAuthorsByQuery(items, fields) { //match esatti in cima e parziali sotto
+  if (fields.orcid) return items;
+  const same = (a, b) => _foldAccents(_normName(a)) === _foldAccents(_normName(b));
+  const score = person =>
+    (fields.family && !same(person.family_name, fields.family) ? 1 : 0) +
+    (fields.given && !same(person.given_name, fields.given) ? 1 : 0);
+  return items
+    .map((item, i) => ({ item, i, s: score(item) }))
+    .sort((a, b) => a.s - b.s || a.i - b.i)
+    .map(x => x.item);
+}
+
+// ---aut_free_text (SKG-IF)---
+// HTML card for one person of the results page.
+function _renderAuthorCard(person) {
+  const omid = _skgifOmid(person.local_identifier);
+  if (!omid) return "";
+
+  const identifiers = Array.isArray(person.identifiers) ? person.identifiers : [];
+  const orcid = _skgifEscape(identifiers.find(i => i.scheme === "orcid")?.value || "");
+
+  const fullname = (person.name || "").trim()
+    || `${person.given_name || ""} ${person.family_name || ""}`.trim()
+    || "Unknown Name";
+
+  const orcidHtml = orcid
+    ? `<a href="https://orcid.org/${orcid}" target="_blank" class="text-dark text-decoration-none">${orcid}</a>`
+    : '<span class="text-muted p-4"><em>No ORCID found</em></span>';
+
+  return `
+    <div class="col-12 mb-3">
+      <div class="card shadow-sm p-2">
+        <div class="card-body p-3 d-flex flex-column">
+          <h5 class="card-title mb-2">
+            <a href="browser.html?value=${omid}" target="_blank">${_skgifEscape(fullname)}</a>
+          </h5>
+          <hr>
+
+          <div class="mb-2">
+            <span class="metadata-label fw-bold">ORCID:</span><br>
+            <span>${orcidHtml}</span>
+          </div>
+
+          <div class="mb-2">
+            <span class="metadata-label fw-bold">Other identifiers:</span><br>
+            <span><a href="https://w3id.org/oc/meta/${omid}" target="_blank">omid:${omid}</a></span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+/*
+################################################################################
+# 4. RICERCA DOCUMENTI (doc_free_text)
+################################################################################
+*/
+// ---doc_free_text (SKG-IF)---
+// Replaces Pietro's search_ids SPARQL block (bif:contains on the title,
+// LIMIT 100) + api_search() (Meta REST API in batches of 20 OMIDs): a single
+// SKG-IF /products?filter=cf.search.title:... request already returns every
+// field of the card (title, authors with ORCID, identifiers, publication
+// date, venue), and total_items is the real number of matches, not capped
+// at 100. Pagination is the shared createSkgifPaginatedSearch() (section 1)
+// with one source (two if the query has accents: also searched without
+// them, as typed first).
+//
+// #callfun args: args[1] = Lucinda.data.main (has search_query), see
+// api_search_author_skgif().
+//
+// Characters that break the request (commas, quotes, apostrophes, &, #, ...)
+// are replaced with spaces by _skgifSafeTerm() (section 2), which also
+// normalizes the query to NFC.
+function api_search_doc_skgif(...args) { //Coordina la ricerca documenti
+  const query = _skgifSafeTerm(_skgifUrlParam(args[1], 'search_query')); //NFC + caratteri che rompono la richiesta
+  if (!query) {
+    _skgifShowMessage('No results found.');
+    return;
+  }
+
+  createSkgifPaginatedSearch({
+    sources: _skgifSpellings(query)
+      .map(q => `${SKGIF_API}/products?filter=cf.search.title:${encodeURIComponent(q)}`),
+    renderItem: _renderDocumentCard
+  }).search();
+}
+
 // ---doc_free_text (SKG-IF)---
 // HTML card for one product of the results page: same layout and links as
 // Pietro's api_search() cards (links are relative, see the author card).
+// Also used by the citation/reference lists (section 5).
 function _renderDocumentCard(product) {
   const omid = _skgifOmid(product.local_identifier);
   if (!omid) return "";
@@ -3291,24 +3324,9 @@ function _renderDocumentCard(product) {
   const titles = product.titles || {};
   const title = (titles.none || Object.values(titles)[0] || [])[0] || 'No title';
 
-  // Authors (publishers etc. are left out, as in Pietro's cards), by rank.
-  const authors = (Array.isArray(product.contributions) ? product.contributions : [])
-    .filter(c => c.role === 'author' && c.by)
-    .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
-    .map(c => {
-      const by = c.by;
-      const name = _skgifEscape((by.name || "").trim()
-        || [by.family_name, by.given_name].filter(Boolean).join(', ')
-        || 'Unknown Name');
-      const authorOmid = _skgifOmid(by.local_identifier);
-      const orcid = (Array.isArray(by.identifiers) ? by.identifiers : []).find(i => i.scheme === 'orcid')?.value;
-      let html = authorOmid
-        ? `<a href="browser.html?value=${authorOmid}" target="_blank" class="text-dark text-decoration-none">${name}</a>`
-        : `<span>${name}</span>`;
-      if (orcid) html += ` (<a href="https://orcid.org/${_skgifEscape(orcid)}" target="_blank">${_skgifEscape(orcid)}</a>)`;
-      return html;
-    });
-  const formattedAuthors = authors.length ? authors.join(' • ') : 'Unknown';
+  // Authors (publishers etc. are left out, as in Pietro's cards) -> author page.
+  const formattedAuthors = _skgifAgents(product.contributions, 'author', authorOmid => `browser.html?value=${authorOmid}`)
+    || 'Unknown';
 
   // Date and venue come from the manifestation. The date is a full
   // timestamp ("2024-01-01T00:00:00"): only the date part is shown.
@@ -3376,7 +3394,7 @@ function _renderDocumentCard(product) {
 
 /*
 ################################################################################
-# 4. CITAZIONI E RIFERIMENTI (doc_citations, doc_references)
+# 5. CITAZIONI E RIFERIMENTI (doc_citations, doc_references)
 ################################################################################
 */
 // ---doc_citations---doc_references (SKG-IF)---
@@ -3400,23 +3418,15 @@ function api_doc_references_skgif(...args) {
 }
 
 function _skgifCitationList(lucinda_main_data, filter, emptyMessage) {
-  let id = (lucinda_main_data || {}).id || "";
-  id = String(Array.isArray(id) ? id[0] : id).trim();
-
-  const resultsContainer = document.getElementById('search-results-container');
+  const id = _skgifUrlParam(lucinda_main_data, 'id').trim();
   if (!id) {
-    if (resultsContainer) resultsContainer.innerHTML = `<div class="col-12"><p>${emptyMessage}</p></div>`;
+    _skgifShowMessage(emptyMessage);
     return;
   }
 
-  holdSkgifPage();
-
   const omidUrl = `https://w3id.org/oc/meta/br/${id}`;
   createSkgifPaginatedSearch({
-    containerId: 'search-results-container',
-    totalCountId: 'search-total-count',
-    sources: [`https://api.opencitations.net/skg-if/v1/products?filter=${filter}:${encodeURIComponent(omidUrl)}`],
-    dedupeKey: product => product.local_identifier || JSON.stringify(product),
+    sources: [`${SKGIF_API}/products?filter=${filter}:${encodeURIComponent(omidUrl)}`],
     renderItem: _renderDocumentCard,
     emptyMessage
   }).search();
@@ -3424,7 +3434,7 @@ function _skgifCitationList(lucinda_main_data, filter, emptyMessage) {
 
 /*
 ################################################################################
-# 5. RICERCA RIVISTE (venue_free_text)
+# 6. RICERCA RIVISTE (venue_free_text)
 ################################################################################
 */
 // ---venue_free_text (SKG-IF)---
@@ -3439,48 +3449,39 @@ function _skgifCitationList(lucinda_main_data, filter, emptyMessage) {
 // Only journals for the name search, as Pietro's results (fabio:Series is
 // not used in Meta: book series are fabio:BookSeries, type "other" in
 // SKG-IF). SKG-IF venues have only name, type and identifiers: Pietro's
-// date/publisher/editor are empty on Meta journal records anyway.
+// publisher/editor are read from the same OMID asked to /products (see
+// _loadVenueAgents()); his date is always empty on Meta journal records.
 // Accents and special characters as in the document search.
 //
 // #callfun args: args[1] = Lucinda.data.main (has search_query), see
 // api_search_author_skgif().
 function api_search_venue_skgif(...args) {
-  let rawQuery = (args[1] || {}).search_query || "";
-  rawQuery = String(Array.isArray(rawQuery) ? rawQuery[0] : rawQuery);
-  let query;
-  try { query = decodeURIComponent(rawQuery); } catch (e) { query = rawQuery; }
+  const query = _skgifUrlParam(args[1], 'search_query');
   const issn = query.startsWith('issn=') ? new URLSearchParams(query).get('issn').trim() : "";
   const name = issn ? "" : _skgifSafeTerm(query);
 
   const label = document.getElementById('search-query-label');
   if (label) label.textContent = issn ? `ISSN: ${issn}` : name;
 
-  const resultsContainer = document.getElementById('search-results-container');
   if (!issn && !name) {
-    if (resultsContainer) resultsContainer.innerHTML = '<div class="col-12"><p>No results found.</p></div>';
+    _skgifShowMessage('No results found.');
     return;
   }
 
-  holdSkgifPage();
-
-  const base = "https://api.opencitations.net/skg-if/v1/venues?filter=";
-  const sources = issn
-    ? [`${base}identifiers.scheme:issn,identifiers.value:${encodeURIComponent(issn)}`]
-    : [...new Set([name, _foldAccents(name)])]
-        .map(q => `${base}cf.search.name:${encodeURIComponent(q)},type:journal`);
-
+  const base = `${SKGIF_API}/venues?filter=`;
   createSkgifPaginatedSearch({
-    containerId: 'search-results-container',
-    totalCountId: 'search-total-count',
-    sources,
-    dedupeKey: venue => venue.local_identifier || JSON.stringify(venue),
+    sources: issn
+      ? [`${base}identifiers.scheme:issn,identifiers.value:${encodeURIComponent(issn)}`]
+      : _skgifSpellings(name).map(q => `${base}cf.search.name:${encodeURIComponent(q)},type:journal`),
     renderItem: _renderVenueCard
   }).search();
 }
 
 // ---venue_free_text (SKG-IF)---
 // HTML card for one venue of the results page: same layout and title link
-// as Pietro's api_search_venue() cards, plus the venue type.
+// as Pietro's api_search_venue() cards, plus the venue type. Publisher and
+// editor go in the empty .venue-agents box, filled by _loadVenueAgents()
+// when its request ends (the card is in the page by then).
 function _renderVenueCard(venue) {
   const omid = _skgifOmid(venue.local_identifier);
   if (!omid) return "";
@@ -3489,7 +3490,7 @@ function _renderVenueCard(venue) {
     ? `<div class="mb-2"><span class="metadata-label fw-bold">Type:</span><br><span>${_skgifEscape(venue.type)}</span></div>`
     : '';
 
-  return `
+  const html = `
     <div class="col-12 mb-3">
       <div class="card shadow-sm p-2">
         <div class="card-body p-3 d-flex flex-column">
@@ -3502,7 +3503,34 @@ function _renderVenueCard(venue) {
             <span>${_skgifIdList(venue.identifiers, omid)}</span>
           </div>
           ${type}
+          <div class="venue-agents" data-venue-omid="${omid}"></div>
         </div>
       </div>
     </div>`;
+  _loadVenueAgents(omid);
+  return html;
+}
+
+// ---venue_free_text (SKG-IF)---
+// Publisher and editor of a venue. /venues has no contributions, but the
+// venue OMID is also a product: /products/<venue OMID> returns the journal
+// with its contributions (role publisher / editor), as Pietro's Meta
+// record. One request per venue, through skgifFetch() (cached, so going
+// back to a page doesn't repeat it). A failed request leaves the box empty.
+// The names link to the agent's OMID page (Pietro linked the
+// w3id.org/oc/meta/ar/ page, the role, not the agent), until there is a
+// page for organisations.
+function _loadVenueAgents(omid) {
+  skgifFetch(`${SKGIF_API}/products/https://w3id.org/oc/meta/${omid}`).then(data => {
+    const contributions = (data?.['@graph'] || [])[0]?.contributions;
+    const row = (role, label) => {
+      const agents = _skgifAgents(contributions, role, agentOmid => `https://w3id.org/oc/meta/${agentOmid}`);
+      return agents
+        ? `<div class="mb-2"><span class="metadata-label fw-bold">${label}:</span><br><span>${agents}</span></div>`
+        : '';
+    };
+    const html = row('publisher', 'Publisher') + row('editor', 'Editor');
+    document.querySelectorAll(`.venue-agents[data-venue-omid="${omid}"]`)
+      .forEach(box => { box.innerHTML = html; });
+  });
 }

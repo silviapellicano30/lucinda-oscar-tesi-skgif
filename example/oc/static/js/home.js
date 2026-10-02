@@ -26,7 +26,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- 2. Regex Definitions ---
   // Lucinda native prefixes
-  const lucindaPrefixRegex = /^(br|ci|ra|ve):?/i;
+  // SILVIA (SKG-IF): was /^(br|ci|ra|ve):?/i, which matched any text starting
+  // with those letters ("brain tumor", "Veterinary Record") and sent it as an
+  // OMID ("No template is suitable"). Now only prefix + "/" + digits
+  // ("br/0605748453"; an OCI has a dash: "ci/06010572394-0605748453").
+  const lucindaPrefixRegex = /^(br|ci|ra|ve)\/[\d-]+$/i;
   
   // External Identifiers
   const doiRegex = /^(doi:)?10\.\d{4,9}\/[^\s]+$/i;
@@ -65,11 +69,18 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // SILVIA (SKG-IF): an ISSN in "Venue" shows the cards of every venue record
-    // with that ISSN (like the ORCID), read by api_search_venue_skgif()
-    if (category === "venue" && issnRegex.test(query)) {
+    // SILVIA (SKG-IF): an ISSN or an ORCID, in any category, shows the cards
+    // of every record with it (the same ID can belong to several venue /
+    // person records), read by api_search_venue_skgif() /
+    // api_search_author_skgif(), instead of the page of the first record only
+    if (issnRegex.test(query)) {
       const issn = query.replace(/^issn:/i, "").toUpperCase(); // final x -> X, as stored
       window.location.href = `http://127.0.0.1:5500/example/oc/html_template/browser.html?value=venue/${encodeURIComponent(`issn=${issn}`)}`;
+      return;
+    }
+    if (orcidRegex.test(query)) {
+      const orcid = query.replace(/^orcid:/i, "").toUpperCase();
+      window.location.href = `http://127.0.0.1:5500/example/oc/html_template/browser.html?value=author/${encodeURIComponent(`orcid=${orcid}`)}`;
       return;
     }
 
@@ -213,17 +224,14 @@ async function openLucinda(identifier, category) {
 */
 // SILVIA (SKG-IF): replaces Pietro's idToOmid() above, used by openLucinda().
 // Resolves an external identifier to an OMID through the
-// SKG-IF API (was a SPARQL query on Meta). Each scheme is looked up on the
-// entity it identifies; the first record is taken, as the old LIMIT 1 did
-// (the same ORCID/ISSN can belong to several records). The ID filter is
-// identifiers.id on /products and /persons, identifiers.value on /venues
-// (that's how the API is configured).
+// SKG-IF API (was a SPARQL query on Meta). Only document IDs get here, looked
+// up on /products; the first record is taken, as the old LIMIT 1 did. ORCID
+// and ISSN never get here: they open the author / venue cards (see the
+// submit listener).
 const SKGIF_ID_LOOKUP = [
   { test: /^doi:|^10\.\d{4,9}\//i, scheme: "doi", entity: "products", field: "identifiers.id" },
   { test: /^pmid:/i, scheme: "pmid", entity: "products", field: "identifiers.id" },
-  { test: /^openalex:/i, scheme: "openalex", entity: "products", field: "identifiers.id" },
-  { test: /^orcid:|\d{4}-\d{4}-\d{4}-\d{3}[0-9X]/i, scheme: "orcid", entity: "persons", field: "identifiers.id" },
-  { test: /^issn:|\d{4}-\d{3}[0-9X]/i, scheme: "issn", entity: "venues", field: "identifiers.value" }
+  { test: /^openalex:/i, scheme: "openalex", entity: "products", field: "identifiers.id" }
 ];
 
 async function skgifIdToOmid(identifier) {
