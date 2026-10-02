@@ -2723,7 +2723,7 @@ const _skgifPendingRequests = {};
 // Fetches an SKG-IF URL through the cache. Never rejects: a failed request
 // (HTTP error, timeout, network error) resolves to null and is not cached,
 // so it is tried again the next time.
-//Se la risposta è in cache, la restituisce subito, altrimenti fa la query e restituisce il json se tutto va bene, altrimenti null
+//Se la risposta è in cache, la restituisce subito, se la richiesta è già in corso la aspetta, altrimenti fa la query e restituisce il json se tutto va bene, altrimenti null
 function skgifFetch(url) {
   const key = _skgifNormalizeUrl(url);
   if (_skgifResponseCache[key]) return Promise.resolve(_skgifResponseCache[key]);
@@ -2802,10 +2802,11 @@ function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
   let sourceTotals = null; // total_items of each source, read once on the first page
   let listedTotal = 0;     // sum of sourceTotals: shown in the title, pages are computed on it = Somma dei total_items di ogni fonte SKG-IF
 
-  const pageUrl = (src, apiPage) => `${src}&page=${apiPage}&page_size=${pageSize}`; //costruzione url di ciascuna pagina
+  const pageUrl = (src, apiPage) => `${src}&page=${apiPage}&page_size=${pageSize}`; //costruzione url di ciascuna pagina con numero della pagina corrente
 
   // Fetches API pages; rejects if any of them failed, so that a failed
   // request is reported as such instead of as a page with no results.
+  // scarica più URL in parallelo. Se anche uno solo restituisce null, lancia un errore. Così un fallimento viene mostrato come errore e non come "pagina vuota"
   const fetchAll = urls => Promise.all(urls.map(skgifFetch)).then(responses => {
     if (responses.some(r => !r)) throw new Error(SKGIF_FAILED_MESSAGE);
     return responses;
@@ -2854,7 +2855,7 @@ function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
       parts.push(fetchAll(urls).then(responses => {
         const items = responses.flatMap(r => Array.isArray(r["@graph"]) ? r["@graph"] : []);
         const skip = from - (firstApiPage - 1) * pageSize;
-        return items.slice(skip, skip + (to - from));
+        return items.slice(skip, skip + (to - from)); 
       }));
     });
     return Promise.all(parts).then(lists => lists.flat());
@@ -2871,7 +2872,7 @@ function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
       .then(pageItems => {
         const seen = new Set();
         const items = pageItems.filter(item => {
-          const key = dedupeKey(item);
+          const key = dedupeKey(item); //elimina duplicati nella stessa pagina
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
@@ -2882,7 +2883,7 @@ function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
         // The API is slow on URLs it hasn't served before (20-60 s, then
         // cached): load the next page in the background while this one is
         // read, so Next usually finds it in _skgifResponseCache.
-        if (page * pageSize < listedTotal) itemsForPage(page + 1).catch(() => {}); //precarica la pagina successiva
+        if (page * pageSize < listedTotal) itemsForPage(page + 1).catch(() => {}); //precarica la pagina successiva  se esiste una pagina successiva, la carica in background
       })
       .catch(error => {
         console.error("SKG-IF search failed:", error);
