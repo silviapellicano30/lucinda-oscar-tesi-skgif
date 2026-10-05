@@ -1,0 +1,5 @@
+#id main
+#url value=organisation/{search_query}
+
+#id api_search
+#callfun api_search_org_skgif()

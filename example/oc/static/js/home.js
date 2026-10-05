@@ -8,6 +8,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document: "Search by DOI, PMID, Title...",
     author: "Search by ORCID, Name...",
     venue: "Search by ISSN, Name...",
+    organisation: "Search by Crossref ID, Name...", // SILVIA (SKG-IF)
     citation: "Search by OCI...",
     doc_cit: "Enter DOI/PMID to see citations...",
     doc_ref: "Enter DOI/PMID to see references..."
@@ -67,6 +68,20 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!query) {
       alert("Please enter a search query.");
       return;
+    }
+
+    // SILVIA (SKG-IF): in "Organisation", an OMID (ra/..., omid:ra/...) or a
+    // Crossref member id (crossref:78) shows the organisation card(s), read
+    // by api_search_org_skgif(): persons and organisations share the ra/
+    // prefix, so openLucinda() would open the author page instead
+    if (category === "organisation") {
+      const omid = query.match(/^(?:omid:)?(ra\/\d+)$/i)?.[1];
+      const crossref = query.match(/^crossref:\s*(\d+)$/i)?.[1];
+      if (omid || crossref) {
+        const param = omid ? `omid=${omid.toLowerCase()}` : `crossref=${crossref}`;
+        window.location.href = `http://127.0.0.1:5500/example/oc/html_template/browser.html?value=organisation/${encodeURIComponent(param)}`;
+        return;
+      }
     }
 
     // SILVIA (SKG-IF): an ISSN or an ORCID, in any category, shows the cards

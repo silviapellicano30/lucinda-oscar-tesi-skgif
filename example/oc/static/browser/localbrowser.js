@@ -2722,14 +2722,16 @@ const _skgifPendingRequests = {};
 
 // Fetches an SKG-IF URL through the cache. Never rejects: a failed request
 // (HTTP error, timeout, network error) resolves to null and is not cached,
-// so it is tried again the next time.
+// so it is tried again the next time. HTTP 404 is not a failure: the API
+// answers 404 to a search with no matches (unknown ISSN/ORCID/Crossref id,
+// name with no records...), so it resolves to an empty response (0 items).
 //Se la risposta è in cache, la restituisce subito, se la richiesta è già in corso la aspetta, altrimenti fa la query e restituisce il json se tutto va bene, altrimenti null
 function skgifFetch(url) {
   const key = _skgifNormalizeUrl(url);
   if (_skgifResponseCache[key]) return Promise.resolve(_skgifResponseCache[key]);
   if (_skgifPendingRequests[key]) return _skgifPendingRequests[key]; //richiesta già in corso: aspetta quella
   return _skgifPendingRequests[key] = fetch(url)
-    .then(r => r.ok ? r.json() : null)
+    .then(r => r.ok ? r.json() : r.status === 404 ? {} : null) // SILVIA (SKG-IF): 404 = 0 results
     .then(data => {
       if (data) _skgifResponseCache[key] = data;
       return data;
@@ -2989,17 +2991,18 @@ document.addEventListener('keydown', function (e) {
 # 2. UTILITÀ COMUNI (query, testo, identificativi, card)
 ################################################################################
 */
+//AGGIUSTARE QUELLO CHE UTENTE SCRIVE NELLA BARRA DI RICERCA
 // Value of a parameter of the page URL as LUCINDA gives it to #callfun
 // (args[1] = Lucinda.data.main, where a value can be an array), decoded:
 // search_query of "author/...", "document/...", "venue/...", id of
 // "doc_cit/br/{id}" / "doc_ref/br/{id}".
-function _skgifUrlParam(lucinda_main_data, key) {
+function _skgifUrlParam(lucinda_main_data, key) { //legge dall'indirizzo della pagina la parola cercata e ne prende il valore = è il valore da cercare --> ne segue preparazione specifica del valore da chiedere all'api in base al tipo di risorsa
   let value = (lucinda_main_data || {})[key] || "";
   value = String(Array.isArray(value) ? value[0] : value);
   try { return decodeURIComponent(value); } catch (e) { return value; }
 }
 
-// Plain message in place of the results (e.g. empty query).
+// Plain message in place of the results (e.g. empty query). // mostra una frase al posto dei risultati
 function _skgifShowMessage(text, containerId = 'search-results-container') {
   const container = document.getElementById(containerId);
   if (container) container.innerHTML = `<div class="col-12"><p>${text}</p></div>`;
@@ -3023,7 +3026,7 @@ function _skgifShowMessage(text, containerId = 'search-results-container') {
 // "semantic web"; "Garcia-Hierro" = "Garcia Hierro"), so it's kept. Also
 // normalized to NFC: accents as single composed characters, like the API
 // data (decomposed "Nicolò" = o + U+0300 returns 1 person instead of 7082).
-function _skgifSafeTerm(s) {
+function _skgifSafeTerm(s) { //sostituisce con uno spazio i caratteri che mandano in errore la richiesta
   return String(s || "").normalize('NFC')
     .replace(/[,"'\\*&#%]/g, ' ') //caratteri che rompono la richiesta
     .split(/\s+/).filter(Boolean).join(' ');
@@ -3035,7 +3038,7 @@ function _skgifSafeTerm(s) {
 // The API matches accent-sensitively (given_name:Nicolò 7082, Nicolo 1953,
 // disjoint sets; "citation índex" 0 titles, "citation index" 1009), so the
 // searches look for a query with accents also without them.
-function _foldAccents(s) {
+function _foldAccents(s) { //gestione accenti
   return String(s || "").normalize('NFD').replace(/\p{M}/gu, '').normalize('NFC');
 }
 
@@ -3044,7 +3047,9 @@ function _skgifSpellings(s) {
   return [...new Set([s, _foldAccents(s)])];
 }
 
+// FUNZIONI CHE preparano quello che si vede sulla pagina
 // Escapes text coming from the API before putting it into HTML.
+// Se un titolo che arriva dall'API contiene, per esempio, <b>, il browser non lo mostra: lo interpreta come un comando e la pagina può rompersi. Quindi utente vede il titolo così com'è a il browser non si rompe
 function _skgifEscape(s) {
   return String(s ?? "").replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -3052,6 +3057,7 @@ function _skgifEscape(s) {
 
 // Short OMID ("br/06011277533", "ra/0614010840729") of a SKG-IF
 // local_identifier ("https://w3id.org/oc/meta/br/06011277533"), "" if none.
+//l'API restituisce l'identificativo lungo (https://w3id.org/oc/meta/br/06011277533), ma a noi serve solo la parte finale (br/06011277533) per costruire i link interni. Quindi accorcia il link.
 function _skgifOmid(localId) {
   const match = String(localId || "").match(/\/meta\/([a-z]{2}\/[\w\d]+)$/);
   return match ? match[1] : "";
@@ -3059,6 +3065,7 @@ function _skgifOmid(localId) {
 
 // External page of each identifier scheme, same targets as Pietro's
 // createIdLinks() in api_search() (isbn has none there either).
+//la rubrica dei siti: dai il valore e ti restituisce l'indirizzo completo
 const SKGIF_ID_URLS = {
   doi: v => `https://doi.org/${v}`,
   pmid: v => `https://pubmed.ncbi.nlm.nih.gov/${v}/`,
@@ -3070,25 +3077,28 @@ const SKGIF_ID_URLS = {
 
 // Order the identifiers are listed in (the API returns them in no fixed
 // order); omid last, as in Pietro's cards. Unknown schemes go before omid.
+//si decide ordine di comparsa degli id (devono comparire sempre nello stesso ordine)
 const SKGIF_ID_ORDER = ['doi', 'pmid', 'pmcid', 'isbn', 'issn', 'openalex'];
 
 function _skgifIdRank(scheme) {
-  if (scheme === 'omid') return SKGIF_ID_ORDER.length + 1;
+  if (scheme === 'omid') return SKGIF_ID_ORDER.length + 1; //omid riceve sempre il numero più alto, quindi finisce in fondo.
   const i = SKGIF_ID_ORDER.indexOf(scheme);
   return i === -1 ? SKGIF_ID_ORDER.length : i;
 }
 
 // "scheme:value", linked to its external page when the scheme has one.
+//crea un singolo link
 function _skgifIdLink(scheme, value) {
-  const s = String(scheme || "").toLowerCase();
-  const label = _skgifEscape(`${s}:${value}`);
-  const url = SKGIF_ID_URLS[s];
+  const s = String(scheme || "").toLowerCase(); //mette prefisso in minuscolo
+  const label = _skgifEscape(`${s}:${value}`); //prepara testo da mostrare
+  const url = SKGIF_ID_URLS[s]; //cerca prefisso nella rubrica
   return url
-    ? `<a href="${_skgifEscape(url(value))}" target="_blank" class="text-dark text-decoration-none">${label}</a>`
+    ? `<a href="${_skgifEscape(url(value))}" target="_blank" class="text-dark text-decoration-none">${label}</a>` //link per aprire id in una nuova scheda
     : label;
 }
 
 // SKG-IF identifiers array (+ the OMID, if given) -> "doi:... • openalex:... • omid:br/...".
+//crea l'intera riga degli identificativi mettendo insieme le funzioni precedenti
 function _skgifIdList(identifiers, omid) {
   const ids = (Array.isArray(identifiers) ? identifiers : [])
     .filter(i => i && i.scheme && i.value)
@@ -3098,7 +3108,7 @@ function _skgifIdList(identifiers, omid) {
     .map((id, i) => ({ id, i }))
     .sort((a, b) => _skgifIdRank(a.id.scheme) - _skgifIdRank(b.id.scheme) || a.i - b.i)
     .map(x => _skgifIdLink(x.id.scheme, x.id.value))
-    .join(' • ');
+    .join(' • '); //puntino per separare
 }
 
 // Agents of a product with one role (author, editor, publisher), from its
@@ -3107,11 +3117,12 @@ function _skgifIdList(identifiers, omid) {
 // (authors) and by the venue cards (publisher, editor). By rank, separated
 // by " • " as in Pietro's cards; the name links to agentUrl(<short OMID>),
 // the ORCID follows in brackets when present. "" if there are none.
+//logica per recuperare nomi autori per i documenti e publisher/editor nelle riviste
 function _skgifAgents(contributions, role, agentUrl) {
   return (Array.isArray(contributions) ? contributions : [])
-    .filter(c => c && c.role === role && c.by)
-    .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
-    .map(c => {
+    .filter(c => c && c.role === role && c.by) //tiene le voci con il ruolo specificato
+    .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0)) //ordina per rank
+    .map(c => { //costruzione del nome linkabile + orcid tra parentesi
       const by = c.by;
       const name = _skgifEscape((by.name || "").trim()
         || [by.family_name, by.given_name].filter(Boolean).join(', ')
@@ -3157,45 +3168,46 @@ function _skgifAgents(contributions, role, agentUrl) {
 // Flow: _authorSearchFields() -> createSkgifPaginatedSearch() with
 // _rankAuthorsByQuery() and _renderAuthorCard() (defined below).
 function api_search_author_skgif(...args) { //Coordina la ricerca autori
-  const fields = _authorSearchFields(_skgifUrlParam(args[1], 'search_query'));
+  const fields = _authorSearchFields(_skgifUrlParam(args[1], 'search_query')); //legge cosa ha scritto utente, prende il testo dall'indirizzo e lo divide in tre caselle given, family e orcid tramite authorsearchfield
 
   const label = document.getElementById('search-query-label'); //titolo leggibile: "Given name: ... · Family name: ..."
   if (label) {
-    label.textContent = fields.orcid ? `ORCID: ${fields.orcid}`
+    label.textContent = fields.orcid ? `ORCID: ${fields.orcid}` //scrive il titolo della ricerca nella parte alta della pagina
       : [fields.given && `Given name: ${fields.given}`, fields.family && `Family name: ${fields.family}`]
         .filter(Boolean).join(' · ');
   }
 
-  if (!fields.orcid && !fields.given && !fields.family) {
+  if (!fields.orcid && !fields.given && !fields.family) { // controlla che ci sia qualcosa da cercare
     _skgifShowMessage('No results found.');
     return;
   }
-
+  
+  //costruzione richieste da mandare all'api
   const base = `${SKGIF_API}/persons`; //base url
   let sources;
-  if (fields.orcid) {
+  if (fields.orcid) { //se c'è l'orcid
     sources = [`${base}?filter=identifiers.id:${encodeURIComponent(fields.orcid)}`];
-  } else {
+  } else { //altrimenti se ci sono nome e/o cognome:
     // One filter per filled field, for each spelling (as typed, unaccented).
-    const spellings = s => s ? _skgifSpellings(s) : [null];
+    const spellings = s => s ? _skgifSpellings(s) : [null]; //parte una richiesta per ogni grafia: con acento e senza accento
     const apiTerm = s => encodeURIComponent(_skgifSafeTerm(s));
     sources = [];
-    spellings(fields.given).forEach(given => spellings(fields.family).forEach(family => {
+    spellings(fields.given).forEach(given => spellings(fields.family).forEach(family => { //provare tutte le combinazioni con/senza accentazione
       const filters = [];
-      if (given) filters.push(`cf.search.given_name:${apiTerm(given)}`);
-      if (family) filters.push(`cf.search.family_name:${apiTerm(family)}`);
-      sources.push(`${base}?filter=${filters.join(',')}`);
+      if (given) filters.push(`cf.search.given_name:${apiTerm(given)}`); //nome
+      if (family) filters.push(`cf.search.family_name:${apiTerm(family)}`); //cognome
+      sources.push(`${base}?filter=${filters.join(',')}`); //Nome e cognome dove virgola = E
     }));
   }
 
   createSkgifPaginatedSearch({ //avvia paginator
     sources,
-    rankItems: items => _rankAuthorsByQuery(items, fields), //funzione che ordina gli autori
-    renderItem: _renderAuthorCard  //funzione che costruisce le cards
-  }).search();
+    rankItems: items => _rankAuthorsByQuery(items, fields), //come ordinare
+    renderItem: _renderAuthorCard  //come disegnare le cards
+  }).search(); //consegna tutto al paginator che manda le richieste e gestisce le pagine
 }
 
-// ---aut_free_text (SKG-IF)---
+// ---aut_free_text (SKG-IF) FUNZIONI DI SUPPORTO---
 // Reads {given, family, orcid} from the decoded search_query
 // ("given=...&family=..." or "orcid=...", see home.js). Names are
 // normalized to NFC (accents as single composed characters, like the API
@@ -3203,7 +3215,7 @@ function api_search_author_skgif(...args) { //Coordina la ricerca autori
 function _authorSearchFields(query) {
   if (!query.includes('=')) { //testo libero (es. "author/carfagna"): ultima parola = cognome, le altre = nome
     const words = query.normalize('NFC').trim().split(/\s+/).filter(Boolean);
-    return { given: words.slice(0, -1).join(' '), family: words[words.length - 1] || "", orcid: "" };
+    return { given: words.slice(0, -1).join(' '), family: words[words.length - 1] || "", orcid: "" }; //i tre campi given, family e orcid
   }
   const params = new URLSearchParams(query);
   const get = key => (params.get(key) || "").normalize('NFC').trim();
@@ -3226,7 +3238,7 @@ function _normName(s) {
 // so each page is stable-sorted by how many of the filled fields match
 // exactly (accents ignored): e.g. family "Peroni" + given "S" -> the Peroni
 // first, then "Peronin". The ORCID search needs no ranking.
-function _rankAuthorsByQuery(items, fields) { //match esatti in cima e parziali sotto
+function _rankAuthorsByQuery(items, fields) { //match esatti in cima e parziali sotto assegnando a ogni persona un punteggio di errore
   if (fields.orcid) return items;
   const same = (a, b) => _foldAccents(_normName(a)) === _foldAccents(_normName(b));
   const score = person =>
@@ -3300,17 +3312,17 @@ function _renderAuthorCard(person) {
 // are replaced with spaces by _skgifSafeTerm() (section 2), which also
 // normalizes the query to NFC.
 function api_search_doc_skgif(...args) { //Coordina la ricerca documenti
-  const query = _skgifSafeTerm(_skgifUrlParam(args[1], 'search_query')); //NFC + caratteri che rompono la richiesta
-  if (!query) {
+  const query = _skgifSafeTerm(_skgifUrlParam(args[1], 'search_query')); //NFC + caratteri che rompono la richiesta = lettura e pulizia della query prendendo il valore cercato dall'url della pagina tramite skgifurlparam e togliendo i caratteri che rompono l'api tramite skgifsafeterm
+  if (!query) { //se la query è vuota
     _skgifShowMessage('No results found.');
     return;
   }
 
-  createSkgifPaginatedSearch({
-    sources: _skgifSpellings(query)
+  createSkgifPaginatedSearch({ //avvio della ricerca
+    sources: _skgifSpellings(query) //produzione delle due grafie: con accento e senza accento, una richiesta per ogni grafia
       .map(q => `${SKGIF_API}/products?filter=cf.search.title:${encodeURIComponent(q)}`),
-    renderItem: _renderDocumentCard
-  }).search();
+    renderItem: _renderDocumentCard //come disegnare le cards
+  }).search(); //chiamiamo il paginator
 }
 
 // ---doc_free_text (SKG-IF)---
@@ -3318,14 +3330,14 @@ function api_search_doc_skgif(...args) { //Coordina la ricerca documenti
 // Pietro's api_search() cards (links are relative, see the author card).
 // Also used by the citation/reference lists (section 5).
 function _renderDocumentCard(product) {
-  const omid = _skgifOmid(product.local_identifier);
-  if (!omid) return "";
+  const omid = _skgifOmid(product.local_identifier); //prende omid corto
+  if (!omid) return ""; //senza omid non risegna la card del documento
 
   // Title: "none" is the language-less title, else the first language found.
   const titles = product.titles || {};
-  const title = (titles.none || Object.values(titles)[0] || [])[0] || 'No title';
+  const title = (titles.none || Object.values(titles)[0] || [])[0] || 'No title'; //L'API raggruppa i titoli per lingua. || vuol dire se no
 
-  // Authors (publishers etc. are left out, as in Pietro's cards) -> author page.
+  // Authors (publishers etc. are left out) -> author page. Usa la funzione skgifagents solo per il ruolo author per recuparare dalle ricerche del documento gli autori e scriverli nelle cards con la giusta resa
   const formattedAuthors = _skgifAgents(product.contributions, 'author', authorOmid => `browser.html?value=${authorOmid}`)
     || 'Unknown';
 
@@ -3333,26 +3345,26 @@ function _renderDocumentCard(product) {
   // timestamp ("2024-01-01T00:00:00"): only the date part is shown.
   const manifestations = Array.isArray(product.manifestations) ? product.manifestations : [];
   const pubDate = manifestations.map(m => m?.dates?.publication?.[0]).find(Boolean);
-  const formattedDate = pubDate ? _skgifEscape(String(pubDate).slice(0, 10)) : 'Unknown';
+  const formattedDate = pubDate ? _skgifEscape(String(pubDate).slice(0, 10)) : 'Unknown'; //dalla lettura della data in json tiene conto solo dei primi 10 caratteri
 
   // Source: venue title -> venue page, its identifiers (without omid) in brackets.
   let formattedSource = "";
   const venue = manifestations.map(m => m?.biblio?.in).find(v => v && v.name);
   if (venue) {
     const venueOmid = _skgifOmid(venue.local_identifier);
-    const venueTitle = `<i>${_skgifEscape(venue.name)}</i>`;
+    const venueTitle = `<i>${_skgifEscape(venue.name)}</i>`; //titolo della rivista in corsivo
     const titleHtml = venueOmid
       ? `<a href="browser.html?value=${venueOmid}" target="_blank" class="text-dark text-decoration-none">${venueTitle}</a>`
       : venueTitle;
-    const venueIds = _skgifIdList(venue.identifiers);
+    const venueIds = _skgifIdList(venue.identifiers); //lista degli ids del venue
     formattedSource = venueIds ? `${titleHtml} (${venueIds})` : titleHtml;
   }
 
   const formattedIds = _skgifIdList(product.identifiers, omid) || 'No ID';
 
-  const ocRecordUrl = `browser.html?value=${omid}`;
-  const refUrl = `browser.html?value=doc_ref/${omid}`;
-  const citUrl = `browser.html?value=doc_cit/${omid}`;
+  const ocRecordUrl = `browser.html?value=${omid}`; //titolo
+  const refUrl = `browser.html?value=doc_ref/${omid}`;  // bottone "Go to References"
+  const citUrl = `browser.html?value=doc_cit/${omid}`; // bottone "Go to Citations"
 
   return `
     <div class="col-12 mb-3">
@@ -3411,24 +3423,24 @@ function _renderDocumentCard(product) {
 // #callfun args: args[1] = Lucinda.data.main (has the id of
 // "doc_cit/br/{id}" / "doc_ref/br/{id}"), see api_search_author_skgif().
 function api_doc_citations_skgif(...args) {
-  _skgifCitationList(args[1], 'cf.cites', 'No citations found.');
+  _skgifCitationList(args[1], 'cf.cites', 'No citations found.'); //filtro citazioni
 }
 
 function api_doc_references_skgif(...args) {
-  _skgifCitationList(args[1], 'cf.cited_by', 'No references found.');
+  _skgifCitationList(args[1], 'cf.cited_by', 'No references found.'); //fitro riferimenti
 }
 
 function _skgifCitationList(lucinda_main_data, filter, emptyMessage) {
-  const id = _skgifUrlParam(lucinda_main_data, 'id').trim();
+  const id = _skgifUrlParam(lucinda_main_data, 'id').trim(); //legge ID del documento
   if (!id) {
     _skgifShowMessage(emptyMessage);
     return;
   }
 
-  const omidUrl = `https://w3id.org/oc/meta/br/${id}`;
-  createSkgifPaginatedSearch({
+  const omidUrl = `https://w3id.org/oc/meta/br/${id}`; //costruisce omid completo che è quello che ci serve in questo caso
+  createSkgifPaginatedSearch({ //manda richiesta
     sources: [`${SKGIF_API}/products?filter=${filter}:${encodeURIComponent(omidUrl)}`],
-    renderItem: _renderDocumentCard,
+    renderItem: _renderDocumentCard, //mostra card
     emptyMessage
   }).search();
 }
@@ -3456,26 +3468,28 @@ function _skgifCitationList(lucinda_main_data, filter, emptyMessage) {
 //
 // #callfun args: args[1] = Lucinda.data.main (has search_query), see
 // api_search_author_skgif().
-function api_search_venue_skgif(...args) {
+function api_search_venue_skgif(...args) { //legge la query e capisce che tipo di ricerca è
   const query = _skgifUrlParam(args[1], 'search_query');
-  const issn = query.startsWith('issn=') ? new URLSearchParams(query).get('issn').trim() : "";
-  const name = issn ? "" : _skgifSafeTerm(query);
+  const issn = query.startsWith('issn=') ? new URLSearchParams(query).get('issn').trim() : ""; //se la query inizia con issn è una ricerca per id
+  const name = issn ? "" : _skgifSafeTerm(query); //altrimenti → è una ricerca per nome, e il testo viene pulito con _skgifSafeTerm
 
+  //titolo della pagina
   const label = document.getElementById('search-query-label');
-  if (label) label.textContent = issn ? `ISSN: ${issn}` : name;
+  if (label) label.textContent = issn ? `ISSN: ${issn}` : name; //issn o nome
 
-  if (!issn && !name) {
+  if (!issn && !name) { //se nessuno dei due, quindi se non c'è niente da cercare
     _skgifShowMessage('No results found.');
     return;
   }
 
+  //costruzione richiesta
   const base = `${SKGIF_API}/venues?filter=`;
   createSkgifPaginatedSearch({
     sources: issn
-      ? [`${base}identifiers.scheme:issn,identifiers.value:${encodeURIComponent(issn)}`]
-      : _skgifSpellings(name).map(q => `${base}cf.search.name:${encodeURIComponent(q)},type:journal`),
-    renderItem: _renderVenueCard
-  }).search();
+      ? [`${base}identifiers.scheme:issn,identifiers.value:${encodeURIComponent(issn)}`] //con issn: una sola richiesta senza filtro type
+      : _skgifSpellings(name).map(q => `${base}cf.search.name:${encodeURIComponent(q)},type:journal`), //con nome: una richiesta per ogni grafia, con e senza accenti
+    renderItem: _renderVenueCard //resa cards
+  }).search();//paginatore
 }
 
 // ---venue_free_text (SKG-IF)---
@@ -3521,11 +3535,13 @@ function _renderVenueCard(venue) {
 // The names link to the agent's OMID page (Pietro linked the
 // w3id.org/oc/meta/ar/ page, the role, not the agent), until there is a
 // page for organisations.
+//Nelle card di Pietro comparivano anche Publisher (editore) ed Editor. Però l'API /venues restituisce solo nome, tipo e identificativi: niente editore, niente editor.
+//In OpenCitations una rivista è registrata anche come prodotto, con lo stesso OMID. Chiedendo a /products quell'OMID, si ottiene la rivista con le sue contributions, dentro le quali ci sono publisher ed editor.
 function _loadVenueAgents(omid) {
-  skgifFetch(`${SKGIF_API}/products/https://w3id.org/oc/meta/${omid}`).then(data => {
-    const contributions = (data?.['@graph'] || [])[0]?.contributions;
+  skgifFetch(`${SKGIF_API}/products/https://w3id.org/oc/meta/${omid}`).then(data => { //seconda richiesta per ogni rivista mostrata per recuperaree editor e publisher
+    const contributions = (data?.['@graph'] || [])[0]?.contributions; //dal prodotto prende le contributions
     const row = (role, label) => {
-      const agents = _skgifAgents(contributions, role, agentOmid => `https://w3id.org/oc/meta/${agentOmid}`);
+      const agents = _skgifAgents(contributions, role, agentOmid => `https://w3id.org/oc/meta/${agentOmid}`); //uso di skgifagents due volte: una volta per editor e una per publisher
       return agents
         ? `<div class="mb-2"><span class="metadata-label fw-bold">${label}:</span><br><span>${agents}</span></div>`
         : '';
@@ -3534,4 +3550,94 @@ function _loadVenueAgents(omid) {
     document.querySelectorAll(`.venue-agents[data-venue-omid="${omid}"]`)
       .forEach(box => { box.innerHTML = html; });
   });
+}
+
+/*
+################################################################################
+# 7. RICERCA ORGANIZZAZIONI (org_free_text)
+################################################################################
+*/
+// ---org_free_text (SKG-IF)---
+// New search (Pietro had none), one /organisations request:
+//   organisation/<text>          -> cf.search.name:<text> (paginated)
+//   organisation/crossref=<id>   -> identifiers.scheme:crossref,identifiers.id:<id>
+//                                   (paginated, from home.js)
+//   organisation/omid=ra/<id>    -> /organisations/<full OMID> (one record,
+//                                   from home.js; there is no OMID filter)
+// SKG-IF organisations on OC have only name, OMID and, for some, a Crossref
+// member id (identifiers [{scheme: crossref, value: "78"}]). Every record is
+// shown as the API returns it: the same publisher is recorded once per
+// article in Meta, so a name can have many identical records (to discuss).
+// Accents and special characters as in the document search.
+//
+// #callfun args: args[1] = Lucinda.data.main (has search_query), see
+// api_search_author_skgif().
+function api_search_org_skgif(...args) {
+  const query = _skgifUrlParam(args[1], 'search_query');
+  const idParam = key => query.startsWith(`${key}=`) ? new URLSearchParams(query).get(key).trim() : "";
+  const omid = idParam('omid');
+  const crossref = idParam('crossref');
+  const name = omid || crossref ? "" : _skgifSafeTerm(query);
+
+  const label = document.getElementById('search-query-label');
+  if (label) label.textContent = omid ? `OMID: ${omid}` : crossref ? `Crossref: ${crossref}` : name;
+
+  if (omid) return _showOrgByOmid(omid);
+  if (!crossref && !name) {
+    _skgifShowMessage('No results found.');
+    return;
+  }
+
+  const base = `${SKGIF_API}/organisations?filter=`;
+  createSkgifPaginatedSearch({
+    sources: crossref
+      ? [`${base}identifiers.scheme:crossref,identifiers.id:${encodeURIComponent(crossref)}`]
+      : _skgifSpellings(name).map(q => `${base}cf.search.name:${encodeURIComponent(q)}`),
+    renderItem: _renderOrgCard
+  }).search();
+}
+
+// ---org_free_text (SKG-IF)---
+// OMID search: /organisations/<full OMID> returns a single record, not a
+// search page (no total_items), so the card is shown here instead of by the
+// paginator. 404 = no organisation with that OMID (e.g. a person's ra/).
+function _showOrgByOmid(omid) {
+  const container = document.getElementById('search-results-container');
+  const countEl = document.getElementById('search-total-count');
+  holdSkgifPage();
+  fetch(`${SKGIF_API}/organisations/https://w3id.org/oc/meta/${omid}`)
+    .then(r => r.ok ? r.json() : r.status === 404 ? {} : Promise.reject())
+    .then(data => {
+      const org = (data['@graph'] || [])[0];
+      if (countEl) countEl.textContent = org ? 1 : 0;
+      if (org) container.innerHTML = _renderOrgCard(org);
+      else _skgifShowMessage('No results found.');
+    })
+    .catch(() => _skgifShowMessage(SKGIF_FAILED_MESSAGE))
+    .finally(releaseSkgifPage);
+}
+
+// ---org_free_text (SKG-IF)---
+// HTML card for one organisation of the results page, same layout as the
+// venue cards. The name links to the organisation's OMID page, as the
+// publishers in the venue cards, until there is an organisation page.
+function _renderOrgCard(org) {
+  const omid = _skgifOmid(org.local_identifier);
+  if (!omid) return "";
+
+  return `
+    <div class="col-12 mb-3">
+      <div class="card shadow-sm p-2">
+        <div class="card-body p-3 d-flex flex-column">
+          <h5 class="card-title mb-2">
+            <a href="https://w3id.org/oc/meta/${omid}" target="_blank">${_skgifEscape(org.name || 'Unknown Name')}</a>
+          </h5>
+          <hr>
+          <div class="mb-2">
+            <span class="metadata-label fw-bold">Identifiers:</span><br>
+            <span>${_skgifIdList(org.identifiers, omid)}</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
 }
