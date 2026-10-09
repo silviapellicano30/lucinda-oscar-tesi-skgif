@@ -12,16 +12,26 @@
       </a>
     </div>
 
+    <!-- SILVIA (SKG-IF): same layout as Pietro's; the fields are filled by
+         api_author_record_skgif() in localbrowser.js (ids below) instead of
+         [[Lucinda:...]] SPARQL values -->
     <div class="row">
 
       <div class="col-12 mb-4">
         <div class="card shadow-sm p-3 h-100">
           <div class="card-header text-center">
-            <h3 class="my-0">ra/[[Lucinda:getVal(main.id)]]</h3>
+            <h3 class="my-0" id="ra-id"></h3>
             <p class="mb-0">Responsible Agent Record</p>
           </div>
         </div>
       </div>
+
+      <!-- errors (no author with this OMID, failed request) -->
+      <div class="col-12" id="ra-message"></div>
+
+    </div>
+
+    <div class="row d-none" id="ra-record">
 
       <div class="col-12 col-md-8 mb-4">
         <div class="card shadow-sm p-3 h-100">
@@ -32,21 +42,22 @@
 
             <div class="card-body">
                 
-            <h5 class="card-title text-center">
-              [[Lucinda:create_author_header_link(main.id, author_meta.gname, author_meta.fname, author_meta.fullname)]]
-            </h5>
+            <h5 class="card-title text-center" id="ra-name"></h5>
                 <hr>
 
                 <div class="row">
 
                     <div class="col-12 col-md-6">
                         <span class="metadata-label fw-bold">ORCID:</span>
-                        <p>
-                            <a href="https://orcid.org/[[Lucinda:getVal(author_meta.orcid)]]" target="_blank">
-                                [[Lucinda:getVal(author_meta.orcid)]] <sup><i class="fas fa-external-link-alt small"></i></sup>
-                            </a>
-                        </p>
+                        <p id="ra-orcid"></p>
 
+                    </div>
+
+                    <!-- SILVIA (SKG-IF): Pietro's query already read the other
+                         identifiers (otherIDs) but did not show them -->
+                    <div class="col-12 col-md-6">
+                        <span class="metadata-label fw-bold">Other identifiers:</span>
+                        <p id="ra-ids"></p>
                     </div>
                 </div>
 
@@ -67,28 +78,16 @@
                            <span class="fw-bold small">Publications</span>
                       </div>
                       <div class="card-body text-center">
-                        <h3 class="text-primary my-1">[[Lucinda:getVal(author_works.count)]]</h3>
+                        <h3 class="text-primary my-1" id="search-total-count"></h3>
                       </div>
                   </div>
                 </div>
               </div>
 
-              <div class="row g-3 column-gap-3 mt-1">
-                <div class="col">
-                  <div class="card shadow-sm p-1 m-1">
-                    <div class="card-header text-center">
-                         <h6 class="my-1"><span class="fw-bold small">Publications per year</span></h6>
-                    </div>
-                    <div class="card-body">
-                      <div><canvas id="citsxyear_chart" style="display: block; margin: 0 auto;"></canvas></div>
-                      [[Lucinda:barchart_simple(
-                        _DATA_("citsxyear_chart"),
-                        author_works.pubYears
-                      )]]
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <!-- SILVIA (SKG-IF): ON HOLD, to discuss with the prof - Pietro's
+                   "Publications per year" chart (barchart_simple(author_works.pubYears)).
+                   SKG-IF has no date filter or sort: every work of the author
+                   would have to be downloaded (50 per page) to count them by year. -->
 
           </div>
         </div>
@@ -102,7 +101,9 @@
             </div>
             
             <div class="card-body p-4">
-                [[Lucinda:getVal(author_works.pubList)]]
+                <!-- SILVIA (SKG-IF): paginated document cards, in the API's order
+                     (SKG-IF has no sort: Pietro's list was by date, newest first) -->
+                <div class="row" id="search-results-container"></div>
             </div>
 
         </div>

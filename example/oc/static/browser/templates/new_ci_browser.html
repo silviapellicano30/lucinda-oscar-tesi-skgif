@@ -4,18 +4,27 @@
     <i class="fas fa-arrow-left"></i> Home
   </a>
 </div>
+<!-- SILVIA (SKG-IF): same layout as Pietro's; the fields are filled by
+     api_citation_record_skgif() in localbrowser.js (ids below) instead of
+     [[Lucinda:...]] SPARQL values -->
 <div class="row">
 
   <!-- TITLE CARD -->
   <div class="col-12 mb-4">
     <div class="card shadow-sm p-3 h-100">
       <div class="card-header text-center">
-        <h3 class="my-0">[[Lucinda:getVal(index2.OciID)]]</h3>
+        <h3 class="my-0" id="ci-oci"></h3>
         <p class="mb-0">Citation Record</p>
       </div>
     </div>
   </div>
 
+  <!-- errors (invalid OCI, missing document...) and the "citation not found" warning -->
+  <div class="col-12" id="ci-message"></div>
+
+</div>
+
+<div class="row d-none" id="ci-record">
 
   <!-- LEFT COLUMN: CITING + CITED -->
   <div class="col-12 col-md-8 mb-4">
@@ -32,20 +41,20 @@
 
             <div class="card-body">
 
-              <h5 class="card-title text-center">[[Lucinda:getVal(meta2.citingTitle)]]</h5>
+              <h5 class="card-title text-center" id="citing-title"></h5>
               <hr>
 
               <span class="metadata-label fw-bold" >Authors:</span>
-              <p>[[Lucinda:getVal(meta2.citingAuthorNames)]]</p>
+              <p id="citing-authors"></p>
 
               <span class="metadata-label fw-bold" >Publication Date:</span>
-              <p>[[Lucinda:date_entry(meta2.citingPubDateRaw)]]</p>
+              <p id="citing-date"></p>
 
               <span class="metadata-label fw-bold" >Identifiers:</span>
-              <p>[[Lucinda:getVal(meta2.citingIdsList)]]</p>
+              <p id="citing-ids"></p>
 
               <span class="metadata-label fw-bold">Full URI:</span>
-              <p>[[Lucinda:getVal(meta2.citingBRURI)]]</p>
+              <p id="citing-uri"></p>
 
             </div>
 
@@ -58,10 +67,10 @@
                     <span class="fw-bold small">References</span>
                   </div>
                   <div class="card-body text-center">
-                    <h3 class="text-primary my-1">[[Lucinda:pipe_count(index2.CitingReferences)]]</h3>
+                    <h3 class="text-primary my-1" id="citing-refs"></h3>
                   </div>
-                </div>                
-                
+                </div>
+
               </div>
 
               <div class="col-6">
@@ -71,9 +80,9 @@
                     <span class="fw-bold small">Citations</span>
                   </div>
                   <div class="card-body text-center">
-                    <h3 class="text-primary my-1">[[Lucinda:pipe_count(index2.CitingCitations)]]</h3>
+                    <h3 class="text-primary my-1" id="citing-cits"></h3>
                   </div>
-                </div>                
+                </div>
 
               </div>
             </div>
@@ -91,20 +100,20 @@
 
             <div class="card-body">
 
-              <h5 class="card-title text-center">[[Lucinda:getVal(meta2.citedTitle)]]</h5>
+              <h5 class="card-title text-center" id="cited-title"></h5>
               <hr>
 
               <span class="metadata-label fw-bold">Authors:</span>
-              <p>[[Lucinda:getVal(meta2.citedAuthorNames)]]</p>
+              <p id="cited-authors"></p>
 
               <span class="metadata-label fw-bold">Publication Date:</span>
-              <p>[[Lucinda:date_entry(meta2.citedPubDateRaw)]]</p>
+              <p id="cited-date"></p>
 
               <span class="metadata-label fw-bold">Identifiers:</span>
-              <p>[[Lucinda:getVal(meta2.citedIdsList)]]</p>
+              <p id="cited-ids"></p>
 
               <span class="metadata-label fw-bold" >Full URI:</span>
-              <p>[[Lucinda:getVal(meta2.citedBRURI)]]</p>
+              <p id="cited-uri"></p>
 
             </div>
 
@@ -117,7 +126,7 @@
                     <span class="fw-bold small">References</span>
                   </div>
                   <div class="card-body text-center">
-                    <h3 class="text-primary my-1">[[Lucinda:pipe_count(index2.CitedReferences)]]</h3>
+                    <h3 class="text-primary my-1" id="cited-refs"></h3>
                   </div>
                 </div>
 
@@ -130,7 +139,7 @@
                     <span class="fw-bold small">Citations</span>
                   </div>
                   <div class="card-body text-center">
-                    <h3 class="text-primary my-1">[[Lucinda:pipe_count(index2.CitedCitations)]]</h3>
+                    <h3 class="text-primary my-1" id="cited-cits"></h3>
                   </div>
                 </div>
 
@@ -141,27 +150,27 @@
           </div>
         </div>
 
-      </div> 
+      </div>
     </div>
   </div>
 
 
 
   <!-- RIGHT COLUMN: BOTH-SIDE METRICS -->
-    <div class="col-12 col-md-4 mb-4">
-  
+  <div class="col-12 col-md-4 mb-4">
+
   <div class="card shadow-sm p-1 h-100">
     <div class="card-body">
 
       <div class="row g-3 column-gap-3">
-        
+
         <div class="col">
           <div class="card shadow-sm p-1 m-1 h-100">
             <div class="card-header text-center py-1">
               <span class="fw-bold small">Cited by Both</span>
             </div>
             <div class="card-body text-center">
-              <h3 class="text-primary my-1">[[Lucinda:getVal(index2.CitedbyBoth)]]</h3>
+              <h3 class="text-primary my-1" id="ci-cited-by-both"></h3>
             </div>
           </div>
         </div>
@@ -172,49 +181,21 @@
               <span class="fw-bold small">Citing Both</span>
             </div>
             <div class="card-body text-center">
-              <h3 class="text-primary my-1">[[Lucinda:getVal(index2.CitingBoth)]]</h3>
+              <h3 class="text-primary my-1" id="ci-citing-both"></h3>
             </div>
           </div>
         </div>
 
       </div>
 
-      <div class="row g-3 column-gap-3 mt-1">
-        <div class="col">
-          <div class="card shadow-sm p-1 m-1">
-            <div class="card-header text-center">
-              <h6 class="my-1 fw-bold small">Citations of Citing per year</h6>
-            </div>
-            <div class="card-body">
-              <div><canvas id="citsxyear_chart"  style="display: block; margin: 0 auto;"></canvas></div>
-              [[Lucinda:barchart_from_ids(
-                _DATA_("citsxyear_chart"),
-                index2.CitingCitations
-              )]]
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="row g-3 column-gap-3 mt-1">
-        <div class="col">
-          <div class="card shadow-sm p-1 m-1">
-            <div class="card-header text-center">
-              <h6 class="my-1 fw-bold small">Citations of Cited per year</h6>
-            </div>
-            <div class="card-body">
-              <div><canvas id="citsxyear_chart_2" style="display: block; margin: 0 auto;"></canvas></div>
-              [[Lucinda:barchart_from_ids(
-                _DATA_("citsxyear_chart_2"),
-                index2.CitedCitations
-              )]]
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- SILVIA (SKG-IF): ON HOLD, to discuss with the prof - Pietro's two
+           "Citations of Citing / Cited per year" charts
+           (barchart_from_ids(index2.CitingCitations / CitedCitations)).
+           SKG-IF has no date filter: every citing product would have to be
+           downloaded (50 per page) to count them by year. -->
 
     </div>
   </div>
 </div>
 
-
+</div>

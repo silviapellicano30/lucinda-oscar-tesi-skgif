@@ -3032,19 +3032,61 @@ function _skgifSafeTerm(s) { //sostituisce con uno spazio i caratteri che mandan
     .split(/\s+/).filter(Boolean).join(' ');
 }
 
-// Removes accents and other diacritics ("Nicolò" -> "Nicolo", "Müller" ->
-// "Muller"): NFD splits a letter from its combining marks (\p{M}), which
-// are dropped. Letters with no decomposition (ø, ł, ß) are unchanged.
-// The API matches accent-sensitively (given_name:Nicolò 7082, Nicolo 1953,
-// disjoint sets; "citation índex" 0 titles, "citation index" 1009), so the
-// searches look for a query with accents also without them.
-function _foldAccents(s) { //gestione accenti
-  return String(s || "").normalize('NFD').replace(/\p{M}/gu, '').normalize('NFC');
+// RICERCA PER IDENTIFICATIVO (pannello ID della home: schema dalla tendina + valore)
+// The home ID panel sends "<category>/" + encodeURIComponent("scheme=doi&id=10.1/...")
+// (see skgifSearch() in home.js). {scheme, id} of such a search_query, null
+// for a free-text one.
+function _skgifIdQuery(query) {
+  if (!query.startsWith('scheme=')) return null;
+  const params = new URLSearchParams(query);
+  return { scheme: (params.get('scheme') || "").toLowerCase(), id: (params.get('id') || "").trim() };
 }
 
-// The query as typed and, if different, without accents (see _foldAccents()).
-function _skgifSpellings(s) {
-  return [...new Set([s, _foldAccents(s)])];
+// Filter field holding the identifier value: identifiers.id on products,
+// persons and organisations, identifiers.value on venues (the other one
+// returns HTTP 422 there).
+const SKGIF_ID_FIELD = { products: 'identifiers.id', persons: 'identifiers.id', organisations: 'identifiers.id', venues: 'identifiers.value' };
+
+// Cards of every record of `entity` with that identifier (the same ID can
+// belong to several records: 137 venues share an ISSN, 10 persons an ORCID).
+// Every scheme of the SKG-IF list is searched as typed, also the ones OC has
+// no data for (ror, viaf, eissn, ...): the API answers 404 = 0 results.
+// omid has no filter: /<entity>/<full OMID> returns the record itself.
+function _skgifIdSearch(entity, idQuery, renderItem) {
+  const { scheme, id } = idQuery;
+  const label = document.getElementById('search-query-label');
+  if (label) label.textContent = `${scheme}: ${id}`; //titolo: "doi: 10.1/..."
+
+  if (!scheme || !id) {
+    _skgifShowMessage('No results found.');
+    return;
+  }
+  if (scheme === 'omid') return _skgifShowByOmid(entity, id, renderItem);
+
+  createSkgifPaginatedSearch({
+    sources: [`${SKGIF_API}/${entity}?filter=identifiers.scheme:${encodeURIComponent(scheme)},${SKGIF_ID_FIELD[entity]}:${encodeURIComponent(id)}`],
+    renderItem
+  }).search();
+}
+
+// OMID search: /<entity>/<full OMID> returns a single record, not a search
+// page (no total_items), so the card is shown here instead of by the
+// paginator. Accepts "br/0601...", "omid:br/0601..." or the full w3id URL.
+// 404 = no record of that entity with that OMID.
+function _skgifShowByOmid(entity, omid, renderItem) {
+  const shortOmid = omid.replace(/^omid:/i, '').replace(/^https?:\/\/w3id\.org\/oc\/meta\//i, '');
+  const container = document.getElementById('search-results-container');
+  const countEl = document.getElementById('search-total-count');
+  holdSkgifPage();
+  skgifFetch(`${SKGIF_API}/${entity}/https://w3id.org/oc/meta/${shortOmid}`)
+    .then(data => {
+      if (!data) return _skgifShowMessage(SKGIF_FAILED_MESSAGE);
+      const record = (data['@graph'] || [])[0];
+      if (countEl) countEl.textContent = record ? 1 : 0;
+      if (record) container.innerHTML = renderItem(record);
+      else _skgifShowMessage('No results found.');
+    })
+    .finally(releaseSkgifPage);
 }
 
 // FUNZIONI CHE preparano quello che si vede sulla pagina
@@ -3063,22 +3105,58 @@ function _skgifOmid(localId) {
   return match ? match[1] : "";
 }
 
-// External page of each identifier scheme, same targets as Pietro's
-// createIdLinks() in api_search() (isbn has none there either).
+// External page of each identifier scheme: doi...omid are the same targets
+// as Pietro's createIdLinks() in api_search(); the others (SILVIA, SKG-IF)
+// cover every scheme of the SKG-IF list, plus jid (J-STAGE, present in OC),
+// each on its official resolver or, where there is none, on the reference
+// registry of that kind of ID (all checked live on 2026-10-09):
+//   pmcid     PubMed Central (the old www.ncbi.nlm.nih.gov/pmc/ URLs now
+//             end on a 404)
+//   crossref  Crossref participation report of the member (api.crossref.org
+//             is JSON only)
+//   isbn      WorldCat (OCLC), there is no ISBN resolver
+//   eissn / lissn  ISSN Portal, as issn
+//   ivoid     GAVO IVOID resolver of the IVOA registry
+//   spase     SPASE metadata landing pages (spase:// -> https://spase-metadata.org/)
+//   urn       nbn-resolving.org (Deutsche Nationalbibliothek) for URN:NBN;
+//             other URNs have no general resolver -> no link
+//   url / w3id  the address itself (only http/https)
+//   opendoar  Jisc Sherpa OpenDOAR record
+// A function returning "" means no link for that value. The value goes into
+// the URL through _skgifUrlPart() (? and # would otherwise cut it).
 //la rubrica dei siti: dai il valore e ti restituisce l'indirizzo completo
+const _skgifUrlPart = v => encodeURI(v).replace(/[?#]/g, encodeURIComponent);
+const _skgifHttpUrl = v => /^https?:\/\//i.test(v) ? encodeURI(v) : "";
 const SKGIF_ID_URLS = {
-  doi: v => `https://doi.org/${v}`,
-  pmid: v => `https://pubmed.ncbi.nlm.nih.gov/${v}/`,
-  issn: v => `https://portal.issn.org/resource/ISSN/${v}`,
-  openalex: v => `https://openalex.org/${v}`,
-  orcid: v => `https://orcid.org/${v}`,
-  omid: v => `https://w3id.org/oc/meta/${v}`
+  doi: v => `https://doi.org/${_skgifUrlPart(v)}`,
+  pmid: v => `https://pubmed.ncbi.nlm.nih.gov/${_skgifUrlPart(v)}/`,
+  issn: v => `https://portal.issn.org/resource/ISSN/${_skgifUrlPart(v)}`,
+  openalex: v => `https://openalex.org/${_skgifUrlPart(v)}`,
+  orcid: v => `https://orcid.org/${_skgifUrlPart(v)}`,
+  omid: v => `https://w3id.org/oc/meta/${_skgifUrlPart(v)}`,
+  pmcid: v => `https://pmc.ncbi.nlm.nih.gov/articles/${_skgifUrlPart(v)}/`, // SILVIA (SKG-IF)
+  arxiv: v => `https://arxiv.org/abs/${_skgifUrlPart(v)}`,
+  crossref: v => `https://www.crossref.org/members/prep/${_skgifUrlPart(v)}`,
+  ror: v => `https://ror.org/${_skgifUrlPart(v)}`,
+  viaf: v => `https://viaf.org/viaf/${_skgifUrlPart(v)}`,
+  handle: v => `https://hdl.handle.net/${_skgifUrlPart(v)}`,
+  bibcode: v => `https://ui.adsabs.harvard.edu/abs/${_skgifUrlPart(v)}`,
+  isbn: v => `https://search.worldcat.org/isbn/${_skgifUrlPart(v)}`,
+  eissn: v => `https://portal.issn.org/resource/ISSN/${_skgifUrlPart(v)}`,
+  lissn: v => `https://portal.issn.org/resource/ISSN-L/${_skgifUrlPart(v)}`,
+  jid: v => `https://www.jstage.jst.go.jp/browse/${_skgifUrlPart(v)}`,
+  ivoid: v => `https://dc.g-vo.org/I/${_skgifUrlPart(v)}`,
+  spase: v => /^spase:\/\//i.test(v) ? `https://spase-metadata.org/${_skgifUrlPart(v.replace(/^spase:\/\//i, ''))}` : "",
+  urn: v => /^urn:nbn:/i.test(v) ? `https://nbn-resolving.org/${_skgifUrlPart(v)}` : "",
+  url: _skgifHttpUrl,
+  w3id: v => _skgifHttpUrl(v) || `https://w3id.org/${_skgifUrlPart(v.replace(/^\/+/, ''))}`,
+  opendoar: v => `https://v2.sherpa.ac.uk/id/repository/${_skgifUrlPart(v)}`
 };
 
 // Order the identifiers are listed in (the API returns them in no fixed
 // order); omid last, as in Pietro's cards. Unknown schemes go before omid.
 //si decide ordine di comparsa degli id (devono comparire sempre nello stesso ordine)
-const SKGIF_ID_ORDER = ['doi', 'pmid', 'pmcid', 'isbn', 'issn', 'openalex'];
+const SKGIF_ID_ORDER = ['doi', 'pmid', 'pmcid', 'arxiv', 'isbn', 'issn', 'openalex'];
 
 function _skgifIdRank(scheme) {
   if (scheme === 'omid') return SKGIF_ID_ORDER.length + 1; //omid riceve sempre il numero più alto, quindi finisce in fondo.
@@ -3091,9 +3169,9 @@ function _skgifIdRank(scheme) {
 function _skgifIdLink(scheme, value) {
   const s = String(scheme || "").toLowerCase(); //mette prefisso in minuscolo
   const label = _skgifEscape(`${s}:${value}`); //prepara testo da mostrare
-  const url = SKGIF_ID_URLS[s]; //cerca prefisso nella rubrica
+  const url = SKGIF_ID_URLS[s] ? SKGIF_ID_URLS[s](String(value)) : ""; //cerca prefisso nella rubrica
   return url
-    ? `<a href="${_skgifEscape(url(value))}" target="_blank" class="text-dark text-decoration-none">${label}</a>` //link per aprire id in una nuova scheda
+    ? `<a href="${_skgifEscape(url)}" target="_blank" class="text-dark text-decoration-none">${label}</a>` //link per aprire id in una nuova scheda
     : label;
 }
 
@@ -3148,78 +3226,65 @@ function _skgifAgents(contributions, role, agentUrl) {
 // above): args[1] = Lucinda.data.main (has search_query), args[2] = this
 // block's own id.
 //
-// The home page has separate given name / family name / ORCID fields, so
-// search_query is a URL-encoded query string (see home.js):
+// The home page has separate given name / family name fields and the ID
+// panel, so search_query is a URL-encoded query string (see home.js):
 //   given=Silvio&family=Peroni  -> cf.search.given_name AND cf.search.family_name
 //   family=Peroni               -> cf.search.family_name only (given only alike)
-//   orcid=0000-0003-0530-4305   -> identifiers.id (exact; the same ORCID can
-//                                  belong to several person records)
+//   scheme=orcid&id=0000-...    -> identifiers.id, see _skgifIdSearch()
 // cf.search.* matches the beginning of words, so an abbreviated field
 // ("Peroni" + "S", "Silvio" + "P") already works with no extra logic.
 // SKG-IF returns full person metadata (name, ORCID, ...) in the search
 // response itself, so there's no need for OpenCitations Meta at all.
 //
-// Accents: the same person is often recorded both with and without accents
-// (same ORCID as "Maria Jose Hierro" and "María José Hierro"), so a name
-// with accents is also searched without them (_skgifSpellings()), the
-// spelling typed by the user first. The variants are disjoint, so the total
-// is just their sum.
+// The name is searched exactly as typed: the API matches accent-sensitively
+// ("Nicolò" doesn't find "Nicolo" and vice versa), and no other spelling is
+// tried (prof's decision).
 //
 // Flow: _authorSearchFields() -> createSkgifPaginatedSearch() with
 // _rankAuthorsByQuery() and _renderAuthorCard() (defined below).
 function api_search_author_skgif(...args) { //Coordina la ricerca autori
-  const fields = _authorSearchFields(_skgifUrlParam(args[1], 'search_query')); //legge cosa ha scritto utente, prende il testo dall'indirizzo e lo divide in tre caselle given, family e orcid tramite authorsearchfield
+  const query = _skgifUrlParam(args[1], 'search_query');
+  const idQuery = _skgifIdQuery(query); //ricerca per identificativo (pannello ID)
+  if (idQuery) return _skgifIdSearch('persons', idQuery, _renderAuthorCard);
+
+  const fields = _authorSearchFields(query); //legge cosa ha scritto utente, prende il testo dall'indirizzo e lo divide nelle caselle given e family tramite authorsearchfield
 
   const label = document.getElementById('search-query-label'); //titolo leggibile: "Given name: ... · Family name: ..."
   if (label) {
-    label.textContent = fields.orcid ? `ORCID: ${fields.orcid}` //scrive il titolo della ricerca nella parte alta della pagina
-      : [fields.given && `Given name: ${fields.given}`, fields.family && `Family name: ${fields.family}`]
-        .filter(Boolean).join(' · ');
+    label.textContent = [fields.given && `Given name: ${fields.given}`, fields.family && `Family name: ${fields.family}`]
+      .filter(Boolean).join(' · ');
   }
 
-  if (!fields.orcid && !fields.given && !fields.family) { // controlla che ci sia qualcosa da cercare
+  if (!fields.given && !fields.family) { // controlla che ci sia qualcosa da cercare
     _skgifShowMessage('No results found.');
     return;
   }
-  
-  //costruzione richieste da mandare all'api
-  const base = `${SKGIF_API}/persons`; //base url
-  let sources;
-  if (fields.orcid) { //se c'è l'orcid
-    sources = [`${base}?filter=identifiers.id:${encodeURIComponent(fields.orcid)}`];
-  } else { //altrimenti se ci sono nome e/o cognome:
-    // One filter per filled field, for each spelling (as typed, unaccented).
-    const spellings = s => s ? _skgifSpellings(s) : [null]; //parte una richiesta per ogni grafia: con acento e senza accento
-    const apiTerm = s => encodeURIComponent(_skgifSafeTerm(s));
-    sources = [];
-    spellings(fields.given).forEach(given => spellings(fields.family).forEach(family => { //provare tutte le combinazioni con/senza accentazione
-      const filters = [];
-      if (given) filters.push(`cf.search.given_name:${apiTerm(given)}`); //nome
-      if (family) filters.push(`cf.search.family_name:${apiTerm(family)}`); //cognome
-      sources.push(`${base}?filter=${filters.join(',')}`); //Nome e cognome dove virgola = E
-    }));
-  }
+
+  //costruzione richiesta da mandare all'api: un filtro per ogni campo compilato
+  const apiTerm = s => encodeURIComponent(_skgifSafeTerm(s));
+  const filters = [];
+  if (fields.given) filters.push(`cf.search.given_name:${apiTerm(fields.given)}`); //nome
+  if (fields.family) filters.push(`cf.search.family_name:${apiTerm(fields.family)}`); //cognome
 
   createSkgifPaginatedSearch({ //avvia paginator
-    sources,
+    sources: [`${SKGIF_API}/persons?filter=${filters.join(',')}`], //Nome e cognome dove virgola = E
     rankItems: items => _rankAuthorsByQuery(items, fields), //come ordinare
     renderItem: _renderAuthorCard  //come disegnare le cards
   }).search(); //consegna tutto al paginator che manda le richieste e gestisce le pagine
 }
 
 // ---aut_free_text (SKG-IF) FUNZIONI DI SUPPORTO---
-// Reads {given, family, orcid} from the decoded search_query
-// ("given=...&family=..." or "orcid=...", see home.js). Names are
-// normalized to NFC (accents as single composed characters, like the API
-// data).
+// Reads {given, family} from the decoded search_query ("given=...&family=...",
+// see home.js). Names are normalized to NFC (accents as single composed
+// characters, like the API data).
 function _authorSearchFields(query) {
   if (!query.includes('=')) { //testo libero (es. "author/carfagna"): ultima parola = cognome, le altre = nome
     const words = query.normalize('NFC').trim().split(/\s+/).filter(Boolean);
-    return { given: words.slice(0, -1).join(' '), family: words[words.length - 1] || "", orcid: "" }; //i tre campi given, family e orcid
+    return { given: words.slice(0, -1).join(' '), family: words[words.length - 1] || "" }; //i due campi given e family
   }
   const params = new URLSearchParams(query);
   const get = key => (params.get(key) || "").normalize('NFC').trim();
-  return { given: get('given'), family: get('family'), orcid: get('orcid') };
+  return { given: get('given'), family: get('family') };
 }
 
 // ---aut_free_text (SKG-IF)---
@@ -3236,11 +3301,10 @@ function _normName(s) {
 // ---aut_free_text (SKG-IF)---
 // cf.search.* also returns partial matches ("Peroni" finds "Peronin" too),
 // so each page is stable-sorted by how many of the filled fields match
-// exactly (accents ignored): e.g. family "Peroni" + given "S" -> the Peroni
-// first, then "Peronin". The ORCID search needs no ranking.
+// exactly: e.g. family "Peroni" + given "S" -> the Peroni first, then
+// "Peronin".
 function _rankAuthorsByQuery(items, fields) { //match esatti in cima e parziali sotto assegnando a ogni persona un punteggio di errore
-  if (fields.orcid) return items;
-  const same = (a, b) => _foldAccents(_normName(a)) === _foldAccents(_normName(b));
+  const same = (a, b) => _normName(a) === _normName(b);
   const score = person =>
     (fields.family && !same(person.family_name, fields.family) ? 1 : 0) +
     (fields.given && !same(person.given_name, fields.given) ? 1 : 0);
@@ -3283,7 +3347,7 @@ function _renderAuthorCard(person) {
 
           <div class="mb-2">
             <span class="metadata-label fw-bold">Other identifiers:</span><br>
-            <span><a href="https://w3id.org/oc/meta/${omid}" target="_blank">omid:${omid}</a></span>
+            <span>${_skgifIdList(identifiers.filter(i => i.scheme !== "orcid"), omid)}</span>
           </div>
         </div>
       </div>
@@ -3302,8 +3366,7 @@ function _renderAuthorCard(person) {
 // field of the card (title, authors with ORCID, identifiers, publication
 // date, venue), and total_items is the real number of matches, not capped
 // at 100. Pagination is the shared createSkgifPaginatedSearch() (section 1)
-// with one source (two if the query has accents: also searched without
-// them, as typed first).
+// with one source: the query as typed.
 //
 // #callfun args: args[1] = Lucinda.data.main (has search_query), see
 // api_search_author_skgif().
@@ -3312,17 +3375,38 @@ function _renderAuthorCard(person) {
 // are replaced with spaces by _skgifSafeTerm() (section 2), which also
 // normalizes the query to NFC.
 function api_search_doc_skgif(...args) { //Coordina la ricerca documenti
-  const query = _skgifSafeTerm(_skgifUrlParam(args[1], 'search_query')); //NFC + caratteri che rompono la richiesta = lettura e pulizia della query prendendo il valore cercato dall'url della pagina tramite skgifurlparam e togliendo i caratteri che rompono l'api tramite skgifsafeterm
+  const rawQuery = _skgifUrlParam(args[1], 'search_query');
+  const idQuery = _skgifIdQuery(rawQuery); //ricerca per identificativo (pannello ID)
+  if (idQuery) return _skgifIdSearch('products', idQuery, _renderDocumentCard);
+
+  const query = _skgifSafeTerm(rawQuery); //NFC + caratteri che rompono la richiesta = lettura e pulizia della query prendendo il valore cercato dall'url della pagina tramite skgifurlparam e togliendo i caratteri che rompono l'api tramite skgifsafeterm
+  const label = document.getElementById('search-query-label');
+  if (label) label.textContent = query;
   if (!query) { //se la query è vuota
     _skgifShowMessage('No results found.');
     return;
   }
 
   createSkgifPaginatedSearch({ //avvio della ricerca
-    sources: _skgifSpellings(query) //produzione delle due grafie: con accento e senza accento, una richiesta per ogni grafia
-      .map(q => `${SKGIF_API}/products?filter=cf.search.title:${encodeURIComponent(q)}`),
+    sources: [`${SKGIF_API}/products?filter=cf.search.title:${encodeURIComponent(query)}`], //una sola richiesta, la query così come è scritta
     renderItem: _renderDocumentCard //come disegnare le cards
   }).search(); //chiamiamo il paginator
+}
+
+// ---doc_free_text (SKG-IF)---
+// Title of a product: "none" is the language-less title, else the first
+// language found (the API groups the titles by language). Plain text.
+function _skgifProductTitle(product) {
+  const titles = product.titles || {};
+  return (titles.none || Object.values(titles)[0] || [])[0] || 'No title'; //L'API raggruppa i titoli per lingua. || vuol dire se no
+}
+
+// Publication date of a product, from its manifestations, escaped. The date
+// is a full timestamp ("2024-01-01T00:00:00"): only the date part is shown.
+function _skgifProductDate(product) {
+  const manifestations = Array.isArray(product.manifestations) ? product.manifestations : [];
+  const pubDate = manifestations.map(m => m?.dates?.publication?.[0]).find(Boolean);
+  return pubDate ? _skgifEscape(String(pubDate).slice(0, 10)) : 'Unknown'; //dalla lettura della data in json tiene conto solo dei primi 10 caratteri
 }
 
 // ---doc_free_text (SKG-IF)---
@@ -3333,19 +3417,15 @@ function _renderDocumentCard(product) {
   const omid = _skgifOmid(product.local_identifier); //prende omid corto
   if (!omid) return ""; //senza omid non risegna la card del documento
 
-  // Title: "none" is the language-less title, else the first language found.
-  const titles = product.titles || {};
-  const title = (titles.none || Object.values(titles)[0] || [])[0] || 'No title'; //L'API raggruppa i titoli per lingua. || vuol dire se no
+  const title = _skgifProductTitle(product);
 
   // Authors (publishers etc. are left out) -> author page. Usa la funzione skgifagents solo per il ruolo author per recuparare dalle ricerche del documento gli autori e scriverli nelle cards con la giusta resa
   const formattedAuthors = _skgifAgents(product.contributions, 'author', authorOmid => `browser.html?value=${authorOmid}`)
     || 'Unknown';
 
-  // Date and venue come from the manifestation. The date is a full
-  // timestamp ("2024-01-01T00:00:00"): only the date part is shown.
+  // Date and venue come from the manifestation.
   const manifestations = Array.isArray(product.manifestations) ? product.manifestations : [];
-  const pubDate = manifestations.map(m => m?.dates?.publication?.[0]).find(Boolean);
-  const formattedDate = pubDate ? _skgifEscape(String(pubDate).slice(0, 10)) : 'Unknown'; //dalla lettura della data in json tiene conto solo dei primi 10 caratteri
+  const formattedDate = _skgifProductDate(product);
 
   // Source: venue title -> venue page, its identifiers (without omid) in brackets.
   let formattedSource = "";
@@ -3455,39 +3535,36 @@ function _skgifCitationList(lucinda_main_data, filter, emptyMessage) {
 // fabio:Journal / fabio:Series, no longer supported by the Meta endpoint) +
 // api_search_venue() (Meta REST API in batches of 20 OMIDs) with one
 // paginated /venues request:
-//   venue/<text>        -> cf.search.name:<text>,type:journal
-//   venue/issn=<issn>   -> identifiers.scheme:issn,identifiers.value:<issn>
-//                          (from home.js; the same ISSN can belong to
-//                          several venue records, like the ORCID)
-// Only journals for the name search, as Pietro's results (fabio:Series is
-// not used in Meta: book series are fabio:BookSeries, type "other" in
-// SKG-IF). SKG-IF venues have only name, type and identifiers: Pietro's
+//   venue/<text>             -> cf.search.name:<text>
+//   venue/scheme=issn&id=... -> ID panel, see _skgifIdSearch()
+// Every venue type is returned (journal, book, conference, other...), as
+// agreed with the prof (Pietro had journals only); the type is shown on
+// each card. SKG-IF venues have only name, type and identifiers: Pietro's
 // publisher/editor are read from the same OMID asked to /products (see
 // _loadVenueAgents()); his date is always empty on Meta journal records.
-// Accents and special characters as in the document search.
+// Special characters as in the document search.
 //
 // #callfun args: args[1] = Lucinda.data.main (has search_query), see
 // api_search_author_skgif().
 function api_search_venue_skgif(...args) { //legge la query e capisce che tipo di ricerca è
   const query = _skgifUrlParam(args[1], 'search_query');
-  const issn = query.startsWith('issn=') ? new URLSearchParams(query).get('issn').trim() : ""; //se la query inizia con issn è una ricerca per id
-  const name = issn ? "" : _skgifSafeTerm(query); //altrimenti → è una ricerca per nome, e il testo viene pulito con _skgifSafeTerm
+  const idQuery = _skgifIdQuery(query); //ricerca per identificativo (pannello ID)
+  if (idQuery) return _skgifIdSearch('venues', idQuery, _renderVenueCard);
+
+  const name = _skgifSafeTerm(query); //ricerca per nome, il testo viene pulito con _skgifSafeTerm
 
   //titolo della pagina
   const label = document.getElementById('search-query-label');
-  if (label) label.textContent = issn ? `ISSN: ${issn}` : name; //issn o nome
+  if (label) label.textContent = name;
 
-  if (!issn && !name) { //se nessuno dei due, quindi se non c'è niente da cercare
+  if (!name) { //se non c'è niente da cercare
     _skgifShowMessage('No results found.');
     return;
   }
 
   //costruzione richiesta
-  const base = `${SKGIF_API}/venues?filter=`;
   createSkgifPaginatedSearch({
-    sources: issn
-      ? [`${base}identifiers.scheme:issn,identifiers.value:${encodeURIComponent(issn)}`] //con issn: una sola richiesta senza filtro type
-      : _skgifSpellings(name).map(q => `${base}cf.search.name:${encodeURIComponent(q)},type:journal`), //con nome: una richiesta per ogni grafia, con e senza accenti
+    sources: [`${SKGIF_API}/venues?filter=cf.search.name:${encodeURIComponent(name)}`], //una sola richiesta, il nome così come è scritto, tutti i type
     renderItem: _renderVenueCard //resa cards
   }).search();//paginatore
 }
@@ -3559,62 +3636,34 @@ function _loadVenueAgents(omid) {
 */
 // ---org_free_text (SKG-IF)---
 // New search (Pietro had none), one /organisations request:
-//   organisation/<text>          -> cf.search.name:<text> (paginated)
-//   organisation/crossref=<id>   -> identifiers.scheme:crossref,identifiers.id:<id>
-//                                   (paginated, from home.js)
-//   organisation/omid=ra/<id>    -> /organisations/<full OMID> (one record,
-//                                   from home.js; there is no OMID filter)
+//   organisation/<text>                  -> cf.search.name:<text> (paginated)
+//   organisation/scheme=crossref&id=...  -> ID panel, see _skgifIdSearch()
 // SKG-IF organisations on OC have only name, OMID and, for some, a Crossref
 // member id (identifiers [{scheme: crossref, value: "78"}]). Every record is
 // shown as the API returns it: the same publisher is recorded once per
 // article in Meta, so a name can have many identical records (to discuss).
-// Accents and special characters as in the document search.
+// Special characters as in the document search.
 //
 // #callfun args: args[1] = Lucinda.data.main (has search_query), see
 // api_search_author_skgif().
 function api_search_org_skgif(...args) {
   const query = _skgifUrlParam(args[1], 'search_query');
-  const idParam = key => query.startsWith(`${key}=`) ? new URLSearchParams(query).get(key).trim() : "";
-  const omid = idParam('omid');
-  const crossref = idParam('crossref');
-  const name = omid || crossref ? "" : _skgifSafeTerm(query);
+  const idQuery = _skgifIdQuery(query); //ricerca per identificativo (pannello ID)
+  if (idQuery) return _skgifIdSearch('organisations', idQuery, _renderOrgCard);
 
+  const name = _skgifSafeTerm(query);
   const label = document.getElementById('search-query-label');
-  if (label) label.textContent = omid ? `OMID: ${omid}` : crossref ? `Crossref: ${crossref}` : name;
+  if (label) label.textContent = name;
 
-  if (omid) return _showOrgByOmid(omid);
-  if (!crossref && !name) {
+  if (!name) {
     _skgifShowMessage('No results found.');
     return;
   }
 
-  const base = `${SKGIF_API}/organisations?filter=`;
   createSkgifPaginatedSearch({
-    sources: crossref
-      ? [`${base}identifiers.scheme:crossref,identifiers.id:${encodeURIComponent(crossref)}`]
-      : _skgifSpellings(name).map(q => `${base}cf.search.name:${encodeURIComponent(q)}`),
+    sources: [`${SKGIF_API}/organisations?filter=cf.search.name:${encodeURIComponent(name)}`],
     renderItem: _renderOrgCard
   }).search();
-}
-
-// ---org_free_text (SKG-IF)---
-// OMID search: /organisations/<full OMID> returns a single record, not a
-// search page (no total_items), so the card is shown here instead of by the
-// paginator. 404 = no organisation with that OMID (e.g. a person's ra/).
-function _showOrgByOmid(omid) {
-  const container = document.getElementById('search-results-container');
-  const countEl = document.getElementById('search-total-count');
-  holdSkgifPage();
-  fetch(`${SKGIF_API}/organisations/https://w3id.org/oc/meta/${omid}`)
-    .then(r => r.ok ? r.json() : r.status === 404 ? {} : Promise.reject())
-    .then(data => {
-      const org = (data['@graph'] || [])[0];
-      if (countEl) countEl.textContent = org ? 1 : 0;
-      if (org) container.innerHTML = _renderOrgCard(org);
-      else _skgifShowMessage('No results found.');
-    })
-    .catch(() => _skgifShowMessage(SKGIF_FAILED_MESSAGE))
-    .finally(releaseSkgifPage);
 }
 
 // ---org_free_text (SKG-IF)---
@@ -3640,4 +3689,224 @@ function _renderOrgCard(org) {
         </div>
       </div>
     </div>`;
+}
+
+
+/*
+################################################################################
+# 8. RECORD DI CITAZIONE (new_ci_browser)
+################################################################################
+*/
+// ---new_ci_browser (SKG-IF)---
+// Replaces Pietro's two SPARQL blocks (meta2 on Meta for the two documents,
+// index2 on the Index for their references/citations lists, intersected in
+// post_ocindex_call_2()) with SKG-IF requests, all in parallel. An OCI is
+// "<citing OMID>-<cited OMID>" (numbers of two br/ OMIDs, as pre_oci() split it):
+//   /products/<full OMID> x 2              -> the citing and cited cards
+//   cf.cited_by:<OMID> / cf.cites:<OMID>   -> References / Citations of each
+//                                             (total_items, page_size=1)
+//   cf.cited_by:<citing>,cf.cited_by:<cited> -> "Cited by Both": documents
+//                                             cited by both (AND of the filters)
+//   cf.cites:<citing>,cf.cites:<cited>     -> "Citing Both": documents citing both
+// Checked against the Index on 2026-10-09: same counts and intersections
+// (Citations can be 1 more: SKG-IF also has a few citing preprints without
+// DOI that the Index doesn't list). The citation exists if the cited OMID is
+// in the citing's related_products.cites; if not, a warning says so (the two
+// documents are still shown).
+// ON HOLD (to discuss with the prof): the two "Citations per year" charts
+// (SKG-IF has no date filter: every citing product would have to be
+// downloaded, 50 per page) and the citation's own metadata (creation,
+// timespan, journal/author self-citation: only in the Index API).
+//
+// #callfun args: args[1] = Lucinda.data.main (has the oci of "ci/{oci}"),
+// see api_search_author_skgif().
+function api_citation_record_skgif(...args) {
+  const oci = _skgifUrlParam(args[1], 'oci').trim().replace(/^oci:/i, '');
+  const ociEl = document.getElementById('ci-oci');
+  if (ociEl) ociEl.textContent = `ci/${oci}`; //titolo: l'OCI, come nella pagina di Pietro
+
+  const parts = oci.match(/^(\d+)-(\d+)$/); //OCI = omid del citing - omid del cited
+  if (!parts) return _skgifCiMessage(`"${oci}" is not a valid OCI (expected: two OMID numbers separated by "-").`, 'danger');
+  const [, citing, cited] = parts;
+
+  const omidUrl = id => `https://w3id.org/oc/meta/br/${id}`;
+  const enc = id => encodeURIComponent(omidUrl(id));
+  const product = id => skgifFetch(`${SKGIF_API}/products/${omidUrl(id)}`)
+    .then(data => data ? ((data['@graph'] || [])[0] || {}) : null); //{} = nessun documento con quell'OMID, null = richiesta fallita
+  const total = filter => skgifFetch(`${SKGIF_API}/products?filter=${filter}&page_size=1`)
+    .then(data => data ? skgifTotal(data) : null); //solo il numero (total_items)
+
+  holdSkgifPage(); //banner di caricamento finché non arrivano tutti i dati
+  Promise.all([
+    product(citing), product(cited),
+    total(`cf.cited_by:${enc(citing)}`), total(`cf.cites:${enc(citing)}`),
+    total(`cf.cited_by:${enc(cited)}`), total(`cf.cites:${enc(cited)}`),
+    total(`cf.cited_by:${enc(citing)},cf.cited_by:${enc(cited)}`),
+    total(`cf.cites:${enc(citing)},cf.cites:${enc(cited)}`)
+  ]).then(([citingDoc, citedDoc, citingRefs, citingCits, citedRefs, citedCits, citedByBoth, citingBoth]) => {
+    if (!citingDoc || !citedDoc) return _skgifCiMessage(SKGIF_FAILED_MESSAGE, 'danger');
+    const missing = [[citingDoc, citing], [citedDoc, cited]].filter(([doc]) => !doc.local_identifier).map(([, id]) => `br/${id}`);
+    if (missing.length) return _skgifCiMessage(`No document with OMID ${missing.join(' or ')} in OpenCitations.`, 'danger');
+
+    const cites = citingDoc.related_products?.cites || [];
+    if (!cites.includes(omidUrl(cited))) {
+      _skgifCiMessage(`This citation is not in OpenCitations: br/${citing} does not cite br/${cited}.`, 'warning');
+    }
+    _fillCiResource('citing', citingDoc, citing, citingRefs, citingCits);
+    _fillCiResource('cited', citedDoc, cited, citedRefs, citedCits);
+    _setCiField('ci-cited-by-both', _ciCount(citedByBoth));
+    _setCiField('ci-citing-both', _ciCount(citingBoth));
+    document.getElementById('ci-record')?.classList.remove('d-none');
+  }).finally(releaseSkgifPage);
+}
+
+// ---new_ci_browser (SKG-IF)---
+// Fills the card of the citing or cited document (ids "<role>-<field>" in
+// new_ci_browser.html), with the same content as Pietro's: title (-> the
+// document page), authors (-> author page, ORCID in brackets), date,
+// identifiers, OMID URI, References and Citations counts.
+function _fillCiResource(role, product, id, refs, cits) {
+  const uri = `https://w3id.org/oc/meta/br/${id}`;
+  _setCiField(`${role}-title`, `<a href="browser.html?value=br/${id}" target="_blank">${_skgifEscape(_skgifProductTitle(product))}</a>`);
+  _setCiField(`${role}-authors`, _skgifAgents(product.contributions, 'author', authorOmid => `browser.html?value=${authorOmid}`) || 'Unknown');
+  _setCiField(`${role}-date`, _skgifProductDate(product));
+  _setCiField(`${role}-ids`, _skgifIdList(product.identifiers, `br/${id}`) || 'No ID');
+  _setCiField(`${role}-uri`, `<a href="${uri}" target="_blank">${uri}</a>`);
+  _setCiField(`${role}-refs`, _ciCount(refs));
+  _setCiField(`${role}-cits`, _ciCount(cits));
+}
+
+function _setCiField(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+// A count, or "–" when its request failed (null).
+function _ciCount(n) {
+  return n === null ? '–' : String(n);
+}
+
+// Message above the record ('danger': nothing else to show, 'warning': the
+// record is shown below it).
+function _skgifCiMessage(text, type) {
+  _setCiField('ci-message', `<div class="alert alert-${type} mb-4">${_skgifEscape(text)}</div>`);
+}
+
+/*
+################################################################################
+# 9. PROFILO AUTORE (new_ra_browser)
+################################################################################
+*/
+// ---new_ra_browser (SKG-IF)---
+// Replaces Pietro's two SPARQL blocks on Meta (author_meta: name, ORCID,
+// other IDs; author_works: the works, LIMIT 1000, newest first) with:
+//   /persons/<full OMID>                          -> name, ORCID, other identifiers
+//   /products?filter=contributions.by.local_identifier:<full OMID>
+//                                                 -> the works, paginated, each
+//                                                    shown as Pietro's list item
+//                                                    (_renderAuthorWorkItem());
+//                                                    total_items is the
+//                                                    Publications count
+// Decided with the prof's student (2026-10-09), to reconsider after seeing it:
+// - only the works of this record, as Pietro (the same person can have other
+//   ra/ records with the same ORCID in OC: not merged here);
+// - the filter has every role (author AND editor; Pietro: author only, e.g.
+//   ra/0614010840729 = 115 vs 111): the cards where the person is an editor
+//   have an "Editor" badge (_skgifRoleBadges()) next to the year;
+// - the list is in the API's order (SKG-IF has no sort; Pietro's was by date).
+// ON HOLD (to discuss with the prof): the "Publications per year" chart (no
+// date filter or sort: every work would have to be downloaded, 50 per page).
+//
+// #callfun args: args[1] = Lucinda.data.main (has the id of "ra/{id}"), see
+// api_search_author_skgif().
+function api_author_record_skgif(...args) {
+  const id = _skgifUrlParam(args[1], 'id').trim();
+  const idEl = document.getElementById('ra-id');
+  if (idEl) idEl.textContent = `ra/${id}`; //titolo: l'OMID, come nella pagina di Pietro
+
+  const omidUrl = `https://w3id.org/oc/meta/ra/${id}`;
+  const works = `${SKGIF_API}/products?filter=contributions.by.local_identifier:${encodeURIComponent(omidUrl)}`;
+  const list = createSkgifPaginatedSearch({
+    sources: [works],
+    renderItem: product => _renderAuthorWorkItem(product, omidUrl), //voce come quella di Pietro + badge "Editor"
+    emptyMessage: 'No publications found.'
+  });
+
+  holdSkgifPage(); //banner di caricamento finché non arrivano profilo e prima pagina
+  Promise.all([
+    skgifFetch(`${SKGIF_API}/persons/${omidUrl}`),
+    skgifFetch(`${works}&page=1&page_size=${SKGIF_DEFAULT_PAGE_SIZE}`) //prima pagina in parallelo (in cache per list.search())
+  ]).then(([data]) => {
+    if (!data) return _skgifRaMessage(SKGIF_FAILED_MESSAGE);
+    const person = (data['@graph'] || [])[0] || {};
+    if (!person.local_identifier) return _skgifRaMessage(`No author with OMID ra/${id} in OpenCitations.`);
+
+    const identifiers = Array.isArray(person.identifiers) ? person.identifiers : [];
+    const orcid = identifiers.find(i => i.scheme === 'orcid')?.value;
+    const name = `${person.given_name || ''} ${person.family_name || ''}`.trim() || (person.name || '').trim() || 'Unknown Author'; //come create_author_header_link()
+    _setCiField('ra-name', `<a href="https://ldd.opencitations.net/meta/ra/${_skgifEscape(id)}" target="_blank" class="text-reset text-decoration-none">${_skgifEscape(name)}</a>`);
+    _setCiField('ra-orcid', orcid
+      ? `<a href="https://orcid.org/${_skgifEscape(orcid)}" target="_blank">${_skgifEscape(orcid)} <sup><i class="fas fa-external-link-alt small"></i></sup></a>`
+      : 'No ORCID found');
+    _setCiField('ra-ids', _skgifIdList(identifiers.filter(i => i.scheme !== 'orcid'), `ra/${id}`));
+    document.getElementById('ra-record')?.classList.remove('d-none');
+    list.search(); //lista paginata: riempie anche il contatore Publications e rilascia la pagina
+  }).catch(() => _skgifRaMessage(SKGIF_FAILED_MESSAGE));
+}
+
+// ---new_ra_browser (SKG-IF)---
+// One work of the list, with the same markup as Pietro's post_author_works():
+// title (bold, -> document page), year badge on the right, identifiers below
+// ("<strong>scheme</strong>:value", separated by " • "; like Pietro, without
+// the OMID, which his query did not read as an identifier). Differences: the
+// "Editor" badge (see above), and every identifier with an external page is
+// linked (SKGIF_ID_URLS, section 2; Pietro: doi, pmid, openalex only).
+function _renderAuthorWorkItem(product, agentOmid) {
+  const omid = _skgifOmid(product.local_identifier);
+  if (!omid) return "";
+  const titles = product.titles || {};
+  const title = (titles.none || Object.values(titles)[0] || [])[0] || 'Untitled Work';
+  const date = _skgifProductDate(product);
+  const year = date === 'Unknown' ? 'n.d.' : date.split('-')[0];
+  const ids = (Array.isArray(product.identifiers) ? product.identifiers : [])
+    .filter(i => i && i.scheme && i.value)
+    .map(i => ({ scheme: String(i.scheme).toLowerCase(), value: String(i.value) }))
+    .sort((a, b) => _skgifIdRank(a.scheme) - _skgifIdRank(b.scheme))
+    .map(({ scheme, value }) => {
+      const text = `<strong>${_skgifEscape(scheme)}</strong>:${_skgifEscape(value)}`;
+      const url = SKGIF_ID_URLS[scheme] ? SKGIF_ID_URLS[scheme](value) : "";
+      return url ? `<a href="${_skgifEscape(url)}" target="_blank" class="text-dark text-decoration-none">${text}</a>` : text;
+    })
+    .join(' • ');
+
+  return `
+    <div class="col-12">
+      <div class="list-group-item p-3 mb-2 border rounded shadow-sm bg-white">
+        <div class="d-flex w-100 justify-content-between align-items-center mb-2">
+          <h5 class="mb-1" style="font-size: 1.1rem;">
+            <a href="browser.html?value=${omid}" class="text-dark text-decoration-none fw-bold">${_skgifEscape(title)}</a>
+          </h5>
+          <span class="text-nowrap">${_skgifRoleBadges(product.contributions, agentOmid)} <span class="badge bg-light text-dark border">${_skgifEscape(year)}</span></span>
+        </div>
+        <div class="mb-1 small">
+          ${ids}
+        </div>
+      </div>
+    </div>`;
+}
+
+// Badges of the roles (other than author) of one person in a product, e.g.
+// " Editor" in the author record; "" without agentOmid or for authors only.
+function _skgifRoleBadges(contributions, agentOmid) {
+  if (!agentOmid) return "";
+  const roles = new Set((Array.isArray(contributions) ? contributions : [])
+    .filter(c => c && c.by && c.by.local_identifier === agentOmid && c.role && c.role !== 'author')
+    .map(c => c.role));
+  return [...roles].map(role =>
+    ` <span class="badge bg-light text-dark border">${_skgifEscape(role.charAt(0).toUpperCase() + role.slice(1))}</span>`).join('');
+}
+
+function _skgifRaMessage(text) {
+  _setCiField('ra-message', `<div class="alert alert-danger mb-4">${_skgifEscape(text)}</div>`);
+  releaseSkgifPage();
 }

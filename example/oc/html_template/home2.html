@@ -65,31 +65,52 @@
       <img src="../static/img/oc-medium.png" alt="OpenCitations Logo" class="img-fluid" style="max-height: 100px;">
     </div>
 
-    <div class="search-bar mb-5 search-container">
-      <form id="searchForm">
-        <div class="input-group shadow-sm">
-            
-            <select name="category" class="form-select bg-light fw-medium" style="max-width: 140px;">
-              <option value="document">Document</option>
-              <option value="author">Author</option>
-              <option value="venue">Venue</option>
-              <option value="organisation">Organisation</option> <!-- SILVIA (SKG-IF): new organisation search -->
-              <option value="citation">Citation</option>
-            </select>
+    <!-- SILVIA (SKG-IF): search panel, same markup as home.html, styled in home.css (.oc-search) -->
+    <div class="oc-search mb-5 search-container">
+      <form id="searchForm" class="oc-search-card">
 
-            <input type="text" id="searchQuery" name="query" class="form-control" placeholder="Search..." aria-label="Search" />
+        <!-- resource type: the hidden select keeps Pietro's logic, the tabs (filled by home.js) drive it -->
+        <select name="category" class="d-none" aria-hidden="true" tabindex="-1">
+          <option value="document">Document</option>
+          <option value="author">Author</option>
+          <option value="venue">Venue</option>
+          <option value="organisation">Organisation</option>
+          <option value="citation">Citation</option>
+        </select>
+        <div class="oc-tabs" role="tablist" aria-label="Resource type"></div>
 
-            <!-- SILVIA (SKG-IF): author search fields, shown instead of #searchQuery for "Author" -->
-            <input type="text" id="givenName" class="form-control author-field d-none" placeholder="Given name" aria-label="Given name" />
-            <input type="text" id="familyName" class="form-control author-field d-none" placeholder="Family name" aria-label="Family name" />
-            <span class="input-group-text author-field d-none">or</span>
-            <input type="text" id="orcidQuery" class="form-control author-field d-none" placeholder="ORCID" aria-label="ORCID" />
+        <div class="oc-search-row">
+          <!-- free text (title / name / OCI) or, for authors, given + family name -->
+          <div class="oc-field" id="textSide">
+            <label class="oc-label" id="textLabel" for="searchQuery">Title</label>
+            <div class="oc-input-icon text-field">
+              <i class="fa fa-magnifying-glass"></i>
+              <input type="text" id="searchQuery" name="query" class="form-control" autocomplete="off" />
+            </div>
+            <div class="oc-name-fields author-field d-none">
+              <input type="text" id="givenName" class="form-control" placeholder="Enter given name" aria-label="Given name" autocomplete="off" />
+              <input type="text" id="familyName" class="form-control" placeholder="Enter family name" aria-label="Family name" autocomplete="off" />
+            </div>
+          </div>
 
-            <button type="submit" class="btn btn-primary" style="background-color: #8A2BE2; border-color: #8A2BE2;">
-              <i class="fa fa-search"></i>
-            </button>
-            
+          <div class="oc-or id-field">or</div>
+
+          <!-- identifier: scheme (filled per resource by home.js) + value -->
+          <div class="oc-field id-field" id="idSide">
+            <label class="oc-label" for="idQuery">Identifier</label>
+            <div class="input-group">
+              <select id="idScheme" class="form-select" aria-label="Identifier type"></select>
+              <input type="text" id="idQuery" class="form-control" autocomplete="off" />
+            </div>
+          </div>
+
+          <button type="submit" class="btn oc-btn">
+            <i class="fa fa-search me-2"></i>Search
+          </button>
         </div>
+
+        <div class="oc-hint" id="searchHint" role="alert"></div>
+
       </form>
     </div>
 

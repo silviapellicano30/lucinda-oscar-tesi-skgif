@@ -36,3 +36,217 @@
 }
 .search-bar .btn:hover { background: #574fd6; }
 .search-bar .btn i { font-size: 16px; }
+
+/* ==========================================================================
+   SILVIA (SKG-IF): search panel of home.html and home2.html
+   (resource tabs, text / names fields, identifier panel, Search button)
+   ========================================================================== */
+.oc-search {
+  --oc-purple: #8A2BE2;
+  --oc-purple-dark: #7a26c9;
+  --oc-purple-soft: rgba(138, 43, 226, 0.08);
+  --oc-text: #2d2640;
+  --oc-muted: #6b6480;
+  --oc-border: #dcd6e8;
+  --bs-border-radius: 10px;
+  width: 100%;
+  position: relative;
+  z-index: 5; /* the dropdown list opens above the resource cards of home2 */
+}
+
+/* no box of its own: the bar sits on the page background, as before */
+.oc-search-card { padding: 0; }
+
+/* resource tabs */
+.oc-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 20px;
+  background: #f4f0fa;
+  border-radius: 12px;
+}
+.oc-tab {
+  flex: 1 1 0;
+  border: 0;
+  background: transparent;
+  color: var(--oc-muted);
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 9px;
+  white-space: nowrap;
+  transition: background-color .15s ease, color .15s ease;
+}
+.oc-tab i { margin-right: 6px; }
+.oc-tab:hover { background: var(--oc-purple-soft); color: var(--oc-text); }
+.oc-tab.active {
+  background: #fff;
+  color: var(--oc-purple);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.oc-tab:focus-visible { outline: 2px solid var(--oc-purple); outline-offset: 1px; }
+
+/* fields row: text / names | or | identifier | Search */
+.oc-search-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+.oc-field { flex: 1 1 0; min-width: 0; }
+.oc-label {
+  display: block;
+  font-size: .78rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--oc-muted);
+  margin-bottom: 6px;
+}
+.oc-search form .form-control,
+.oc-search form .form-select {
+  height: 46px;
+  border: 1px solid var(--oc-border);
+  color: var(--oc-text);
+}
+.oc-search form .form-control::placeholder { color: #a9a3b8; }
+.oc-search form .form-control:focus,
+.oc-search form .form-select:focus {
+  border-color: var(--oc-purple);
+  box-shadow: 0 0 0 .2rem rgba(138, 43, 226, 0.18);
+}
+.oc-search form .form-control:disabled,
+.oc-search form .form-select:disabled {
+  background-color: #f6f4f9;
+  opacity: .6;
+}
+.oc-input-icon { position: relative; }
+.oc-input-icon > i {
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #a9a3b8;
+  pointer-events: none;
+}
+.oc-input-icon > .form-control { padding-left: 40px; }
+.oc-name-fields { display: flex; gap: 8px; }
+.oc-or {
+  height: 46px;
+  display: flex;
+  align-items: center;
+  font-size: .78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #a9a3b8;
+}
+.oc-btn {
+  height: 46px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--oc-purple);
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.oc-btn:hover, .oc-btn:focus { background: var(--oc-purple-dark); color: #fff; }
+
+/* ID panel hidden (Citation): the OCI field takes the row (same height);
+   on small screens, where the fields are stacked, it keeps its space
+   instead (see the media query), so the panel doesn't change size.
+   Side not searched (the other one is active) dimmed */
+.oc-hidden { display: none; }
+.oc-inactive { opacity: .35; filter: grayscale(1); transition: opacity .15s ease; }
+.oc-inactive:hover { opacity: .7; }
+
+/* message under the bar (empty query...): fixed height, always there */
+.oc-hint {
+  min-height: 1.3rem;
+  margin-top: 8px;
+  font-size: .85rem;
+  color: #b42318;
+}
+
+/* identifier scheme dropdown (skgifDropdown() in home.js): opens below */
+.oc-dd {
+  position: relative;
+  flex: 0 0 140px;
+  width: 140px;
+}
+.oc-dd-btn {
+  width: 100%;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px 0 14px;
+  background: #faf8fd;
+  border: 1px solid var(--oc-border);
+  border-radius: 10px 0 0 10px;
+  color: var(--oc-text);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+.oc-dd-btn i { font-size: .7rem; color: var(--oc-muted); transition: transform .15s ease; }
+.oc-dd.open .oc-dd-btn i { transform: rotate(180deg); }
+.oc-dd-btn:hover { background: #f4f0fa; }
+.oc-dd-btn:focus-visible,
+.oc-dd.open .oc-dd-btn {
+  outline: none;
+  position: relative;
+  z-index: 3;
+  border-color: var(--oc-purple);
+  box-shadow: 0 0 0 .2rem rgba(138, 43, 226, 0.18);
+}
+.oc-dd-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 250px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #ece6f5;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(60, 20, 100, 0.16);
+  z-index: 1000;
+}
+.oc-dd.open .oc-dd-menu { display: block; }
+.oc-dd-group {
+  padding: 8px 10px 4px;
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: #a9a3b8;
+}
+.oc-dd-group:not(:first-child) { margin-top: 4px; padding-top: 10px; border-top: 1px solid #f0ecf6; }
+.oc-dd-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--oc-text);
+  cursor: pointer;
+}
+.oc-dd-item i { visibility: hidden; font-size: .75rem; color: var(--oc-purple); }
+.oc-dd-item.active { background: var(--oc-purple-soft); }
+.oc-dd-item.selected { color: var(--oc-purple); font-weight: 600; }
+.oc-dd-item.selected i { visibility: visible; }
+
+@media (max-width: 767.98px) {
+  .oc-tab { flex: 1 1 30%; padding: 8px 6px; font-size: .9rem; }
+  .oc-search-row { flex-direction: column; align-items: stretch; }
+  .oc-or { height: auto; justify-content: center; }
+  .oc-hidden { display: block; visibility: hidden; }
+}
