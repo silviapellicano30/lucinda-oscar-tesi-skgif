@@ -11,22 +11,35 @@
       </a>
     </div>
 
+    <!-- SILVIA (SKG-IF): same layout as Pietro's; the fields are filled by
+         api_document_record_skgif() in localbrowser.js (ids below) instead of
+         [[Lucinda:...]] SPARQL values. A row with an id "...-row" is shown only
+         when its field has a value (as Pietro's ifcond(... !== null)). -->
     <div class="row">
-      
+
       <div class="col-12 mb-4">
           <div class="card shadow-sm p-3 h-100">
           <div class="card-header text-center">
-              <h3 class="my-0">[[Lucinda:display_omid(meta.id)]]</h3>
+              <h3 class="my-0" id="br-id"></h3>
               <p class="mb-0">Bibliographic Resource Record</p>
           </div>
           </div>
       </div>
 
+      <!-- errors (no document with this OMID, failed request) -->
+      <div class="col-12" id="br-message"></div>
+
+    </div>
+
+    <div class="d-none" id="br-record">
+
+    <div class="row">
+
       <div id="br_main" class="col-12 col-md-8 d-flex flex-column">
 
         <div class="card shadow-sm m-2 w-100 h-100">
-          
-          
+
+
           <div class="card-body p-4 text-start">
 
             <div class="card-header text-center">
@@ -35,59 +48,35 @@
 
             <br>
 
-            
-            
-            <h5 class="card-title text-center">
-              [[Lucinda:create_br_header_link(meta.id, meta.title)]]
-            </h5>
+
+
+            <h5 class="card-title text-center" id="br-title"></h5>
             <hr>
 
-            [[Lucinda:ifcond(
-              meta.pub_date !== null,
-              concat(
-                  _HTML_(<div class="mb-3"><span class="fw-bold">Publication Date:<br> </span>),
-                  getVal(meta.pub_date),
-                  _HTML_(</div>)
-              )
-            )]]
+            <!-- SILVIA (SKG-IF): Type, Editors, Volume, Issue, Pages and
+                 Publisher were read by Pietro's query but not shown -->
+            <div class="mb-3 d-none" id="br-type-row"><span class="fw-bold">Type:<br> </span><span id="br-type"></span></div>
 
-            [[Lucinda:ifcond(
-              meta.author !== null,
-              concat(
-                  _HTML_(<div class="mb-3"><span class="fw-bold">Authors:<br> </span>),
-                  styleHTML(
-                      itemlist(
-                          meta.author; meta.author_orcid; meta.author_omid,
-                          _DATA_("meta.author_omid"),
-                          _DATA_(["meta.author","meta.author_orcid","meta.author_omid"]),
-                          _DATA_(false),
-                          _DATA_(["meta.title","string",true])
-                      ),
-                      _DATA_("author_entry")
-                  ),
-                  _HTML_(</div>)
-              )
-            )]]
+            <div class="mb-3 d-none" id="br-date-row"><span class="fw-bold">Publication Date:<br> </span><span id="br-date"></span></div>
+
+            <div class="mb-3 d-none" id="br-authors-row"><span class="fw-bold">Authors:<br> </span><span id="br-authors"></span></div>
+
+            <div class="mb-3 d-none" id="br-editors-row"><span class="fw-bold">Editors:<br> </span><span id="br-editors"></span></div>
 
             <div class="mb-3">
               <span class="fw-bold">Identifiers:<br> </span>
-              <span class="d-inline-block align-top">
-                  [[Lucinda:doforeach(
-                      meta.id; meta.id_link,
-                      _DATA_("id_entry"),
-                      _DATA_("<br>")
-                  )]]
-              </span>
+              <span class="d-inline-block align-top" id="br-ids"></span>
             </div>
 
-            [[Lucinda:ifcond(
-              meta.venue !== null,
-              concat(
-                  _HTML_(<div class="mb-3"><span class="fw-bold">Source:<br> </span>),
-                  venue_entry(meta.venue),
-                  _HTML_(</div>)
-              )
-            )]]
+            <div class="mb-3 d-none" id="br-source-row"><span class="fw-bold">Source:<br> </span><span id="br-source"></span></div>
+
+            <div class="mb-3 d-none" id="br-volume-row"><span class="fw-bold">Volume:<br> </span><span id="br-volume"></span></div>
+
+            <div class="mb-3 d-none" id="br-issue-row"><span class="fw-bold">Issue:<br> </span><span id="br-issue"></span></div>
+
+            <div class="mb-3 d-none" id="br-pages-row"><span class="fw-bold">Pages:<br> </span><span id="br-pages"></span></div>
+
+            <div class="mb-3 d-none" id="br-publisher-row"><span class="fw-bold">Publisher:<br> </span><span id="br-publisher"></span></div>
 
           </div>
         </div>
@@ -96,7 +85,7 @@
 
       <div id="br_citations" class="col-12 col-md-4 ps-md-3 d-flex flex-column">
 
-        <div class="card shadow-sm p-1 m-2 h-100"> 
+        <div class="card shadow-sm p-1 m-2 h-100">
           <div class="card-body">
 
               <div class="row g-3 column-gap-3">
@@ -106,7 +95,7 @@
                            <span class="fw-bold small">References</span>
                       </div>
                       <div class="card-body text-center">
-                        <h3 class="text-primary my-1">[[Lucinda:llength(apirefs.id)]]</h3>
+                        <h3 class="text-primary my-1" id="br-refs-count"></h3>
                       </div>
                   </div>
                 </div>
@@ -116,31 +105,16 @@
                          <span class="fw-bold small">Citations</span>
                     </div>
                     <div class="card-body text-center">
-                      <h3 class="text-primary my-1">[[Lucinda:llength(apicits.id)]]</h3>
+                      <h3 class="text-primary my-1" id="br-cits-count"></h3>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div class="row g-3 column-gap-3 mt-1">
-                <div class="col">
-                  <div class="card shadow-sm p-1 m-1">
-                    <div class="card-header text-center">
-                         <h6 class="my-1"><span class="fw-bold small">Citations per year</span></h6>
-                    </div>
-                    <div class="card-body">
-                      <div><canvas id="citsxyear_chart"></canvas></div>
-                      [[Lucinda:barchart(
-                        _DATA_("citsxyear_chart"),
-                        mapData(
-                          apicits.pub_date,
-                          _DATA_("year")
-                        )
-                      )]]
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <!-- SILVIA (SKG-IF): ON HOLD, to discuss with the prof - Pietro's
+                   "Citations per year" chart (barchart(mapData(apicits.pub_date))).
+                   SKG-IF has no date filter or sort: every citing document
+                   would have to be downloaded (50 per page) to count them by year. -->
 
           </div>
         </div>
@@ -152,25 +126,16 @@
       <div id="citaions_and_references" class="col-12">
         <div class="row p-1">
 
+            <!-- SILVIA (SKG-IF): paginated document cards, in the API's order
+                 (Pietro: the whole list at once) -->
             <div class="col-12 col-md-6 mt-4">
               <div class="card shadow-sm h-100">
                 <div class="card-header text-center">
                     <h4 class="my-1 fw-bold">References</h4>
-                    <span class="small text-muted"><em>([[Lucinda:llength(apirefs.id)]] documents)</em></span>
+                    <span class="small text-muted"><em>(<span id="br-refs-total"></span> documents)</em></span>
                 </div>
                 <div class="card-body p-4">
-                    [[Lucinda:
-                      styleHTML(
-                        itemlist(
-                            apirefs.id; apirefs.title; apirefs.author; apirefs.pub_date,
-                            _DATA_("apirefs.id"),
-                            _DATA_(["apirefs.title","apirefs.author","apirefs.pub_date","apirefs.id"]),
-                            _DATA_(false),
-                            _DATA_(["apirefs.title","string",true])
-                        ),
-                        _DATA_("doc_entry")
-                      )
-                    ]]
+                    <div class="row" id="br-refs-list"></div>
                 </div>
               </div>
             </div>
@@ -179,27 +144,18 @@
               <div class="card shadow-sm h-100">
                 <div class="card-header text-center">
                     <h4 class="my-1 fw-bold">Citations</h4>
-                    <span class="small text-muted"><em>([[Lucinda:llength(apicits.id)]] documents)</em></span>
+                    <span class="small text-muted"><em>(<span id="br-cits-total"></span> documents)</em></span>
                 </div>
                 <div class="card-body p-4">
-                  [[Lucinda:
-                    styleHTML(
-                      itemlist(
-                          apicits.id; apicits.title; apicits.author; apicits.pub_date,
-                          _DATA_("apicits.id"),
-                          _DATA_(["apicits.title","apicits.author","apicits.pub_date","apicits.id"]),
-                          _DATA_(false),
-                          _DATA_(["apicits.title","string",true])
-                      ),
-                      _DATA_("doc_entry")
-                    )
-                  ]]
+                    <div class="row" id="br-cits-list"></div>
                 </div>
               </div>
             </div>
 
         </div>
       </div>
+    </div>
+
     </div>
 
   </body>

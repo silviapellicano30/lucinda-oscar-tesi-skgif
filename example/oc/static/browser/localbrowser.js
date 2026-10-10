@@ -3409,6 +3409,22 @@ function _skgifProductDate(product) {
   return pubDate ? _skgifEscape(String(pubDate).slice(0, 10)) : 'Unknown'; //dalla lettura della data in json tiene conto solo dei primi 10 caratteri
 }
 
+// Source of a product (manifestations[].biblio.in): venue title (italic) ->
+// venue page, its identifiers (without omid) in brackets. "" if none. Used by
+// the document cards and by the document record (section 10).
+function _skgifProductSource(product) {
+  const manifestations = Array.isArray(product.manifestations) ? product.manifestations : [];
+  const venue = manifestations.map(m => m?.biblio?.in).find(v => v && v.name);
+  if (!venue) return "";
+  const venueOmid = _skgifOmid(venue.local_identifier);
+  const venueTitle = `<i>${_skgifEscape(venue.name)}</i>`; //titolo della rivista in corsivo
+  const titleHtml = venueOmid
+    ? `<a href="browser.html?value=${venueOmid}" target="_blank" class="text-dark text-decoration-none">${venueTitle}</a>`
+    : venueTitle;
+  const venueIds = _skgifIdList(venue.identifiers); //lista degli ids del venue
+  return venueIds ? `${titleHtml} (${venueIds})` : titleHtml;
+}
+
 // ---doc_free_text (SKG-IF)---
 // HTML card for one product of the results page: same layout and links as
 // Pietro's api_search() cards (links are relative, see the author card).
@@ -3424,21 +3440,8 @@ function _renderDocumentCard(product) {
     || 'Unknown';
 
   // Date and venue come from the manifestation.
-  const manifestations = Array.isArray(product.manifestations) ? product.manifestations : [];
   const formattedDate = _skgifProductDate(product);
-
-  // Source: venue title -> venue page, its identifiers (without omid) in brackets.
-  let formattedSource = "";
-  const venue = manifestations.map(m => m?.biblio?.in).find(v => v && v.name);
-  if (venue) {
-    const venueOmid = _skgifOmid(venue.local_identifier);
-    const venueTitle = `<i>${_skgifEscape(venue.name)}</i>`; //titolo della rivista in corsivo
-    const titleHtml = venueOmid
-      ? `<a href="browser.html?value=${venueOmid}" target="_blank" class="text-dark text-decoration-none">${venueTitle}</a>`
-      : venueTitle;
-    const venueIds = _skgifIdList(venue.identifiers); //lista degli ids del venue
-    formattedSource = venueIds ? `${titleHtml} (${venueIds})` : titleHtml;
-  }
+  const formattedSource = _skgifProductSource(product);
 
   const formattedIds = _skgifIdList(product.identifiers, omid) || 'No ID';
 
@@ -3803,16 +3806,16 @@ function _skgifCiMessage(text, type) {
 //   /persons/<full OMID>                          -> name, ORCID, other identifiers
 //   /products?filter=contributions.by.local_identifier:<full OMID>
 //                                                 -> the works, paginated, each
-//                                                    shown as Pietro's list item
-//                                                    (_renderAuthorWorkItem());
+//                                                    shown as the document card
+//                                                    of the search
+//                                                    (_renderDocumentCard());
 //                                                    total_items is the
 //                                                    Publications count
 // Decided with the prof's student (2026-10-09), to reconsider after seeing it:
 // - only the works of this record, as Pietro (the same person can have other
 //   ra/ records with the same ORCID in OC: not merged here);
 // - the filter has every role (author AND editor; Pietro: author only, e.g.
-//   ra/0614010840729 = 115 vs 111): the cards where the person is an editor
-//   have an "Editor" badge (_skgifRoleBadges()) next to the year;
+//   ra/0614010840729 = 115 vs 111), shown without a role badge;
 // - the list is in the API's order (SKG-IF has no sort; Pietro's was by date).
 // ON HOLD (to discuss with the prof): the "Publications per year" chart (no
 // date filter or sort: every work would have to be downloaded, 50 per page).
@@ -3828,7 +3831,7 @@ function api_author_record_skgif(...args) {
   const works = `${SKGIF_API}/products?filter=contributions.by.local_identifier:${encodeURIComponent(omidUrl)}`;
   const list = createSkgifPaginatedSearch({
     sources: [works],
-    renderItem: product => _renderAuthorWorkItem(product, omidUrl), //voce come quella di Pietro + badge "Editor"
+    renderItem: _renderDocumentCard, //stessa card della ricerca documenti
     emptyMessage: 'No publications found.'
   });
 
@@ -3854,59 +3857,123 @@ function api_author_record_skgif(...args) {
   }).catch(() => _skgifRaMessage(SKGIF_FAILED_MESSAGE));
 }
 
-// ---new_ra_browser (SKG-IF)---
-// One work of the list, with the same markup as Pietro's post_author_works():
-// title (bold, -> document page), year badge on the right, identifiers below
-// ("<strong>scheme</strong>:value", separated by " • "; like Pietro, without
-// the OMID, which his query did not read as an identifier). Differences: the
-// "Editor" badge (see above), and every identifier with an external page is
-// linked (SKGIF_ID_URLS, section 2; Pietro: doi, pmid, openalex only).
-function _renderAuthorWorkItem(product, agentOmid) {
-  const omid = _skgifOmid(product.local_identifier);
-  if (!omid) return "";
-  const titles = product.titles || {};
-  const title = (titles.none || Object.values(titles)[0] || [])[0] || 'Untitled Work';
-  const date = _skgifProductDate(product);
-  const year = date === 'Unknown' ? 'n.d.' : date.split('-')[0];
-  const ids = (Array.isArray(product.identifiers) ? product.identifiers : [])
-    .filter(i => i && i.scheme && i.value)
-    .map(i => ({ scheme: String(i.scheme).toLowerCase(), value: String(i.value) }))
-    .sort((a, b) => _skgifIdRank(a.scheme) - _skgifIdRank(b.scheme))
-    .map(({ scheme, value }) => {
-      const text = `<strong>${_skgifEscape(scheme)}</strong>:${_skgifEscape(value)}`;
-      const url = SKGIF_ID_URLS[scheme] ? SKGIF_ID_URLS[scheme](value) : "";
-      return url ? `<a href="${_skgifEscape(url)}" target="_blank" class="text-dark text-decoration-none">${text}</a>` : text;
-    })
-    .join(' • ');
-
-  return `
-    <div class="col-12">
-      <div class="list-group-item p-3 mb-2 border rounded shadow-sm bg-white">
-        <div class="d-flex w-100 justify-content-between align-items-center mb-2">
-          <h5 class="mb-1" style="font-size: 1.1rem;">
-            <a href="browser.html?value=${omid}" class="text-dark text-decoration-none fw-bold">${_skgifEscape(title)}</a>
-          </h5>
-          <span class="text-nowrap">${_skgifRoleBadges(product.contributions, agentOmid)} <span class="badge bg-light text-dark border">${_skgifEscape(year)}</span></span>
-        </div>
-        <div class="mb-1 small">
-          ${ids}
-        </div>
-      </div>
-    </div>`;
-}
-
-// Badges of the roles (other than author) of one person in a product, e.g.
-// " Editor" in the author record; "" without agentOmid or for authors only.
-function _skgifRoleBadges(contributions, agentOmid) {
-  if (!agentOmid) return "";
-  const roles = new Set((Array.isArray(contributions) ? contributions : [])
-    .filter(c => c && c.by && c.by.local_identifier === agentOmid && c.role && c.role !== 'author')
-    .map(c => c.role));
-  return [...roles].map(role =>
-    ` <span class="badge bg-light text-dark border">${_skgifEscape(role.charAt(0).toUpperCase() + role.slice(1))}</span>`).join('');
-}
-
 function _skgifRaMessage(text) {
   _setCiField('ra-message', `<div class="alert alert-danger mb-4">${_skgifEscape(text)}</div>`);
+  releaseSkgifPage();
+}
+
+/*
+################################################################################
+# 10. SCHEDA DOCUMENTO (new_br_any_browser)
+################################################################################
+*/
+// ---new_br_any_browser (SKG-IF)---
+// Replaces Pietro's SPARQL block on Meta (meta: the document) and his
+// ocapi_references() / ocapi_citations() (Index REST + Meta SPARQL on every
+// reference/citation) with:
+//   /products/<full OMID>              -> title, authors, editors, publisher,
+//                                         type, date, volume, issue, pages,
+//                                         identifiers, source
+//   /products/<full OMID of biblio.in> -> editors of the book that contains
+//                                         the document (see below)
+//   cf.cited_by:<OMID> / cf.cites:<OMID> -> References / Citations, two
+//                                         paginated lists of document cards
+//                                         (_renderDocumentCard()); their
+//                                         total_items are the two counters
+//                                         (= Index reference-count /
+//                                         citation-count, checked 2026-10-10)
+// Pietro's query also read type, volume, issue, pages, publisher and editors
+// but his page did not show them: shown here (decided 2026-10-10).
+// Editors: like Pietro, those of the document + those of its container. His
+// container is the direct frbr:partOf (the issue for a journal article, the
+// book for a chapter); SKG-IF only gives biblio.in, which for a journal
+// article is the whole journal, not the issue: so the container is asked
+// only when the document is not a journal article (journal issues have no
+// editors, e.g. br/06102227607; ISWC 2020 book of br/061701903780: 8).
+// Data shown as the API gives it: dates are padded ("2020-01-01" when only
+// the year is known).
+// ON HOLD (to discuss with the prof): the "Citations per year" chart (SKG-IF
+// has no date filter or sort: every citing product would have to be
+// downloaded, 50 per page - 156 citations ~35 s, and 50-item pages sometimes
+// arrive cut; the Index API has the dates in one call, but it is not SKG-IF).
+// The two lists are paginated and in the API's order (Pietro: all of them,
+// in one go).
+//
+// #callfun args: args[1] = Lucinda.data.main (has the omid_digit of
+// "br/{omid_digit}"), see api_search_author_skgif().
+function api_document_record_skgif(...args) {
+  const id = _skgifUrlParam(args[1], 'omid_digit').trim();
+  _setCiField('br-id', `br/${_skgifEscape(id)}`); //titolo: l'OMID, come nella pagina di Pietro
+
+  const omidUrl = `https://w3id.org/oc/meta/br/${id}`;
+  const list = (filter, containerId, totalCountId, emptyMessage) => {
+    const source = `${SKGIF_API}/products?filter=${filter}:${encodeURIComponent(omidUrl)}`;
+    return {
+      source,
+      search: createSkgifPaginatedSearch({ sources: [source], renderItem: _renderDocumentCard, emptyMessage, containerId, totalCountId }).search
+    };
+  };
+  const refs = list('cf.cited_by', 'br-refs-list', 'br-refs-total', 'No references found.');
+  const cits = list('cf.cites', 'br-cits-list', 'br-cits-total', 'No citations found.');
+  const firstPage = src => skgifFetch(`${src}&page=1&page_size=${SKGIF_DEFAULT_PAGE_SIZE}`); //prima pagina in parallelo (in cache per search())
+
+  holdSkgifPage(); //banner di caricamento finché non arrivano documento, editor del contenitore e prime pagine
+  const product = skgifFetch(`${SKGIF_API}/products/${omidUrl}`)
+    .then(data => data ? ((data['@graph'] || [])[0] || {}) : null); //{} = nessun documento con quell'OMID, null = richiesta fallita
+  Promise.all([
+    product,
+    product.then(_loadContainerEditors),
+    firstPage(refs.source),
+    firstPage(cits.source)
+  ]).then(([doc, containerEditors, refsPage, citsPage]) => {
+    if (!doc) return _skgifBrMessage(SKGIF_FAILED_MESSAGE);
+    if (!doc.local_identifier) return _skgifBrMessage(`No document with OMID br/${id} in OpenCitations.`);
+
+    const manifestation = (Array.isArray(doc.manifestations) ? doc.manifestations : [])[0] || {};
+    const biblio = manifestation.biblio || {};
+    const pages = biblio.pages || {};
+    const agentLink = agentOmid => `browser.html?value=${agentOmid}`;
+    const editors = [_skgifAgents(doc.contributions, 'editor', agentLink), containerEditors].filter(Boolean).join(' • ');
+
+    _setCiField('br-title', `<a href="https://ldd.opencitations.net/meta/br/${_skgifEscape(id)}" target="_blank" class="text-reset text-decoration-none">${_skgifEscape(_skgifProductTitle(doc))}</a>`); //come create_br_header_link()
+    _setBrRow('br-type', _skgifEscape(manifestation.type?.labels?.en || ''));
+    _setBrRow('br-date', _skgifProductDate(doc) === 'Unknown' ? '' : _skgifProductDate(doc));
+    _setBrRow('br-authors', _skgifAgents(doc.contributions, 'author', agentLink));
+    _setBrRow('br-editors', editors);
+    _setCiField('br-ids', _skgifIdList(doc.identifiers, `br/${id}`));
+    _setBrRow('br-source', _skgifProductSource(doc));
+    _setBrRow('br-volume', _skgifEscape(biblio.volume || ''));
+    _setBrRow('br-issue', _skgifEscape(biblio.issue || ''));
+    _setBrRow('br-pages', _skgifEscape(pages.first && pages.last && pages.first !== pages.last ? `${pages.first}-${pages.last}` : (pages.first || pages.last || ''))); //come Pietro: una pagina sola se inizio = fine
+    _setBrRow('br-publisher', _skgifAgents(doc.contributions, 'publisher', agentOmid => `https://w3id.org/oc/meta/${agentOmid}`)); //come nelle card delle riviste
+    _setCiField('br-refs-count', _ciCount(refsPage ? skgifTotal(refsPage) : null));
+    _setCiField('br-cits-count', _ciCount(citsPage ? skgifTotal(citsPage) : null));
+    document.getElementById('br-record')?.classList.remove('d-none');
+    refs.search(); //liste paginate: riempiono anche "(N documents)" e rilasciano la pagina
+    cits.search();
+  }).catch(() => _skgifBrMessage(SKGIF_FAILED_MESSAGE));
+}
+
+// Editors of the container of a document (see above): "" for a journal
+// article, a document without biblio.in or a failed request.
+function _loadContainerEditors(doc) {
+  const manifestation = (Array.isArray(doc?.manifestations) ? doc.manifestations : [])[0] || {};
+  const containerId = manifestation.biblio?.in?.local_identifier;
+  if (!containerId || /JournalArticle$/.test(manifestation.type?.class || '')) return "";
+  return skgifFetch(`${SKGIF_API}/products/${containerId}`).then(data => {
+    const container = (data?.['@graph'] || [])[0] || {};
+    return _skgifAgents(container.contributions, 'editor', agentOmid => `browser.html?value=${agentOmid}`);
+  });
+}
+
+// Fills a field of the document record and shows its row ("<id>-row") only
+// when there is something to show, as Pietro's ifcond(... !== null).
+function _setBrRow(id, html) {
+  _setCiField(id, html);
+  document.getElementById(`${id}-row`)?.classList.toggle('d-none', !html);
+}
+
+function _skgifBrMessage(text) {
+  _setCiField('br-message', `<div class="alert alert-danger mb-4">${_skgifEscape(text)}</div>`);
   releaseSkgifPage();
 }
