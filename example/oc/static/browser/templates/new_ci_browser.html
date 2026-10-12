@@ -188,11 +188,30 @@
 
       </div>
 
-      <!-- SILVIA (SKG-IF): ON HOLD, to discuss with the prof - Pietro's two
-           "Citations of Citing / Cited per year" charts
-           (barchart_from_ids(index2.CitingCitations / CitedCitations)).
-           SKG-IF has no date filter: every citing product would have to be
-           downloaded (50 per page) to count them by year. -->
+      <!-- SILVIA (SKG-IF): Pietro's two "Citations of Citing / Cited per
+           year" charts, same cards; data from the Index API, drawn by
+           _skgifCitationsPerYearChart() (SKG-IF has no date filter) -->
+      <div class="row g-3 column-gap-3 mt-1">
+        <div class="col">
+          <div class="card shadow-sm p-1 m-1">
+            <div class="card-header text-center">
+              <h6 class="my-1 fw-bold small">Citations of Citing per year</h6>
+            </div>
+            <div class="card-body text-center text-muted small" id="ci-citing-chart"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3 column-gap-3 mt-1">
+        <div class="col">
+          <div class="card shadow-sm p-1 m-1">
+            <div class="card-header text-center">
+              <h6 class="my-1 fw-bold small">Citations of Cited per year</h6>
+            </div>
+            <div class="card-body text-center text-muted small" id="ci-cited-chart"></div>
+          </div>
+        </div>
+      </div>
 
     </div>
   </div>

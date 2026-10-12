@@ -84,10 +84,20 @@
                 </div>
               </div>
 
-              <!-- SILVIA (SKG-IF): ON HOLD, to discuss with the prof - Pietro's
-                   "Publications per year" chart (barchart_simple(author_works.pubYears)).
-                   SKG-IF has no date filter or sort: every work of the author
-                   would have to be downloaded (50 per page) to count them by year. -->
+              <!-- SILVIA (SKG-IF): Pietro's "Publications per year" chart, same
+                   card; data from the OpenCitations Meta REST API (works as
+                   author only), drawn by _skgifPublicationsPerYearChart()
+                   (SKG-IF has no date filter or sort) -->
+              <div class="row g-3 column-gap-3 mt-1">
+                <div class="col">
+                  <div class="card shadow-sm p-1 m-1">
+                    <div class="card-header text-center">
+                         <h6 class="my-1"><span class="fw-bold small">Publications per year</span></h6>
+                    </div>
+                    <div class="card-body text-center text-muted small" id="ra-pubs-chart"></div>
+                  </div>
+                </div>
+              </div>
 
           </div>
         </div>

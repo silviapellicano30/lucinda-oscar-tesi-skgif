@@ -3716,10 +3716,10 @@ function _renderOrgCard(org) {
 // DOI that the Index doesn't list). The citation exists if the cited OMID is
 // in the citing's related_products.cites; if not, a warning says so (the two
 // documents are still shown).
-// ON HOLD (to discuss with the prof): the two "Citations per year" charts
-// (SKG-IF has no date filter: every citing product would have to be
-// downloaded, 50 per page) and the citation's own metadata (creation,
-// timespan, journal/author self-citation: only in the Index API).
+// The two "Citations per year" charts come from the Index API (see
+// _skgifCitationsPerYearChart()), loaded after the record is shown.
+// ON HOLD (to discuss with the prof): the citation's own metadata
+// (creation, timespan, journal/author self-citation: only in the Index API).
 //
 // #callfun args: args[1] = Lucinda.data.main (has the oci of "ci/{oci}"),
 // see api_search_author_skgif().
@@ -3760,7 +3760,92 @@ function api_citation_record_skgif(...args) {
     _setCiField('ci-cited-by-both', _ciCount(citedByBoth));
     _setCiField('ci-citing-both', _ciCount(citingBoth));
     document.getElementById('ci-record')?.classList.remove('d-none');
+    _skgifCitationsPerYearChart('ci-citing-chart', citing); //grafici per anno dall'Index, dopo che la pagina è visibile
+    _skgifCitationsPerYearChart('ci-cited-chart', cited);
   }).finally(releaseSkgifPage);
+}
+
+// ---new_ci_browser, new_br_any_browser (SKG-IF)---
+// "Citations per year" bar chart of a document, in the box with id boxId
+// (Pietro's barchart_from_ids() / barchart(), same Chart.js style). NOT from
+// SKG-IF: it has no date filter or sort, so every citing product would have
+// to be downloaded, 50 per page. The Index API returns every citation with
+// its date ("creation" = publication date of the citing document, "2019",
+// "2019-07" or "2019-07-03") in one request. Citations without a date are
+// skipped, as Pietro did. The total can differ by a few from the SKG-IF
+// Citations counter (SKG-IF also has some citing preprints without DOI).
+// For very cited documents (e.g. br/0630685531, ~14,500 citations) the Index
+// response arrives cut (checked 2026-10-12): the request fails and a message
+// replaces the chart.
+const OC_INDEX_API = "https://api.opencitations.net/index/v2";
+
+function _skgifCitationsPerYearChart(boxId, id) {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  box.innerHTML = '<em>Loading...</em>';
+  skgifFetch(`${OC_INDEX_API}/citations/omid:br/${id}`).then(data => { //una sola richiesta: tutte le citazioni con la data
+    if (!Array.isArray(data)) {
+      box.innerHTML = '<em>Chart not available (the OpenCitations Index did not return the citations).</em>';
+      return;
+    }
+    _skgifYearChart(box, data.map(c => c.creation), '# Citations', 'No citations found.');
+  });
+}
+
+// ---new_ra_browser (SKG-IF)---
+// "Publications per year" bar chart of an author, in the box with id boxId
+// (Pietro's barchart_simple(author_works.pubYears)). NOT from SKG-IF: it has
+// no date filter or sort, so every work would have to be downloaded, 50 per
+// page. The OpenCitations Meta REST API returns every work of the ra/ record
+// with its date (pub_date) in one request (~4 s for ra/0614010840729). It
+// counts only the works where the agent is AUTHOR, as Pietro's query: so the
+// total can differ from the SKG-IF Publications counter, which has every role
+// (ra/0614010840729: 112 vs 115, checked 2026-10-12). Works without a date
+// are skipped, as Pietro did.
+const OC_META_API = "https://api.opencitations.net/meta/v1";
+
+function _skgifPublicationsPerYearChart(boxId, id) {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  box.innerHTML = '<em>Loading...</em>';
+  skgifFetch(`${OC_META_API}/author/omid:ra/${id}`).then(data => { //una sola richiesta: tutti i lavori da author con la data
+    if (!Array.isArray(data)) {
+      box.innerHTML = '<em>Chart not available (OpenCitations Meta did not return the publications).</em>';
+      return;
+    }
+    _skgifYearChart(box, data.map(w => w.pub_date), '# Publications', 'No publications found.');
+  });
+}
+
+// Draws in box a bar chart with the number of dates per year (first 4
+// characters of each date: "2019", "2019-07" or "2019-07-03"; empty dates
+// skipped). Only the years with at least one date are on the axis, as
+// Pietro's barchart() / barchart_simple(), same Chart.js style.
+function _skgifYearChart(box, dates, label, emptyMessage) {
+  const perYear = {}; //anno -> quante date in quell'anno
+  dates.forEach(date => {
+    const year = String(date || '').slice(0, 4);
+    if (/^\d{4}$/.test(year)) perYear[year] = (perYear[year] || 0) + 1;
+  });
+  const years = Object.keys(perYear).sort();
+  if (!years.length) {
+    box.innerHTML = `<em>${emptyMessage}</em>`;
+    return;
+  }
+  box.innerHTML = '<canvas style="display: block; margin: 0 auto;"></canvas>';
+  new Chart(box.querySelector('canvas'), {
+    type: 'bar',
+    data: {
+      labels: years,
+      datasets: [{ label, backgroundColor: '#4985f3', data: years.map(y => perYear[y]), borderWidth: 1 }]
+    },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '' } } }
+    }
+  });
 }
 
 // ---new_ci_browser (SKG-IF)---
@@ -3817,8 +3902,9 @@ function _skgifCiMessage(text, type) {
 // - the filter has every role (author AND editor; Pietro: author only, e.g.
 //   ra/0614010840729 = 115 vs 111), shown without a role badge;
 // - the list is in the API's order (SKG-IF has no sort; Pietro's was by date).
-// ON HOLD (to discuss with the prof): the "Publications per year" chart (no
-// date filter or sort: every work would have to be downloaded, 50 per page).
+// The "Publications per year" chart is the only part NOT from SKG-IF: it
+// comes from the OpenCitations Meta REST API, see
+// _skgifPublicationsPerYearChart() (section 8).
 //
 // #callfun args: args[1] = Lucinda.data.main (has the id of "ra/{id}"), see
 // api_search_author_skgif().
@@ -3854,6 +3940,7 @@ function api_author_record_skgif(...args) {
     _setCiField('ra-ids', _skgifIdList(identifiers.filter(i => i.scheme !== 'orcid'), `ra/${id}`));
     document.getElementById('ra-record')?.classList.remove('d-none');
     list.search(); //lista paginata: riempie anche il contatore Publications e rilascia la pagina
+    _skgifPublicationsPerYearChart('ra-pubs-chart', id); //grafico per anno da Meta, dopo che la pagina è visibile
   }).catch(() => _skgifRaMessage(SKGIF_FAILED_MESSAGE));
 }
 
@@ -3892,10 +3979,10 @@ function _skgifRaMessage(text) {
 // editors, e.g. br/06102227607; ISWC 2020 book of br/061701903780: 8).
 // Data shown as the API gives it: dates are padded ("2020-01-01" when only
 // the year is known).
-// ON HOLD (to discuss with the prof): the "Citations per year" chart (SKG-IF
-// has no date filter or sort: every citing product would have to be
-// downloaded, 50 per page - 156 citations ~35 s, and 50-item pages sometimes
-// arrive cut; the Index API has the dates in one call, but it is not SKG-IF).
+// The "Citations per year" chart comes from the Index API (SKG-IF has no
+// date filter or sort: every citing product would have to be downloaded, 50
+// per page - 156 citations ~35 s), see _skgifCitationsPerYearChart()
+// (section 8).
 // The two lists are paginated and in the API's order (Pietro: all of them,
 // in one go).
 //
@@ -3951,6 +4038,7 @@ function api_document_record_skgif(...args) {
     document.getElementById('br-record')?.classList.remove('d-none');
     refs.search(); //liste paginate: riempiono anche "(N documents)" e rilasciano la pagina
     cits.search();
+    _skgifCitationsPerYearChart('br-cits-chart', id); //grafico per anno dall'Index (sezione 8)
   }).catch(() => _skgifBrMessage(SKGIF_FAILED_MESSAGE));
 }
 

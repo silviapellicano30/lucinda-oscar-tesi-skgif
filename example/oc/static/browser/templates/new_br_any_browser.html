@@ -111,10 +111,19 @@
                 </div>
               </div>
 
-              <!-- SILVIA (SKG-IF): ON HOLD, to discuss with the prof - Pietro's
-                   "Citations per year" chart (barchart(mapData(apicits.pub_date))).
-                   SKG-IF has no date filter or sort: every citing document
-                   would have to be downloaded (50 per page) to count them by year. -->
+              <!-- SILVIA (SKG-IF): Pietro's "Citations per year" chart, same
+                   card; data from the Index API, drawn by
+                   _skgifCitationsPerYearChart() (SKG-IF has no date filter) -->
+              <div class="row g-3 column-gap-3 mt-1">
+                <div class="col">
+                  <div class="card shadow-sm p-1 m-1">
+                    <div class="card-header text-center">
+                         <h6 class="my-1"><span class="fw-bold small">Citations per year</span></h6>
+                    </div>
+                    <div class="card-body text-center text-muted small" id="br-cits-chart"></div>
+                  </div>
+                </div>
+              </div>
 
           </div>
         </div>

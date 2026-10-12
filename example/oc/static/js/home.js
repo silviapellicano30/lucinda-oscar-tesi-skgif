@@ -222,28 +222,15 @@ const SKGIF_CATEGORIES = {
 // the SKG-IF list of external identifiers
 // (https://skg-if.github.io/interoperability-framework/), each with the kind
 // of entity it identifies, as scheme: example shown as placeholder. All are
-// offered, also the ones OC has no data for (they return 0 results), in two
-// groups of the dropdown: "oc" = OC has records with it (verified on the API,
-// the examples are real records), "other" = the rest of the SKG-IF list.
-// opendoar is left out: it identifies repositories (SKG-IF datasources), not
-// one of these entities.
+// offered, also the ones OC has no data for (they return 0 results), in one
+// list: the main scheme first (the default one), then the others in
+// alphabetical order. opendoar is left out: it identifies repositories
+// (SKG-IF datasources), not one of these entities.
 const SKGIF_ID_SCHEMES = {
-  document: {
-    oc: { doi: "10.1007/s11192-019-03217-6", pmid: "24936838", pmcid: "PMC7500415", arxiv: "1909.01284", isbn: "9780203417447", openalex: "W4409315295", omid: "br/06010123732" },
-    other: { bibcode: "2019ApJ...882L..12A", handle: "11585/123456", ivoid: "ivo://authority/resource", spase: "spase://NASA/...", url: "https://...", urn: "urn:nbn:...", w3id: "https://w3id.org/..." }
-  },
-  author: {
-    oc: { orcid: "0000-0003-0530-4305", omid: "ra/0614010840729" },
-    other: { openalex: "A5023888391", viaf: "102333412", url: "https://...", w3id: "https://w3id.org/..." }
-  },
-  venue: {
-    oc: { issn: "0138-9130", isbn: "9783662685099", openalex: "S148561398", omid: "br/06010060186" },
-    other: { eissn: "1588-2861", lissn: "0138-9130", doi: "10.1007/...", url: "https://...", w3id: "https://w3id.org/..." }
-  },
-  organisation: {
-    oc: { crossref: "78", omid: "ra/0610116009" },
-    other: { ror: "02mhbdp94", viaf: "123456789", openalex: "I12345678", url: "https://...", w3id: "https://w3id.org/..." }
-  }
+  document: { doi: "10.1007/s11192-019-03217-6", arxiv: "1909.01284", bibcode: "2019ApJ...882L..12A", handle: "11585/123456", isbn: "9780203417447", ivoid: "ivo://authority/resource", omid: "br/06010123732", openalex: "W4409315295", pmcid: "PMC7500415", pmid: "24936838", spase: "spase://NASA/...", url: "https://...", urn: "urn:nbn:...", w3id: "https://w3id.org/..." },
+  author: { orcid: "0000-0003-0530-4305", omid: "ra/0614010840729", openalex: "A5023888391", url: "https://...", viaf: "102333412", w3id: "https://w3id.org/..." },
+  venue: { issn: "0138-9130", doi: "10.1007/...", eissn: "1588-2861", isbn: "9783662685099", lissn: "0138-9130", omid: "br/06010060186", openalex: "S148561398", url: "https://...", w3id: "https://w3id.org/..." },
+  organisation: { crossref: "78", omid: "ra/0610116009", openalex: "I12345678", ror: "02mhbdp94", url: "https://...", viaf: "123456789", w3id: "https://w3id.org/..." }
 };
 
 // Name of each scheme in the dropdown (the value sent is the scheme itself).
@@ -310,10 +297,8 @@ function skgifInitSearchFields(searchForm, searchInput, categorySelect) {
 
     const schemes = SKGIF_ID_SCHEMES[category];
     idFields.forEach(el => el.classList.toggle("oc-hidden", !schemes));
-    const group = (label, list) => `<optgroup label="${label}">` +
-      Object.keys(list).map(s => `<option value="${s}">${SKGIF_ID_NAMES[s] || s}</option>`).join("") + `</optgroup>`;
     schemeSelect.innerHTML = schemes
-      ? group("Available in OpenCitations", schemes.oc) + group("Other SKG-IF identifiers", schemes.other)
+      ? Object.keys(schemes).map(s => `<option value="${s}">${SKGIF_ID_NAMES[s] || s}</option>`).join("")
       : "";
     schemeDropdown.render();
     updateIdPlaceholder();
@@ -323,7 +308,7 @@ function skgifInitSearchFields(searchForm, searchInput, categorySelect) {
 
   function updateIdPlaceholder() {
     const schemes = SKGIF_ID_SCHEMES[categorySelect.value];
-    const example = schemes && (schemes.oc[schemeSelect.value] || schemes.other[schemeSelect.value]);
+    const example = schemes && schemes[schemeSelect.value];
     idInput.placeholder = example ? `e.g. ${example}` : "";
   }
 
