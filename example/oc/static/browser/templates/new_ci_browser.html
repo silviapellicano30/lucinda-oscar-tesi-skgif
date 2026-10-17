@@ -4,9 +4,10 @@
     <i class="fas fa-arrow-left"></i> Home
   </a>
 </div>
-<!-- SILVIA (SKG-IF): same layout as Pietro's; the fields are filled by
-     api_citation_record_skgif() in localbrowser.js (ids below) instead of
-     [[Lucinda:...]] SPARQL values -->
+<!-- SILVIA (SKG-IF): the fields are filled by api_citation_record_skgif() in
+     localbrowser.js (ids below) instead of [[Lucinda:...]] SPARQL values.
+     Layout reorganised (prof's request): each "Citations per year" chart is
+     under its own work, the two shared counters have their own section. -->
 <div class="row">
 
   <!-- TITLE CARD -->
@@ -24,197 +25,177 @@
 
 </div>
 
-<div class="row d-none" id="ci-record">
+<div class="d-none" id="ci-record">
 
-  <!-- LEFT COLUMN: CITING + CITED -->
-  <div class="col-12 col-md-8 mb-4">
-    <div class="card shadow-sm p-3 h-100">
+  <!-- CITING WORK -> CITED WORK -->
+  <div class="row align-items-stretch mb-4">
 
-      <div class="row">
+    <!-- CITING WORK -->
+    <div class="col-12 col-md">
+      <div class="card shadow-sm p-3 h-100">
+        <div class="card-header text-center">
+          <h4 class="my-1 fw-bold">Citing work</h4>
+        </div>
 
-        <!-- CITING RESOURCE -->
-        <div class="col-12 col-md-6 mb-4 mb-md-0">
-          <div class="card shadow-sm p-3 h-100">
-            <div class="card-header text-center">
-              <h4 class="my-1 fw-bold">Citing Resource</h4>
-            </div>
+        <div class="card-body d-flex flex-column">
 
-            <div class="card-body">
+          <h5 class="card-title text-center" id="citing-title"></h5>
+          <hr>
 
-              <h5 class="card-title text-center" id="citing-title"></h5>
-              <hr>
+          <span class="metadata-label fw-bold" id="citing-authors-label">Authors:</span>
+          <p id="citing-authors"></p>
 
-              <span class="metadata-label fw-bold" >Authors:</span>
-              <p id="citing-authors"></p>
+          <span class="metadata-label fw-bold">Publication Date:</span>
+          <p id="citing-date"></p>
 
-              <span class="metadata-label fw-bold" >Publication Date:</span>
-              <p id="citing-date"></p>
+          <span class="metadata-label fw-bold">Identifiers:</span>
+          <p id="citing-ids"></p>
 
-              <span class="metadata-label fw-bold" >Identifiers:</span>
-              <p id="citing-ids"></p>
+          <span class="metadata-label fw-bold">Full URI:</span>
+          <p id="citing-uri"></p>
 
-              <span class="metadata-label fw-bold">Full URI:</span>
-              <p id="citing-uri"></p>
-
-            </div>
-
-            <!-- CITING STATS -->
-            <div class="row mt-3 px-3 pb-3">
+          <!-- counters and chart at the bottom, aligned with the cited work -->
+          <div class="mt-auto">
+            <div class="row g-2 mb-3">
               <div class="col-6">
-
-                <div class="card shadow-sm p-1 m-1 h-90">
+                <div class="card shadow-sm h-100">
                   <div class="card-header text-center py-1">
                     <span class="fw-bold small">References</span>
                   </div>
-                  <div class="card-body text-center">
+                  <div class="card-body text-center py-2">
                     <h3 class="text-primary my-1" id="citing-refs"></h3>
                   </div>
                 </div>
-
               </div>
-
               <div class="col-6">
-
-                <div class="card shadow-sm p-1 m-1 h-90">
+                <div class="card shadow-sm h-100">
                   <div class="card-header text-center py-1">
                     <span class="fw-bold small">Citations</span>
                   </div>
-                  <div class="card-body text-center">
+                  <div class="card-body text-center py-2">
                     <h3 class="text-primary my-1" id="citing-cits"></h3>
                   </div>
                 </div>
-
               </div>
             </div>
 
+            <!-- data from the Index API, drawn by _skgifCitationsPerYearChart() -->
+            <div class="card shadow-sm">
+              <div class="card-header text-center py-1">
+                <span class="fw-bold small">Citations per year</span>
+              </div>
+              <div class="card-body text-center text-muted small" id="ci-citing-chart"></div>
+            </div>
           </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- "cites" arrow: right on wide screens, down when the cards are stacked -->
+    <div class="col-12 col-md-auto d-flex flex-md-column align-items-center justify-content-center my-3 my-md-0 text-muted">
+      <span class="fs-2 lh-1 d-none d-md-block" aria-hidden="true">&rarr;</span>
+      <span class="fs-2 lh-1 d-md-none me-2" aria-hidden="true">&darr;</span>
+      <span class="fw-bold small">cites</span>
+    </div>
+
+    <!-- CITED WORK -->
+    <div class="col-12 col-md">
+      <div class="card shadow-sm p-3 h-100">
+        <div class="card-header text-center">
+          <h4 class="my-1 fw-bold">Cited work</h4>
         </div>
 
+        <div class="card-body d-flex flex-column">
 
-        <!-- CITED RESOURCE -->
-        <div class="col-12 col-md-6">
-          <div class="card shadow-sm p-3 h-100">
-            <div class="card-header text-center">
-              <h4 class="my-1 fw-bold">Cited Resource</h4>
-            </div>
+          <h5 class="card-title text-center" id="cited-title"></h5>
+          <hr>
 
-            <div class="card-body">
+          <span class="metadata-label fw-bold" id="cited-authors-label">Authors:</span>
+          <p id="cited-authors"></p>
 
-              <h5 class="card-title text-center" id="cited-title"></h5>
-              <hr>
+          <span class="metadata-label fw-bold">Publication Date:</span>
+          <p id="cited-date"></p>
 
-              <span class="metadata-label fw-bold">Authors:</span>
-              <p id="cited-authors"></p>
+          <span class="metadata-label fw-bold">Identifiers:</span>
+          <p id="cited-ids"></p>
 
-              <span class="metadata-label fw-bold">Publication Date:</span>
-              <p id="cited-date"></p>
+          <span class="metadata-label fw-bold">Full URI:</span>
+          <p id="cited-uri"></p>
 
-              <span class="metadata-label fw-bold">Identifiers:</span>
-              <p id="cited-ids"></p>
-
-              <span class="metadata-label fw-bold" >Full URI:</span>
-              <p id="cited-uri"></p>
-
-            </div>
-
-            <!-- CITED STATS -->
-            <div class="row mt-3 px-3 pb-3">
+          <div class="mt-auto">
+            <div class="row g-2 mb-3">
               <div class="col-6">
-
-                <div class="card shadow-sm p-1 m-1 h-90">
+                <div class="card shadow-sm h-100">
                   <div class="card-header text-center py-1">
                     <span class="fw-bold small">References</span>
                   </div>
-                  <div class="card-body text-center">
+                  <div class="card-body text-center py-2">
                     <h3 class="text-primary my-1" id="cited-refs"></h3>
                   </div>
                 </div>
-
               </div>
-
               <div class="col-6">
-
-                <div class="card shadow-sm p-1 m-1 h-90">
+                <div class="card shadow-sm h-100">
                   <div class="card-header text-center py-1">
                     <span class="fw-bold small">Citations</span>
                   </div>
-                  <div class="card-body text-center">
+                  <div class="card-body text-center py-2">
                     <h3 class="text-primary my-1" id="cited-cits"></h3>
                   </div>
                 </div>
-
-
               </div>
             </div>
 
+            <div class="card shadow-sm">
+              <div class="card-header text-center py-1">
+                <span class="fw-bold small">Citations per year</span>
+              </div>
+              <div class="card-body text-center text-muted small" id="ci-cited-chart"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- WHAT THE TWO WORKS HAVE IN COMMON (Pietro's "Cited by Both" / "Citing Both") -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card shadow-sm p-3">
+        <div class="card-header text-center">
+          <h4 class="my-1 fw-bold">Citation overlap</h4>
+        </div>
+        <div class="card-body">
+          <div class="row g-3 justify-content-center">
+            <div class="col-12 col-sm-6 col-lg-4">
+              <div class="card shadow-sm h-100">
+                <div class="card-header text-center py-1">
+                  <span class="fw-bold small">Shared references</span>
+                </div>
+                <div class="card-body text-center py-2">
+                  <h3 class="text-primary my-1" id="ci-cited-by-both"></h3>
+                  <p class="small text-muted mb-0">Works cited by both</p>
+                </div>
+              </div>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-4">
+              <div class="card shadow-sm h-100">
+                <div class="card-header text-center py-1">
+                  <span class="fw-bold small">Co-citations</span>
+                </div>
+                <div class="card-body text-center py-2">
+                  <h3 class="text-primary my-1" id="ci-citing-both"></h3>
+                  <p class="small text-muted mb-0">Works that cite both</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-
       </div>
     </div>
   </div>
-
-
-
-  <!-- RIGHT COLUMN: BOTH-SIDE METRICS -->
-  <div class="col-12 col-md-4 mb-4">
-
-  <div class="card shadow-sm p-1 h-100">
-    <div class="card-body">
-
-      <div class="row g-3 column-gap-3">
-
-        <div class="col">
-          <div class="card shadow-sm p-1 m-1 h-100">
-            <div class="card-header text-center py-1">
-              <span class="fw-bold small">Cited by Both</span>
-            </div>
-            <div class="card-body text-center">
-              <h3 class="text-primary my-1" id="ci-cited-by-both"></h3>
-            </div>
-          </div>
-        </div>
-
-        <div class="col">
-          <div class="card shadow-sm p-1 m-1 h-100">
-            <div class="card-header text-center py-1">
-              <span class="fw-bold small">Citing Both</span>
-            </div>
-            <div class="card-body text-center">
-              <h3 class="text-primary my-1" id="ci-citing-both"></h3>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- SILVIA (SKG-IF): Pietro's two "Citations of Citing / Cited per
-           year" charts, same cards; data from the Index API, drawn by
-           _skgifCitationsPerYearChart() (SKG-IF has no date filter) -->
-      <div class="row g-3 column-gap-3 mt-1">
-        <div class="col">
-          <div class="card shadow-sm p-1 m-1">
-            <div class="card-header text-center">
-              <h6 class="my-1 fw-bold small">Citations of Citing per year</h6>
-            </div>
-            <div class="card-body text-center text-muted small" id="ci-citing-chart"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="row g-3 column-gap-3 mt-1">
-        <div class="col">
-          <div class="card shadow-sm p-1 m-1">
-            <div class="card-header text-center">
-              <h6 class="my-1 fw-bold small">Citations of Cited per year</h6>
-            </div>
-            <div class="card-body text-center text-muted small" id="ci-cited-chart"></div>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </div>
-</div>
 
 </div>

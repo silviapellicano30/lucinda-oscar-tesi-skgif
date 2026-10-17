@@ -2696,6 +2696,10 @@ const SKGIF_DEFAULT_PAGE_SIZE = 10; // matches the API's own default; not sent a
 // failed search looked like "No results found".
 const SKGIF_FAILED_MESSAGE = "The search failed or took too long (the API did not answer). Try again or use a shorter query.";
 
+// Placeholder of a list while its results arrive (paginated searches and the
+// lists of the document page); the dots blink (lucinda.css).
+const SKGIF_LOADING_HTML = "<div class='col-12 skgif-page-loading'>Loading the results<br><span class='loading-dots'><span>.</span><span>.</span><span>.</span> </span></div>";
+
 // total_items of a search response (0 if missing).
 function skgifTotal(response) {
   return response?.meta?.part_of?.total_items || 0; //legge il totale già restituito da skgif che viene usato in loadstotal
@@ -2725,19 +2729,26 @@ const _skgifPendingRequests = {};
 // so it is tried again the next time. HTTP 404 is not a failure: the API
 // answers 404 to a search with no matches (unknown ISSN/ORCID/Crossref id,
 // name with no records...), so it resolves to an empty response (0 items).
+// timeoutMs (optional): the request is given up after that time (a failure,
+// null), instead of waiting for the server, which can take minutes to fail.
 //Se la risposta è in cache, la restituisce subito, se la richiesta è già in corso la aspetta, altrimenti fa la query e restituisce il json se tutto va bene, altrimenti null
-function skgifFetch(url) {
+function skgifFetch(url, timeoutMs) {
   const key = _skgifNormalizeUrl(url);
   if (_skgifResponseCache[key]) return Promise.resolve(_skgifResponseCache[key]);
   if (_skgifPendingRequests[key]) return _skgifPendingRequests[key]; //richiesta già in corso: aspetta quella
-  return _skgifPendingRequests[key] = fetch(url)
+  const controller = timeoutMs ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  return _skgifPendingRequests[key] = fetch(url, controller ? { signal: controller.signal } : undefined)
     .then(r => r.ok ? r.json() : r.status === 404 ? {} : null) // SILVIA (SKG-IF): 404 = 0 results
     .then(data => {
       if (data) _skgifResponseCache[key] = data;
       return data;
     })
     .catch(() => null)
-    .finally(() => { delete _skgifPendingRequests[key]; });
+    .finally(() => {
+      clearTimeout(timer);
+      delete _skgifPendingRequests[key];
+    });
 }
 
 // Keeps LUCINDA's own "Loading the resource..." banner on screen until the
@@ -2768,6 +2779,268 @@ function releaseSkgifPage() { //ricarica la pagina dopo che abbiamo tutti i dati
   _skgifHeldPage = null;
 }
 
+// Downloads EVERY page of an SKG-IF search (SKG-IF has no sort and no date
+// filter, so a list to sort or a per-year chart needs all the items): pages
+// of pageSize, `parallel` requests at a time, each through skgifFetchRange()
+// (a page that does not arrive is asked again in smaller pages, and a result
+// the API cannot give becomes a { _skgifMissing: true } marker).
+// onPage(n, items) is called as each page arrives (n from 1, in arrival
+// order). Pages listed in `have` ({n: items}) are not requested again (e.g.
+// the first page, already downloaded). Resolves when every page is there.
+// Used by the author's works (section 9).
+function skgifFetchAllPages(source, total, pageSize, parallel, onPage, have = {}) {
+  const pageCount = Math.ceil(total / pageSize);
+  const todo = [];
+  for (let n = 1; n <= pageCount; n++) if (!have[n]) todo.push(n);
+  return _skgifPool(todo, parallel, n => {
+    const start = (n - 1) * pageSize;
+    return skgifFetchRange(source, start, Math.min(pageSize, total - start), pageSize).then(items => onPage(n, items));
+  });
+}
+
+// Runs task(n) for every n of `todo`, `parallel` at a time (the next one
+// starts when one ends, so the server is never asked too much at once);
+// resolves when all have ended. Used by skgifFetchAllPages() (author's works)
+// and by the lists browsed page by page (_skgifPagedList()).
+function _skgifPool(todo, parallel, task) {
+  const queue = [...todo];
+  const worker = () => {
+    const n = queue.shift();
+    return n === undefined ? Promise.resolve() : task(n).then(worker);
+  };
+  return Promise.all(Array.from({ length: Math.min(parallel, queue.length) }, () => worker()));
+}
+
+// Status text of a list (statusId) and its progress bar (barId): fraction
+// 0..1, or null to hide the bar. Author profile and document page.
+function _skgifListStatus(statusId, barId, text, fraction) {
+  _setCiField(statusId, _skgifEscape(text));
+  const bar = document.getElementById(barId);
+  if (!bar) return;
+  bar.classList.toggle('d-none', fraction === null);
+  const inner = bar.querySelector('.progress-bar');
+  if (inner && fraction !== null) inner.style.width = `${Math.round(fraction * 100)}%`;
+}
+
+// Lists browsed page by page (document page, organisation page): pages of
+// results asked to the API and how many at a time. Tried live on 2026-10-16
+// (first time, before the API's cache): pages of 50 are much faster than
+// pages of 10 in total; more than ~4 requests at a time make the server
+// slower and some time out. 218 citations ~18 s, 2,571 ~73 s; very cited
+// documents (br/0630685531, 14,494) take many minutes.
+const SKGIF_LIST_PAGE_SIZE = 50;
+const SKGIF_LIST_PARALLEL = 4;
+// Lists up to this size are downloaded whole by themselves for their
+// per-year chart (10 requests of 50, 3 rounds of 4): bigger ones draw it
+// only on request. Chosen by number of requests (~20-30 s), not measured.
+const SKGIF_CHART_AUTO_LOAD = 500;
+
+// A list browsed 10 per page with Previous/Next (References and Citations
+// of the document page, publications of an organisation): elements
+// <prefix>-list, -total, -status, -progress of the template (the ones that
+// are missing are skipped). first = skgifFirstPage() (null if not even the
+// total could be read). The results are kept by page of SKGIF_LIST_PAGE_SIZE
+// (skgifFetchRange(), asked once each, by the list or by loadAll()); the 10
+// cards of a page are cut out of them, always in the API's order: no "Sort
+// by" (decided 2026-10-17, it needed every result, too slow for long lists),
+// so it works as the Go to References / Go to Citations pages whatever its
+// size. loadAll() is used only by the per-year chart (_skgifListChart()). A
+// result the API could not give is shown as a card "1 <noun> could not be
+// loaded" and is left out of the chart.
+// Options: noun (of the results, for the messages), statusText(total) (text
+// above the list), scrollId (element brought into view when changing page),
+// renderCard(product). Several lists can take turns in the same container
+// (organisation: all the publications / a title search): only the active
+// one (the last created, or the one given back with activate()) writes in
+// the page.
+function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText, scrollId, renderCard }) {
+  const containerId = `${prefix}-list`;
+  const total = first ? first.total : 0;
+  const blockCount = Math.ceil(total / SKGIF_LIST_PAGE_SIZE);
+  const blocks = {};   //numero di pagina da 50 -> promessa dei suoi risultati
+  const arrived = {};  //numero di pagina da 50 -> risultati arrivati
+  if (first) blocks[1] = Promise.resolve(first.items);
+  const block = n => blocks[n] || (blocks[n] = skgifFetchRange(source, (n - 1) * SKGIF_LIST_PAGE_SIZE,
+    Math.min(SKGIF_LIST_PAGE_SIZE, total - (n - 1) * SKGIF_LIST_PAGE_SIZE), SKGIF_LIST_PAGE_SIZE));
+  const progressListeners = []; //chi segue lo scaricamento (il grafico)
+  let inOrder = null;  //tutti i risultati nell'ordine dell'API (anche i mancanti), quando loadAll() è finito
+  let all = null;      //solo i documenti arrivati (grafico)
+  let loading = null;  //promessa di loadAll()
+  let page = 1;
+
+  const paginator = { goToPage: p => show(p, true) };
+  const active = () => _skgifPaginators[containerId] === paginator;
+  let lastStatus = ['', null]; //ultimo stato, rimesso da activate()
+  const status = (text, fraction = null) => {
+    lastStatus = [text, fraction];
+    if (active()) _skgifListStatus(`${prefix}-status`, `${prefix}-progress`, text, fraction);
+  };
+  _skgifPaginators[containerId] = paginator;
+  _setCiField(`${prefix}-total`, _ciCount(first ? total : null));
+  status(first ? statusText(total) : '');
+
+  const renderItems = items => items.map(item => item._skgifMissing ? _skgifMissingCard(noun) : renderCard(item)).join('');
+
+  // The results of page p (10), from the pages of 50 that cover it.
+  function itemsOfPage(p) {
+    const size = SKGIF_DEFAULT_PAGE_SIZE;
+    if (inOrder) return Promise.resolve(inOrder.slice((p - 1) * size, p * size));
+    const from = (p - 1) * size;
+    const to = Math.min(from + size, total);
+    const firstBlock = Math.floor(from / SKGIF_LIST_PAGE_SIZE) + 1;
+    const lastBlock = Math.floor((to - 1) / SKGIF_LIST_PAGE_SIZE) + 1;
+    const needed = [];
+    for (let n = firstBlock; n <= lastBlock; n++) needed.push(block(n));
+    return Promise.all(needed).then(lists => {
+      const skip = from - (firstBlock - 1) * SKGIF_LIST_PAGE_SIZE;
+      return lists.flat().slice(skip, skip + (to - from));
+    });
+  }
+
+  function show(p, scroll) {
+    page = p;
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (!first) return void (container.innerHTML = `<div class="col-12"><p>The ${noun}s could not be loaded (the API did not answer).</p></div>`);
+    if (!total) return void (container.innerHTML = `<div class="col-12"><p>${_skgifEscape(emptyMessage)}</p></div>`);
+    if (scroll) document.getElementById(scrollId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    container.innerHTML = SKGIF_LOADING_HTML;
+    itemsOfPage(p).then(items => {
+      if (page !== p || !active()) return; //nel frattempo è stata chiesta un'altra pagina o un'altra lista
+      const pageCount = Math.max(1, Math.ceil((inOrder ? inOrder.length : total) / SKGIF_DEFAULT_PAGE_SIZE));
+      container.innerHTML = renderItems(items) + _skgifPaginationBar(containerId, p, pageCount);
+    });
+  }
+
+  // Downloads every page of 50 (SKGIF_LIST_PARALLEL at a time, the ones
+  // already there come at once); resolves to false only if the list could
+  // not be read at all.
+  function loadAll() {
+    if (loading) return loading;
+    if (!first) return loading = Promise.resolve(false);
+    const report = () => {
+      const loaded = Math.min(Object.values(arrived).reduce((n, items) => n + items.length, 0), total);
+      status(`Loading… ${loaded}/${total}`, total ? loaded / total : 0);
+      progressListeners.forEach(listener => listener(loaded, total));
+    };
+    const todo = Array.from({ length: blockCount }, (_, i) => i + 1);
+    report();
+    loading = _skgifPool(todo, SKGIF_LIST_PARALLEL, n => block(n).then(items => {
+      arrived[n] = items;
+      report();
+    })).then(() => {
+      inOrder = _skgifDedupe(Object.keys(arrived).sort((a, b) => a - b).flatMap(n => arrived[n])); //i mancanti non hanno OMID: restano tutti
+      all = inOrder.filter(item => !item._skgifMissing);
+      const missing = inOrder.length - all.length;
+      status(statusText(all.length) + (missing ? ` (${missing} could not be loaded)` : ''));
+      return true;
+    });
+    return loading;
+  }
+
+  show(1);
+
+  return {
+    total,
+    failed: !first,
+    loadAll,
+    items: () => all,
+    missing: () => inOrder ? inOrder.length - all.length : 0,
+    onProgress: listener => progressListeners.push(listener),
+    activate: () => { //torna questa la lista mostrata
+      _skgifPaginators[containerId] = paginator;
+      status(...lastStatus);
+      show(1);
+    }
+  };
+}
+
+// Per-year chart of a _skgifPagedList() (publication date of each product,
+// undated ones skipped), in the element boxId: drawn by itself up to
+// SKGIF_CHART_AUTO_LOAD results, up to maxLoad when "Load chart" is clicked,
+// never above maxLoad (an organisation can have millions of publications).
+// Meanwhile the box shows how many results have arrived and a progress bar;
+// the chart is drawn only when all of them are there, with a note if some
+// could not be loaded. noun: "citation", "publication"; owner: "document",
+// "organisation"; label: of the bars.
+function _skgifListChart(list, { boxId, noun, owner, label, maxLoad = Infinity }) {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  if (list.failed) return void (box.innerHTML = '<em>Chart not available.</em>');
+  if (!list.total) return void (box.innerHTML = `<em>No ${noun}s found.</em>`);
+
+  const draw = () => {
+    list.onProgress((loaded, total) => {
+      box.innerHTML = `<div class="mb-2">Loading ${noun}s… ${loaded}/${total}</div>
+        <div class="progress br-chart-progress" style="height: 6px;"><div class="progress-bar" style="width: ${Math.round(loaded / total * 100)}%"></div></div>`;
+    });
+    list.loadAll().then(() => {
+      _skgifYearChart(box, list.items().map(_skgifProductRawDate), label, `No ${noun}s found.`, 200);
+      const missing = list.missing();
+      if (missing) box.insertAdjacentHTML('beforeend', `<div class="mt-2">${_skgifPlural(missing, noun)} could not be loaded</div>`);
+    });
+  };
+  if (list.total <= SKGIF_CHART_AUTO_LOAD) return draw();
+  if (list.total > maxLoad) return void (box.innerHTML = `<p class="mb-0">This ${owner} has ${list.total} ${noun}s: too many to draw the chart.</p>`);
+  box.innerHTML = `<p class="mb-3">This ${owner} has ${list.total} ${noun}s.</p>
+    <button type="button" class="btn btn-sm br-load-chart">Load chart</button>`;
+  box.querySelector('button').addEventListener('click', draw);
+}
+
+// Time limits of the lists that split a page which does not arrive
+// (skgifFetchRange()): the server can take minutes to fail (br/062404378136,
+// 2,512 authors: /products times out or answers 502 after ~2 minutes even for
+// it alone, checked 2026-10-17), while a page of a citation or works list
+// normally arrives in a few seconds and a single result in 1-3 s.
+const SKGIF_PAGE_TIMEOUT = 60000;
+const SKGIF_ITEM_TIMEOUT = 30000;
+
+// `count` results of a list (source without page/page_size) from position
+// `start` (from 0, a multiple of `size`), asked as one page of `size`. If it
+// does not arrive within timeoutMs, the same results are asked in pages of
+// 10 (when bigger) and then one at a time (skgifSplitRange()): so one result
+// the API cannot give (e.g. br/062404378136 among the citations of
+// br/06301940975) does not take the others with it. A result that does not
+// arrive even alone becomes a { _skgifMissing: true } marker, shown as
+// _skgifMissingCard(). It also covers the big responses the API sometimes
+// cuts (the same page came as 226 KB and 561 KB; the browser reports
+// ERR_HTTP2_PROTOCOL_ERROR).
+function skgifFetchRange(source, start, count, size, timeoutMs = SKGIF_PAGE_TIMEOUT) {
+  return skgifFetch(`${source}&page=${start / size + 1}&page_size=${size}`, timeoutMs)
+    .then(data => data ? (data['@graph'] || []) : skgifSplitRange(source, start, count, size));
+}
+
+function skgifSplitRange(source, start, count, size) {
+  if (size === 1) return Promise.resolve([{ _skgifMissing: true }]);
+  const smaller = size > SKGIF_DEFAULT_PAGE_SIZE ? SKGIF_DEFAULT_PAGE_SIZE : 1;
+  const parts = [];
+  for (let from = 0; from < count; from += smaller) {
+    parts.push(skgifFetchRange(source, start + from, Math.min(smaller, count - from), smaller,
+      smaller === 1 ? SKGIF_ITEM_TIMEOUT : SKGIF_PAGE_TIMEOUT));
+  }
+  return Promise.all(parts).then(lists => lists.flat());
+}
+
+// Page 1 of a list: { total, items }. If the page does not arrive, the total
+// is read from a page of 1 and the items are asked in smaller pages
+// (skgifSplitRange()); null if not even the total can be read.
+function skgifFirstPage(source, size) {
+  return skgifFetch(`${source}&page=1&page_size=${size}`, SKGIF_PAGE_TIMEOUT).then(data => {
+    if (data) return { total: skgifTotal(data), items: data['@graph'] || [] };
+    return skgifFetch(`${source}&page=1&page_size=1`, SKGIF_ITEM_TIMEOUT).then(one => {
+      if (!one) return null;
+      const total = skgifTotal(one);
+      return skgifSplitRange(source, 0, Math.min(size, total), size).then(items => ({ total, items }));
+    });
+  });
+}
+
+// Card in place of a result the API could not give (noun: "citation",
+// "reference", "publication").
+function _skgifMissingCard(noun) {
+  return `<div class="col-12 mb-2"><div class="card shadow-sm"><div class="card-body text-muted">1 ${noun} could not be loaded</div></div></div>`;
+}
+
 const _skgifPaginators = {};
 
 /*
@@ -2785,7 +3058,7 @@ config:
   rankItems(items) -> optional, reorders the items of a page before rendering
   emptyMessage  - optional text shown when a page has zero results
   pageSize       - optional, defaults to SKGIF_DEFAULT_PAGE_SIZE
-  containerId   - optional, id of the element the results (and pagination
+  containerId - optional, id of the element the results (and pagination
                    bar) render into; defaults to 'search-results-container',
                    the one of every search template
   totalCountId   - optional, id of the element showing the results count in
@@ -2794,6 +3067,12 @@ config:
                    releaseSkgifPage(), see holdSkgifPage())
   dedupeKey(item) -> optional, key used to drop duplicates within a page;
                    defaults to the item's local_identifier
+  missingNoun    - optional ("citation", "reference"): a page that does not
+                   arrive is asked again in smaller pages (skgifFetchRange()),
+                   and a result the API cannot give is shown as
+                   "1 <missingNoun> could not be loaded". Only for the lists
+                   of citations/references, whose pages are fast: a slow
+                   search page would be given up too early.
 */
 function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
   const containerId = config.containerId || 'search-results-container';
@@ -2803,6 +3082,7 @@ function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
   const sources = config.sources || [];
   let sourceTotals = null; // total_items of each source, read once on the first page
   let listedTotal = 0;     // sum of sourceTotals: shown in the title, pages are computed on it = Somma dei total_items di ogni fonte SKG-IF
+  let firstItems = [];     // missingNoun: page 1 of each source, from skgifFirstPage()
 
   const pageUrl = (src, apiPage) => `${src}&page=${apiPage}&page_size=${pageSize}`; //costruzione url di ciascuna pagina con numero della pagina corrente
 
@@ -2829,6 +3109,14 @@ function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
   //carica i totali di ogni fonte e calcola listedTotal
   function loadTotals() {
     if (sourceTotals) return Promise.resolve();
+    if (config.missingNoun) {
+      return Promise.all(sources.map(src => skgifFirstPage(src, pageSize))).then(firsts => {
+        if (firsts.some(f => !f)) throw new Error(`The ${config.missingNoun}s could not be loaded (the API did not answer).`);
+        firstItems = firsts.map(f => f.items);
+        sourceTotals = firsts.map(f => f.total);
+        listedTotal = sourceTotals.reduce((a, b) => a + b, 0);
+      });
+    }
     return fetchAll(sources.map(src => pageUrl(src, 1))).then(responses => {
       sourceTotals = responses.map(skgifTotal);
       listedTotal = sourceTotals.reduce((a, b) => a + b, 0);
@@ -2854,8 +3142,13 @@ function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
       const lastApiPage = Math.floor((to - 1) / pageSize) + 1;
       const urls = [];
       for (let p = firstApiPage; p <= lastApiPage; p++) urls.push(pageUrl(src, p));
-      parts.push(fetchAll(urls).then(responses => {
-        const items = responses.flatMap(r => Array.isArray(r["@graph"]) ? r["@graph"] : []);
+      const pages = config.missingNoun
+        ? Promise.all(urls.map((url, k) => {
+            const p = firstApiPage + k;
+            return p === 1 ? firstItems[i] : skgifFetchRange(src, (p - 1) * pageSize, Math.min(pageSize, total - (p - 1) * pageSize), pageSize);
+          })).then(lists => lists.flat())
+        : fetchAll(urls).then(responses => responses.flatMap(r => _skgifArray(r["@graph"])));
+      parts.push(pages.then(items => {
         const skip = from - (firstApiPage - 1) * pageSize;
         return items.slice(skip, skip + (to - from)); 
       }));
@@ -2866,7 +3159,7 @@ function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
   function fetchPage(page) { //funzione orchestratrice delle altre
     const container = document.getElementById(containerId);
     if (container) {
-      container.innerHTML = "<div class='col-12 skgif-page-loading'>Loading the results<br><span class='loading-dots'><span>.</span><span>.</span><span>.</span> </span></div>";
+      container.innerHTML = SKGIF_LOADING_HTML;
     }
 
     loadTotals() //chiama load total che calcola i numeri
@@ -2874,6 +3167,7 @@ function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
       .then(pageItems => {
         const seen = new Set();
         const items = pageItems.filter(item => {
+          if (item._skgifMissing) return true; //risultato mancante: non è un doppione
           const key = dedupeKey(item); //elimina duplicati nella stessa pagina
           if (seen.has(key)) return false;
           seen.add(key);
@@ -2905,32 +3199,10 @@ function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
     // container is already a Bootstrap .row (see aut_free_text.html); an
     // extra nested .row here caused the horizontal scrollbar bug (negative
     // row margins compounding), so we render the .col-* items directly.
-    let html = items.map(config.renderItem).join(''); //(html= rendering delle cards)
+    let html = items.map(item => item._skgifMissing ? _skgifMissingCard(config.missingNoun) : config.renderItem(item)).join(''); //(html= rendering delle cards)
 
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize)); //calcolo numero pagine
-    const btn = (target, label, cls) => //creazione pulsanti
-      `<button type="button" class="btn ${cls} skgif-page-btn" data-skgif-page="${target}" data-skgif-container="${containerId}">${label}</button>`;
-    const prevBtns = page > 1
-      ? `<span class="skgif-page-group">${btn(1, '&laquo; First', 'btn-outline-secondary')}${btn(page - 1, '&lsaquo; Previous', 'btn-outline-secondary')}</span>`
-      : `<span></span>`;
-    const nextBtns = page < totalPages
-      ? `<span class="skgif-page-group">${btn(page + 1, 'Next &rsaquo;', 'btn-outline-primary')}${btn(totalPages, 'Last &raquo;', 'btn-outline-primary')}</span>`
-      : `<span></span>`;
-    // Typing a page number + Enter jumps there (handled by the delegated
-    // listener next to the click one).
-    const pageInput = totalPages > 1
-      ? `<input type="number" class="form-control form-control-sm skgif-page-input" min="1" max="${totalPages}" value="${page}" aria-label="Go to page" data-skgif-container="${containerId}">`
-      : `${page}`;
-
-    //Costruisce la barra di paginazione e la aggiunge all'HTML (contenente già le cards)
-    html += `
-      <div class="col-12">
-        <nav class="skgif-pagination" aria-label="Search results pages">
-          ${prevBtns}
-          <span class="skgif-page-info">Page ${pageInput} of ${totalPages}</span>
-          ${nextBtns}
-        </nav>
-      </div>`;
+    html += _skgifPaginationBar(containerId, page, totalPages); //barra di paginazione sotto le cards
 
     container.innerHTML = html; //la funzione render riempie in html search-results-container con template html qui generato (cards + barra sotto)
 
@@ -2963,6 +3235,33 @@ function createSkgifPaginatedSearch(config) {   //Gestisce la paginazione
       fetchPage(1);
     }
   };
+}
+
+// The pagination bar under a list (First/Previous, "Page N of M", Next/Last).
+// Its buttons and page input are handled by the delegated listeners below,
+// which call _skgifPaginators[containerId].goToPage().
+function _skgifPaginationBar(containerId, page, totalPages) {
+  const btn = (target, label, cls) => //creazione pulsanti
+    `<button type="button" class="btn ${cls} skgif-page-btn" data-skgif-page="${target}" data-skgif-container="${containerId}">${label}</button>`;
+  const prevBtns = page > 1
+    ? `<span class="skgif-page-group">${btn(1, '&laquo; First', 'btn-outline-secondary')}${btn(page - 1, '&lsaquo; Previous', 'btn-outline-secondary')}</span>`
+    : `<span></span>`;
+  const nextBtns = page < totalPages
+    ? `<span class="skgif-page-group">${btn(page + 1, 'Next &rsaquo;', 'btn-outline-primary')}${btn(totalPages, 'Last &raquo;', 'btn-outline-primary')}</span>`
+    : `<span></span>`;
+  // Typing a page number + Enter jumps there (handled by the delegated
+  // listener next to the click one).
+  const pageInput = totalPages > 1
+    ? `<input type="number" class="form-control form-control-sm skgif-page-input" min="1" max="${totalPages}" value="${page}" aria-label="Go to page" data-skgif-container="${containerId}">`
+    : `${page}`;
+  return `
+    <div class="col-12">
+      <nav class="skgif-pagination" aria-label="Search results pages">
+        ${prevBtns}
+        <span class="skgif-page-info">Page ${pageInput} of ${totalPages}</span>
+        ${nextBtns}
+      </nav>
+    </div>`;
 }
 
 // Page changes: one delegated listener for the buttons and one for the
@@ -3006,6 +3305,24 @@ function _skgifUrlParam(lucinda_main_data, key) { //legge dall'indirizzo della p
 function _skgifShowMessage(text, containerId = 'search-results-container') {
   const container = document.getElementById(containerId);
   if (container) container.innerHTML = `<div class="col-12"><p>${text}</p></div>`;
+}
+
+// Error message above a record page (author, document: containerId
+// "ra-message" / "br-message"), then the "Loading" banner goes away.
+function _skgifRecordMessage(containerId, text) {
+  _setCiField(containerId, `<div class="alert alert-danger mb-4">${_skgifEscape(text)}</div>`);
+  releaseSkgifPage();
+}
+
+// A field of the API that should be a list (manifestations, contributions,
+// identifiers): [] when it is missing.
+function _skgifArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+// "1 publication", "2 publications".
+function _skgifPlural(n, noun) {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
 // Makes a user-typed value safe for a cf.search.* filter, before
@@ -3176,9 +3493,10 @@ function _skgifIdLink(scheme, value) {
 }
 
 // SKG-IF identifiers array (+ the OMID, if given) -> "doi:... • openalex:... • omid:br/...".
+// asBadges: each identifier in a badge instead (author's list, as Pietro's).
 //crea l'intera riga degli identificativi mettendo insieme le funzioni precedenti
-function _skgifIdList(identifiers, omid) {
-  const ids = (Array.isArray(identifiers) ? identifiers : [])
+function _skgifIdList(identifiers, omid, asBadges = false) {
+  const ids = _skgifArray(identifiers)
     .filter(i => i && i.scheme && i.value)
     .map(i => ({ scheme: String(i.scheme).toLowerCase(), value: i.value }));
   if (omid) ids.push({ scheme: 'omid', value: omid });
@@ -3186,27 +3504,42 @@ function _skgifIdList(identifiers, omid) {
     .map((id, i) => ({ id, i }))
     .sort((a, b) => _skgifIdRank(a.id.scheme) - _skgifIdRank(b.id.scheme) || a.i - b.i)
     .map(x => _skgifIdLink(x.id.scheme, x.id.value))
-    .join(' • '); //puntino per separare
+    .map(link => asBadges ? `<span class="badge ra-id-badge">${link}</span>` : link)
+    .join(asBadges ? ' ' : ' • '); //puntino per separare
 }
 
-// Agents of a product with one role (author, editor, publisher), from its
-// contributions: [{ role, by: { name, family_name, given_name,
-// local_identifier, identifiers }, rank }], used by the document cards
-// (authors) and by the venue cards (publisher, editor). By rank, separated
-// by " • " as in Pietro's cards; the name links to agentUrl(<short OMID>),
-// the ORCID follows in brackets when present. "" if there are none.
-//logica per recuperare nomi autori per i documenti e publisher/editor nelle riviste
-function _skgifAgents(contributions, role, agentUrl) {
-  return (Array.isArray(contributions) ? contributions : [])
+// The agents of a product with one role (author, editor, publisher), from
+// its contributions: [{ role, by: { name, family_name, given_name,
+// local_identifier, identifiers }, rank }] -> the `by` objects, by rank.
+function _skgifContributors(contributions, role) {
+  return _skgifArray(contributions)
     .filter(c => c && c.role === role && c.by) //tiene le voci con il ruolo specificato
     .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0)) //ordina per rank
-    .map(c => { //costruzione del nome linkabile + orcid tra parentesi
-      const by = c.by;
-      const name = _skgifEscape((by.name || "").trim()
-        || [by.family_name, by.given_name].filter(Boolean).join(', ')
-        || 'Unknown Name');
+    .map(c => c.by);
+}
+
+// Name of an agent as in Pietro's cards, "Family, Given" (or the name of an
+// organisation), escaped.
+function _skgifAgentName(by) {
+  return _skgifEscape((by.name || '').trim() || [by.family_name, by.given_name].filter(Boolean).join(', ') || 'Unknown Name');
+}
+
+// Page of an agent: browser.html?value=ra/<id> (author page; organisations
+// share the ra/ prefix, as documents and venues share br/).
+const _skgifAgentUrl = agentOmid => `browser.html?value=${agentOmid}`;
+
+// Agents of a product with one role, by rank, separated by " • " as in
+// Pietro's cards; the name links to agentUrl(<short OMID>), the ORCID
+// follows in brackets when present and withOrcid (the document page shows
+// names only, decided 2026-10-17). "" if there are none. Used by the
+// document cards, the venue cards and the document page.
+//logica per recuperare nomi autori per i documenti e publisher/editor nelle riviste
+function _skgifAgents(contributions, role, agentUrl = _skgifAgentUrl, withOrcid = true) {
+  return _skgifContributors(contributions, role)
+    .map(by => { //costruzione del nome linkabile + orcid tra parentesi
+      const name = _skgifAgentName(by);
       const agentOmid = _skgifOmid(by.local_identifier);
-      const orcid = (Array.isArray(by.identifiers) ? by.identifiers : []).find(i => i.scheme === 'orcid')?.value;
+      const orcid = withOrcid ? _skgifArray(by.identifiers).find(i => i.scheme === 'orcid')?.value : null;
       let html = agentOmid
         ? `<a href="${agentUrl(agentOmid)}" target="_blank" class="text-dark text-decoration-none">${name}</a>`
         : `<span>${name}</span>`;
@@ -3214,6 +3547,23 @@ function _skgifAgents(contributions, role, agentUrl) {
       return html;
     })
     .join(' • ');
+}
+
+// Pages of a manifestation's biblio: "first<dash>last", one page when they
+// are the same (as Pietro), "" if none. Not escaped.
+function _skgifPageRange(biblio, dash) {
+  const pages = (biblio || {}).pages || {};
+  return pages.first && pages.last && pages.first !== pages.last ? `${pages.first}${dash}${pages.last}` : (pages.first || pages.last || '');
+}
+
+// Authors of a product for the document card and the citation record: when
+// a product has no authors (often edited books) its editors are shown in
+// their place, labelled "Editors" (prof's decision). { label, html }, html
+// "Unknown" when there are neither.
+function _skgifAuthorsOrEditors(contributions) {
+  const authors = _skgifAgents(contributions, 'author');
+  const editors = authors ? "" : _skgifAgents(contributions, 'editor');
+  return { label: editors ? 'Editors' : 'Authors', html: authors || editors || 'Unknown' };
 }
 
 /*
@@ -3320,7 +3670,7 @@ function _renderAuthorCard(person) {
   const omid = _skgifOmid(person.local_identifier);
   if (!omid) return "";
 
-  const identifiers = Array.isArray(person.identifiers) ? person.identifiers : [];
+  const identifiers = _skgifArray(person.identifiers);
   const orcid = _skgifEscape(identifiers.find(i => i.scheme === "orcid")?.value || "");
 
   const fullname = (person.name || "").trim()
@@ -3404,16 +3754,23 @@ function _skgifProductTitle(product) {
 // Publication date of a product, from its manifestations, escaped. The date
 // is a full timestamp ("2024-01-01T00:00:00"): only the date part is shown.
 function _skgifProductDate(product) {
-  const manifestations = Array.isArray(product.manifestations) ? product.manifestations : [];
-  const pubDate = manifestations.map(m => m?.dates?.publication?.[0]).find(Boolean);
+  const pubDate = _skgifProductRawDate(product);
   return pubDate ? _skgifEscape(String(pubDate).slice(0, 10)) : 'Unknown'; //dalla lettura della data in json tiene conto solo dei primi 10 caratteri
+}
+
+// Publication date of a product as the API gives it ("2024-01-01T00:00:00"),
+// from the first manifestation that has one; undefined if none. Also used to
+// sort the author's works and for the "Publications per year" chart.
+function _skgifProductRawDate(product) {
+  const manifestations = _skgifArray(product.manifestations);
+  return manifestations.map(m => m?.dates?.publication?.[0]).find(Boolean);
 }
 
 // Source of a product (manifestations[].biblio.in): venue title (italic) ->
 // venue page, its identifiers (without omid) in brackets. "" if none. Used by
 // the document cards and by the document record (section 10).
 function _skgifProductSource(product) {
-  const manifestations = Array.isArray(product.manifestations) ? product.manifestations : [];
+  const manifestations = _skgifArray(product.manifestations);
   const venue = manifestations.map(m => m?.biblio?.in).find(v => v && v.name);
   if (!venue) return "";
   const venueOmid = _skgifOmid(venue.local_identifier);
@@ -3423,6 +3780,55 @@ function _skgifProductSource(product) {
     : venueTitle;
   const venueIds = _skgifIdList(venue.identifiers); //lista degli ids del venue
   return venueIds ? `${titleHtml} (${venueIds})` : titleHtml;
+}
+
+// Header of the document, citations and references pages (prof's request,
+// 2026-10-17: the document as a bibliographic reference, not "br/<id>").
+// One piece of information per line, never split on two lines (a line too
+// long ends with "...", full text on hover; user's request):
+//   Title
+//   First 3 authors, et al. · Year · Venue Vol(Issue), Pages
+//   doi:... · br/<id>                                   (small, grey)
+// Authors as in APA (Family, G.); editors "(Ed./Eds.)" when there are no
+// authors; publisher when there is no venue (books). Nothing clickable.
+// Data as the API gives it (year of the padded date).
+function _skgifHeaderLines(product, omid) {
+  const agents = role => _skgifContributors(product.contributions, role);
+  const apaName = by => {
+    if (!by.family_name) return (by.name || '').trim() || 'Unknown Name';
+    const initials = String(by.given_name || '').split(/[\s-]+/).filter(Boolean).map(g => `${g[0]}.`).join(' ');
+    return initials ? `${by.family_name}, ${initials}` : by.family_name;
+  };
+  const nameList = list => {
+    const names = list.slice(0, 3).map(apaName);
+    if (list.length > 3) return `${names.join(', ')}, et al.`;
+    return names.length > 1 ? `${names.slice(0, -1).join(', ')}, & ${names[names.length - 1]}` : names.join('');
+  };
+  const authors = agents('author');
+  const editors = agents('editor');
+  const who = authors.length ? nameList(authors)
+    : editors.length ? `${nameList(editors)} (${editors.length > 1 ? 'Eds.' : 'Ed.'})` : '';
+
+  const manifestations = _skgifArray(product.manifestations);
+  const biblio = (manifestations[0] || {}).biblio || {};
+  const venue = manifestations.map(m => m?.biblio?.in).find(v => v && v.name);
+  const year = String(_skgifProductRawDate(product) || '').slice(0, 4);
+  const pageRange = _skgifPageRange(biblio, '–');
+  let where = '';
+  if (venue) {
+    where = venue.name;
+    if (biblio.volume) where += ` ${biblio.volume}`;
+    if (biblio.issue) where += `(${biblio.issue})`;
+    if (pageRange) where += `, ${pageRange}`;
+  } else {
+    where = agents('publisher').map(apaName).join(', ');
+  }
+  const doi = _skgifArray(product.identifiers).find(i => i.scheme === 'doi')?.value;
+
+  const line = (cls, text) => text ? `<div class="${cls}" title="${_skgifEscape(text)}">${_skgifEscape(text)}</div>` : '';
+  return line('skgif-head-title', _skgifProductTitle(product))
+    + line('skgif-head-line', [who, year, where].filter(Boolean).join(' · '))
+    + line('skgif-head-meta', [doi ? `doi:${doi}` : '', omid].filter(Boolean).join(' · '));
 }
 
 // ---doc_free_text (SKG-IF)---
@@ -3435,15 +3841,22 @@ function _renderDocumentCard(product) {
 
   const title = _skgifProductTitle(product);
 
-  // Authors (publishers etc. are left out) -> author page. Usa la funzione skgifagents solo per il ruolo author per recuparare dalle ricerche del documento gli autori e scriverli nelle cards con la giusta resa
-  const formattedAuthors = _skgifAgents(product.contributions, 'author', authorOmid => `browser.html?value=${authorOmid}`)
-    || 'Unknown';
+  // Authors (publishers etc. are left out) -> author page; editors in their place when there are no authors
+  const { label: agentsLabel, html: formattedAuthors } = _skgifAuthorsOrEditors(product.contributions);
 
   // Date and venue come from the manifestation.
   const formattedDate = _skgifProductDate(product);
   const formattedSource = _skgifProductSource(product);
 
   const formattedIds = _skgifIdList(product.identifiers, omid) || 'No ID';
+
+  // Type as a small label next to the title; publisher only without a
+  // source (books: for an article the journal is what counts). Order as in a
+  // citation and in the author/document page cards (decided 2026-10-17):
+  // who, when, where, then the identifiers.
+  const type = _skgifArray(product.manifestations)
+    .map(m => m?.type?.labels?.en).find(Boolean) || '';
+  const publisher = formattedSource ? '' : _skgifAgents(product.contributions, 'publisher');
 
   const ocRecordUrl = `browser.html?value=${omid}`; //titolo
   const refUrl = `browser.html?value=doc_ref/${omid}`;  // bottone "Go to References"
@@ -3453,19 +3866,17 @@ function _renderDocumentCard(product) {
     <div class="col-12 mb-3">
       <div class="card shadow-sm p-2">
         <div class="card-body p-3 d-flex flex-column">
-          <h5 class="card-title mb-2">
-            <a href="${ocRecordUrl}" target="_blank">${_skgifEscape(title)}</a>
-          </h5>
+          <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+            <h5 class="card-title mb-0">
+              <a href="${ocRecordUrl}" target="_blank">${_skgifEscape(title)}</a>
+            </h5>
+            ${type ? `<span class="badge ra-year-badge flex-shrink-0">${_skgifEscape(type)}</span>` : ''}
+          </div>
           <hr>
 
           <div class="mb-2">
-            <span class="metadata-label fw-bold">Authors:</span><br>
+            <span class="metadata-label fw-bold">${agentsLabel}:</span><br>
             <span>${formattedAuthors}</span>
-          </div>
-
-          <div class="mb-2">
-            <span class="metadata-label fw-bold">Identifiers:</span><br>
-            <span>${formattedIds}</span>
           </div>
 
           <div class="mb-2">
@@ -3478,6 +3889,17 @@ function _renderDocumentCard(product) {
             <span class="metadata-label fw-bold">Source:</span><br>
             <span>${formattedSource}</span>
           </div>` : ''}
+
+          ${publisher ? `
+          <div class="mb-2">
+            <span class="metadata-label fw-bold">Publisher:</span><br>
+            <span>${publisher}</span>
+          </div>` : ''}
+
+          <div class="mb-2">
+            <span class="metadata-label fw-bold">Identifiers:</span><br>
+            <span>${formattedIds}</span>
+          </div>
         </div>
 
         <div class="d-flex justify-content-end px-3 pb-2 gap-2">
@@ -3521,10 +3943,18 @@ function _skgifCitationList(lucinda_main_data, filter, emptyMessage) {
   }
 
   const omidUrl = `https://w3id.org/oc/meta/br/${id}`; //costruisce omid completo che è quello che ci serve in questo caso
+  // header: the reference of the document instead of "br/<id>" (1 more
+  // request; if it fails the OMID stays)
+  skgifFetch(`${SKGIF_API}/products/${omidUrl}`).then(data => {
+    const doc = (data?.['@graph'] || [])[0];
+    if (!doc?.local_identifier) return;
+    _setCiField('skgif-list-target', _skgifHeaderLines(doc, `br/${id}`));
+  });
   createSkgifPaginatedSearch({ //manda richiesta
     sources: [`${SKGIF_API}/products?filter=${filter}:${encodeURIComponent(omidUrl)}`],
     renderItem: _renderDocumentCard, //mostra card
-    emptyMessage
+    emptyMessage,
+    missingNoun: filter === 'cf.cites' ? 'citation' : 'reference' //una citazione che l'API non riesce a dare non blocca la lista
   }).search();
 }
 
@@ -3576,7 +4006,9 @@ function api_search_venue_skgif(...args) { //legge la query e capisce che tipo d
 // HTML card for one venue of the results page: same layout and title link
 // as Pietro's api_search_venue() cards, plus the venue type. Publisher and
 // editor go in the empty .venue-agents box, filled by _loadVenueAgents()
-// when its request ends (the card is in the page by then).
+// when its request ends (the card is in the page by then). Order (decided
+// 2026-10-17): title, type (journal, series, book...), publisher, editor,
+// identifiers last, as in the catalogues of journals.
 function _renderVenueCard(venue) {
   const omid = _skgifOmid(venue.local_identifier);
   if (!omid) return "";
@@ -3593,12 +4025,12 @@ function _renderVenueCard(venue) {
             <a href="browser.html?value=${omid}" target="_blank">${_skgifEscape(venue.name || 'Unknown Title')}</a>
           </h5>
           <hr>
+          ${type}
+          <div class="venue-agents" data-venue-omid="${omid}"></div>
           <div class="mb-2">
             <span class="metadata-label fw-bold">Identifiers:</span><br>
             <span>${_skgifIdList(venue.identifiers, omid)}</span>
           </div>
-          ${type}
-          <div class="venue-agents" data-venue-omid="${omid}"></div>
         </div>
       </div>
     </div>`;
@@ -3612,16 +4044,17 @@ function _renderVenueCard(venue) {
 // with its contributions (role publisher / editor), as Pietro's Meta
 // record. One request per venue, through skgifFetch() (cached, so going
 // back to a page doesn't repeat it). A failed request leaves the box empty.
-// The names link to the agent's OMID page (Pietro linked the
-// w3id.org/oc/meta/ar/ page, the role, not the agent), until there is a
-// page for organisations.
+// The names link to browser.html?value=ra/<id> (Pietro linked the
+// w3id.org/oc/meta/ar/ page, the role, not the agent): editors are persons
+// (author page), publishers are organisations, which share the ra/ prefix
+// (as documents and venues share br/); the organisation page is still to do.
 //Nelle card di Pietro comparivano anche Publisher (editore) ed Editor. Però l'API /venues restituisce solo nome, tipo e identificativi: niente editore, niente editor.
 //In OpenCitations una rivista è registrata anche come prodotto, con lo stesso OMID. Chiedendo a /products quell'OMID, si ottiene la rivista con le sue contributions, dentro le quali ci sono publisher ed editor.
 function _loadVenueAgents(omid) {
   skgifFetch(`${SKGIF_API}/products/https://w3id.org/oc/meta/${omid}`).then(data => { //seconda richiesta per ogni rivista mostrata per recuperaree editor e publisher
     const contributions = (data?.['@graph'] || [])[0]?.contributions; //dal prodotto prende le contributions
     const row = (role, label) => {
-      const agents = _skgifAgents(contributions, role, agentOmid => `https://w3id.org/oc/meta/${agentOmid}`); //uso di skgifagents due volte: una volta per editor e una per publisher
+      const agents = _skgifAgents(contributions, role); //uso di skgifagents due volte: una volta per editor e una per publisher
       return agents
         ? `<div class="mb-2"><span class="metadata-label fw-bold">${label}:</span><br><span>${agents}</span></div>`
         : '';
@@ -3671,8 +4104,8 @@ function api_search_org_skgif(...args) {
 
 // ---org_free_text (SKG-IF)---
 // HTML card for one organisation of the results page, same layout as the
-// venue cards. The name links to the organisation's OMID page, as the
-// publishers in the venue cards, until there is an organisation page.
+// venue cards. The name links to browser.html?value=ra/<id>, as the
+// publishers in the venue cards (the organisation page is still to do).
 function _renderOrgCard(org) {
   const omid = _skgifOmid(org.local_identifier);
   if (!omid) return "";
@@ -3682,7 +4115,7 @@ function _renderOrgCard(org) {
       <div class="card shadow-sm p-2">
         <div class="card-body p-3 d-flex flex-column">
           <h5 class="card-title mb-2">
-            <a href="https://w3id.org/oc/meta/${omid}" target="_blank">${_skgifEscape(org.name || 'Unknown Name')}</a>
+            <a href="browser.html?value=${omid}" target="_blank">${_skgifEscape(org.name || 'Unknown Name')}</a>
           </h5>
           <hr>
           <div class="mb-2">
@@ -3714,8 +4147,8 @@ function _renderOrgCard(org) {
 // Checked against the Index on 2026-10-09: same counts and intersections
 // (Citations can be 1 more: SKG-IF also has a few citing preprints without
 // DOI that the Index doesn't list). The citation exists if the cited OMID is
-// in the citing's related_products.cites; if not, a warning says so (the two
-// documents are still shown).
+// in the citing's related_products.cites; if not, only a warning is shown
+// (no cards: the citation doesn't exist).
 // The two "Citations per year" charts come from the Index API (see
 // _skgifCitationsPerYearChart()), loaded after the record is shown.
 // ON HOLD (to discuss with the prof): the citation's own metadata
@@ -3729,7 +4162,7 @@ function api_citation_record_skgif(...args) {
   if (ociEl) ociEl.textContent = `ci/${oci}`; //titolo: l'OCI, come nella pagina di Pietro
 
   const parts = oci.match(/^(\d+)-(\d+)$/); //OCI = omid del citing - omid del cited
-  if (!parts) return _skgifCiMessage(`"${oci}" is not a valid OCI (expected: two OMID numbers separated by "-").`, 'danger');
+  if (!parts) return _skgifCiMessage('This is not a valid OCI.', 'danger');
   const [, citing, cited] = parts;
 
   const omidUrl = id => `https://w3id.org/oc/meta/br/${id}`;
@@ -3749,11 +4182,11 @@ function api_citation_record_skgif(...args) {
   ]).then(([citingDoc, citedDoc, citingRefs, citingCits, citedRefs, citedCits, citedByBoth, citingBoth]) => {
     if (!citingDoc || !citedDoc) return _skgifCiMessage(SKGIF_FAILED_MESSAGE, 'danger');
     const missing = [[citingDoc, citing], [citedDoc, cited]].filter(([doc]) => !doc.local_identifier).map(([, id]) => `br/${id}`);
-    if (missing.length) return _skgifCiMessage(`No document with OMID ${missing.join(' or ')} in OpenCitations.`, 'danger');
+    if (missing.length) return _skgifCiMessage(`No document with OMID ${missing.join(' or ')} available.`, 'danger');
 
     const cites = citingDoc.related_products?.cites || [];
-    if (!cites.includes(omidUrl(cited))) {
-      _skgifCiMessage(`This citation is not in OpenCitations: br/${citing} does not cite br/${cited}.`, 'warning');
+    if (!cites.includes(omidUrl(cited))) { //citazione inesistente: solo l'avviso, niente schede
+      return _skgifCiMessage('This citation is not available.', 'warning');
     }
     _fillCiResource('citing', citingDoc, citing, citingRefs, citingCits);
     _fillCiResource('cited', citedDoc, cited, citedRefs, citedCits);
@@ -3792,36 +4225,14 @@ function _skgifCitationsPerYearChart(boxId, id) {
   });
 }
 
-// ---new_ra_browser (SKG-IF)---
-// "Publications per year" bar chart of an author, in the box with id boxId
-// (Pietro's barchart_simple(author_works.pubYears)). NOT from SKG-IF: it has
-// no date filter or sort, so every work would have to be downloaded, 50 per
-// page. The OpenCitations Meta REST API returns every work of the ra/ record
-// with its date (pub_date) in one request (~4 s for ra/0614010840729). It
-// counts only the works where the agent is AUTHOR, as Pietro's query: so the
-// total can differ from the SKG-IF Publications counter, which has every role
-// (ra/0614010840729: 112 vs 115, checked 2026-10-12). Works without a date
-// are skipped, as Pietro did.
-const OC_META_API = "https://api.opencitations.net/meta/v1";
-
-function _skgifPublicationsPerYearChart(boxId, id) {
-  const box = document.getElementById(boxId);
-  if (!box) return;
-  box.innerHTML = '<em>Loading...</em>';
-  skgifFetch(`${OC_META_API}/author/omid:ra/${id}`).then(data => { //una sola richiesta: tutti i lavori da author con la data
-    if (!Array.isArray(data)) {
-      box.innerHTML = '<em>Chart not available (OpenCitations Meta did not return the publications).</em>';
-      return;
-    }
-    _skgifYearChart(box, data.map(w => w.pub_date), '# Publications', 'No publications found.');
-  });
-}
-
 // Draws in box a bar chart with the number of dates per year (first 4
 // characters of each date: "2019", "2019-07" or "2019-07-03"; empty dates
 // skipped). Only the years with at least one date are on the axis, as
 // Pietro's barchart() / barchart_simple(), same Chart.js style.
-function _skgifYearChart(box, dates, label, emptyMessage) {
+// fill: the chart takes the whole width of box, `fill` px high (author and
+// document pages, 2026-10-17: a wider chart, years not slanted); without it,
+// Chart.js's default size (citation record).
+function _skgifYearChart(box, dates, label, emptyMessage, fill) {
   const perYear = {}; //anno -> quante date in quell'anno
   dates.forEach(date => {
     const year = String(date || '').slice(0, 4);
@@ -3832,7 +4243,9 @@ function _skgifYearChart(box, dates, label, emptyMessage) {
     box.innerHTML = `<em>${emptyMessage}</em>`;
     return;
   }
-  box.innerHTML = '<canvas style="display: block; margin: 0 auto;"></canvas>';
+  box.innerHTML = fill
+    ? `<div style="position: relative; width: 100%; height: ${fill}px;"><canvas></canvas></div>`
+    : '<canvas style="display: block; margin: 0 auto;"></canvas>';
   new Chart(box.querySelector('canvas'), {
     type: 'bar',
     data: {
@@ -3840,7 +4253,7 @@ function _skgifYearChart(box, dates, label, emptyMessage) {
       datasets: [{ label, backgroundColor: '#4985f3', data: years.map(y => perYear[y]), borderWidth: 1 }]
     },
     options: {
-      responsive: false,
+      responsive: !!fill,
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: { y: { beginAtZero: true, ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '' } } }
@@ -3851,12 +4264,15 @@ function _skgifYearChart(box, dates, label, emptyMessage) {
 // ---new_ci_browser (SKG-IF)---
 // Fills the card of the citing or cited document (ids "<role>-<field>" in
 // new_ci_browser.html), with the same content as Pietro's: title (-> the
-// document page), authors (-> author page, ORCID in brackets), date,
+// document page), authors (-> author page, ORCID in brackets; editors in
+// their place when there are no authors, as in the cards), date,
 // identifiers, OMID URI, References and Citations counts.
 function _fillCiResource(role, product, id, refs, cits) {
   const uri = `https://w3id.org/oc/meta/br/${id}`;
   _setCiField(`${role}-title`, `<a href="browser.html?value=br/${id}" target="_blank">${_skgifEscape(_skgifProductTitle(product))}</a>`);
-  _setCiField(`${role}-authors`, _skgifAgents(product.contributions, 'author', authorOmid => `browser.html?value=${authorOmid}`) || 'Unknown');
+  const agents = _skgifAuthorsOrEditors(product.contributions); //editor al posto degli autori se mancano, come nelle card
+  _setCiField(`${role}-authors-label`, `${agents.label}:`);
+  _setCiField(`${role}-authors`, agents.html);
   _setCiField(`${role}-date`, _skgifProductDate(product));
   _setCiField(`${role}-ids`, _skgifIdList(product.identifiers, `br/${id}`) || 'No ID');
   _setCiField(`${role}-uri`, `<a href="${uri}" target="_blank">${uri}</a>`);
@@ -3890,9 +4306,9 @@ function _skgifCiMessage(text, type) {
 // other IDs; author_works: the works, LIMIT 1000, newest first) with:
 //   /persons/<full OMID>                          -> name, ORCID, other identifiers
 //   /products?filter=contributions.by.local_identifier:<full OMID>
-//                                                 -> the works, paginated, each
-//                                                    shown as the document card
-//                                                    of the search
+//                                                 -> ALL the works (every page),
+//                                                    each shown as the document
+//                                                    card of the search
 //                                                    (_renderDocumentCard());
 //                                                    total_items is the
 //                                                    Publications count
@@ -3900,37 +4316,37 @@ function _skgifCiMessage(text, type) {
 // - only the works of this record, as Pietro (the same person can have other
 //   ra/ records with the same ORCID in OC: not merged here);
 // - the filter has every role (author AND editor; Pietro: author only, e.g.
-//   ra/0614010840729 = 115 vs 111), shown without a role badge;
-// - the list is in the API's order (SKG-IF has no sort; Pietro's was by date).
-// The "Publications per year" chart is the only part NOT from SKG-IF: it
-// comes from the OpenCitations Meta REST API, see
-// _skgifPublicationsPerYearChart() (section 8).
+//   ra/0614010840729 = 115 vs 111), shown without a role badge.
+// Prof's request (2026-10-16): everything from SKG-IF (no Meta for the chart)
+// and no pagination. SKG-IF has no sort and no date filter, so every work is
+// downloaded (see _loadAuthorWorks()): the list grows page by page, then the
+// "Sort by" menu and the "Publications per year" chart work on all of them.
 //
 // #callfun args: args[1] = Lucinda.data.main (has the id of "ra/{id}"), see
 // api_search_author_skgif().
 function api_author_record_skgif(...args) {
   const id = _skgifUrlParam(args[1], 'id').trim();
   const idEl = document.getElementById('ra-id');
-  if (idEl) idEl.textContent = `ra/${id}`; //titolo: l'OMID, come nella pagina di Pietro
+  if (idEl) idEl.textContent = `ra/${id}`; //finché non arriva la persona
 
   const omidUrl = `https://w3id.org/oc/meta/ra/${id}`;
   const works = `${SKGIF_API}/products?filter=contributions.by.local_identifier:${encodeURIComponent(omidUrl)}`;
-  const list = createSkgifPaginatedSearch({
-    sources: [works],
-    renderItem: _renderDocumentCard, //stessa card della ricerca documenti
-    emptyMessage: 'No publications found.'
-  });
 
-  holdSkgifPage(); //banner di caricamento finché non arrivano profilo e prima pagina
-  Promise.all([
-    skgifFetch(`${SKGIF_API}/persons/${omidUrl}`),
-    skgifFetch(`${works}&page=1&page_size=${SKGIF_DEFAULT_PAGE_SIZE}`) //prima pagina in parallelo (in cache per list.search())
-  ]).then(([data]) => {
-    if (!data) return _skgifRaMessage(SKGIF_FAILED_MESSAGE);
+  // banner until the person AND the first page of works (total + first 10
+  // cards) have arrived, so the page opens with something to read
+  // (user's request 2026-10-17); the other works and the chart come after
+  holdSkgifPage();
+  const firstPage = skgifFirstPage(works, SKGIF_DEFAULT_PAGE_SIZE); //prima pagina in parallelo: { total, items }
+  Promise.all([skgifFetch(`${SKGIF_API}/persons/${omidUrl}`), firstPage]).then(([data]) => {
+    if (!data) return _skgifRecordMessage('ra-message', 'The author could not be loaded (the API did not answer). Try again later.'); //non il messaggio delle ricerche ("shorter query")
     const person = (data['@graph'] || [])[0] || {};
-    if (!person.local_identifier) return _skgifRaMessage(`No author with OMID ra/${id} in OpenCitations.`);
+    if (!person.local_identifier) { //persone e organizzazioni hanno lo stesso prefisso ra/: forse è un'organizzazione
+      return _orgRecordSkgif(id, omidUrl).then(found => {
+        if (!found) _skgifRecordMessage('ra-message', `No author or organisation with OMID ra/${id} available.`);
+      });
+    }
 
-    const identifiers = Array.isArray(person.identifiers) ? person.identifiers : [];
+    const identifiers = _skgifArray(person.identifiers);
     const orcid = identifiers.find(i => i.scheme === 'orcid')?.value;
     const name = `${person.given_name || ''} ${person.family_name || ''}`.trim() || (person.name || '').trim() || 'Unknown Author'; //come create_author_header_link()
     _setCiField('ra-name', `<a href="https://ldd.opencitations.net/meta/ra/${_skgifEscape(id)}" target="_blank" class="text-reset text-decoration-none">${_skgifEscape(name)}</a>`);
@@ -3938,15 +4354,237 @@ function api_author_record_skgif(...args) {
       ? `<a href="https://orcid.org/${_skgifEscape(orcid)}" target="_blank">${_skgifEscape(orcid)} <sup><i class="fas fa-external-link-alt small"></i></sup></a>`
       : 'No ORCID found');
     _setCiField('ra-ids', _skgifIdList(identifiers.filter(i => i.scheme !== 'orcid'), `ra/${id}`));
+    _setCiField('ra-id', _skgifEscape(name)); //intestazione: il nome, "Author" + ORCID, l'OMID piccolo sotto
     document.getElementById('ra-record')?.classList.remove('d-none');
-    list.search(); //lista paginata: riempie anche il contatore Publications e rilascia la pagina
-    _skgifPublicationsPerYearChart('ra-pubs-chart', id); //grafico per anno da Meta, dopo che la pagina è visibile
-  }).catch(() => _skgifRaMessage(SKGIF_FAILED_MESSAGE));
+    _setCiField('ra-pubs-chart', '<em>Loading...</em>');
+    firstPage.then(page => _loadAuthorWorks(works, page, omidUrl)); //totale e prime 10 subito, poi le altre, ordinamento, filtro per ruolo e grafico
+    releaseSkgifPage();
+  }).catch(() => _skgifRecordMessage('ra-message', 'The author could not be loaded (the API did not answer). Try again later.'));
 }
 
-function _skgifRaMessage(text) {
-  _setCiField('ra-message', `<div class="alert alert-danger mb-4">${_skgifEscape(text)}</div>`);
-  releaseSkgifPage();
+// How many pages of works are requested at the same time (pages of
+// SKGIF_DEFAULT_PAGE_SIZE: ra/0614010840729, 115 works = 12 pages, all in
+// ~5.5 s, checked 2026-10-16). Pages of 10 and not of 50 as on the document
+// page: an author has tens or hundreds of works, and with 10 the first cards
+// come sooner and the total is not slower (ra/0621010775619, 72 works: 10 ->
+// first 2.2 s, all 5.5 s; 50 -> first 6.9 s, all 11.9 s; checked 2026-10-17).
+const SKGIF_AUTHOR_PARALLEL_PAGES = 6;
+
+// All the works of the author, from the first page already downloaded: the
+// other pages are requested SKGIF_AUTHOR_PARALLEL_PAGES at a time and shown
+// as soon as they arrive, in the API's order (a page is shown when all the
+// ones before it are there, so the list grows without jumping), with a
+// progress bar in the toolbar. A page that does not arrive is asked again in
+// smaller pages (skgifFetchRange()). When every
+// page is there the sort buttons are enabled, the role filter appears (only
+// if the person is author of some works and editor of others) and the chart
+// is drawn from the publication dates of all the works. A work the API
+// cannot give (skgifFetchRange()) is a card "1 publication could not be
+// loaded" in the API's order, left out of the sorted list, the role filter
+// and the chart.
+// personOmid: full OMID of the person, to find their role in each work.
+let _raPersonOmid = '';
+
+function _loadAuthorWorks(works, firstPage, personOmid) {
+  _raPersonOmid = personOmid;
+  const container = document.getElementById('search-results-container');
+  const chart = document.getElementById('ra-pubs-chart');
+  const setChart = html => { if (chart) chart.innerHTML = html; };
+  _initAuthorListUi();
+
+  if (!firstPage) {
+    _setCiField('search-total-count', '–');
+    if (container) container.innerHTML = '<div class="col-12"><p>The publications could not be loaded (the API did not answer).</p></div>';
+    setChart('<em>Chart not available.</em>');
+    return _setAuthorListStatus('', null);
+  }
+  const total = firstPage.total;
+  _setCiField('search-total-count', String(total));
+  if (!total) {
+    if (container) container.innerHTML = '<div class="col-12"><p>No publications found.</p></div>';
+    setChart('<em>No publications found.</em>');
+    return _setAuthorListStatus('No publications', null);
+  }
+
+  const pageCount = Math.ceil(total / SKGIF_DEFAULT_PAGE_SIZE);
+  const pages = new Array(pageCount); //opere di ogni pagina, nell'ordine dell'API
+  pages[0] = firstPage.items;
+  let shownPages = 0; //pagine già mostrate (tutte quelle prima sono arrivate)
+  setChart('<em>Loading...</em>');
+
+  const loadedCount = () => pages.reduce((n, page) => n + (page ? page.length : 0), 0);
+  const showArrived = () => { //mostra le pagine arrivate in fila, senza buchi
+    let html = '';
+    while (shownPages < pageCount && pages[shownPages]) html += pages[shownPages++].map(_renderAuthorWorkOrMissing).join('');
+    if (html && container) container.insertAdjacentHTML('beforeend', html);
+    const loaded = Math.min(loadedCount(), total);
+    _setAuthorListStatus(`Loading publications… ${loaded}/${total}`, loaded / total);
+  };
+  if (container) container.innerHTML = '';
+  showArrived();
+
+  const onPage = (n, items) => { pages[n - 1] = items; showArrived(); };
+  skgifFetchAllPages(works, total, SKGIF_DEFAULT_PAGE_SIZE, SKGIF_AUTHOR_PARALLEL_PAGES, onPage, { 1: pages[0] }).then(() => {
+    const inOrder = _skgifDedupe(pages.flat()); //i mancanti non hanno OMID: restano tutti
+    const all = inOrder.filter(w => !w._skgifMissing);
+    const missing = inOrder.length - all.length;
+    const missingNote = missing ? ` (${missing} could not be loaded)` : '';
+    _skgifYearChart(chart, all.map(_skgifProductRawDate), '# Publications', 'No publications found.', 200); //grafico: tutte le opere, largo quanto il riquadro
+    if (missing) chart.insertAdjacentHTML('beforeend', `<div class="mt-2">${_skgifPlural(missing, 'publication')} could not be loaded</div>`);
+    const plural = n => _skgifPlural(n, 'publication');
+    _setAuthorListStatus(plural(all.length) + missingNote, null);
+
+    let order = 'default', role = 'all'; //ordinamento e ruolo scelti
+    const show = () => {
+      const works = role !== 'all' ? all.filter(w => _raPersonRoles(w).has(role))
+        : order === 'default' ? inOrder : all; //i mancanti solo nell'ordine dell'API
+      container.innerHTML = _renderAuthorWorks(works, order, _renderAuthorWorkOrMissing);
+      _setAuthorListStatus(role === 'all' ? plural(all.length) + missingNote : `${works.length} of ${plural(all.length)}`, null);
+    };
+    document.querySelectorAll('#ra-sort button').forEach(button => {
+      button.disabled = false; //i bottoni diventano utilizzabili
+      button.addEventListener('click', () => {
+        document.querySelectorAll('#ra-sort button').forEach(b => b.classList.toggle('active', b === button));
+        order = button.dataset.order;
+        show();
+      });
+    });
+
+    // filtro per ruolo: solo se la persona è autore di alcune opere ed editor di altre
+    const count = r => all.filter(w => _raPersonRoles(w).has(r)).length;
+    const counts = { all: all.length, author: count('author'), editor: count('editor') };
+    const filter = document.getElementById('ra-role');
+    if (!filter || !counts.author || !counts.editor) return;
+    filter.querySelectorAll('button').forEach(button => {
+      button.querySelector('.ra-role-count').textContent = counts[button.dataset.role];
+      button.addEventListener('click', () => {
+        filter.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === button));
+        role = button.dataset.role;
+        show();
+      });
+    });
+    filter.classList.remove('d-none');
+  });
+}
+
+// Roles ('author', 'editor', ...) of the person of the profile in a work.
+function _raPersonRoles(product) {
+  const contributions = _skgifArray(product.contributions);
+  return new Set(contributions.filter(c => c && c.by && c.by.local_identifier === _raPersonOmid).map(c => c.role));
+}
+
+// Text on the left of the toolbar and progress bar (fraction 0..1, or null
+// to hide it).
+function _setAuthorListStatus(text, fraction) {
+  _skgifListStatus('ra-sort-status', 'ra-progress', text, fraction);
+}
+
+// The "Back to top" button, shown once the page is scrolled down (author
+// profile and document page).
+function _initAuthorListUi() {
+  const top = document.getElementById('ra-top');
+  if (!top) return;
+  top.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  window.addEventListener('scroll', () => top.classList.toggle('d-none', window.scrollY < 800));
+}
+
+// Compact card of a work in the author's list (the document search keeps
+// _renderDocumentCard()): one line per piece of information, label at the
+// start of the line. Title (-> document page) with the year on the right as
+// in Pietro's list; all the authors (editors when there are none, as in the
+// other cards) by name only; source; identifiers as badges as in Pietro's
+// list; References/Citations. The person of the profile is in bold in the
+// list of names (their position among the authors). A badge next to the
+// year with the role of the profile's agent in the work, from badgeOf(set of
+// roles): on the author profile "Editor", or "Author & Editor" when they are
+// both (so every work of the "As editor" filter has it); on the organisation
+// page the organisation's roles (_orgRoleBadge()).
+function _renderAuthorWorkCard(product, badgeOf = _raEditorBadge) {
+  const omid = _skgifOmid(product.local_identifier);
+  if (!omid) return '';
+  const year = String(_skgifProductRawDate(product) || '').slice(0, 4);
+  const contributions = _skgifArray(product.contributions);
+  const role = contributions.some(c => c && c.role === 'author' && c.by) ? 'author' : 'editor';
+  const names = _skgifContributors(contributions, role).map(by => {
+    const name = _skgifAgentName(by);
+    const agentOmid = _skgifOmid(by.local_identifier);
+    const html = agentOmid ? `<a href="${_skgifAgentUrl(agentOmid)}" target="_blank">${name}</a>` : name;
+    return by.local_identifier === _raPersonOmid ? `<strong>${html}</strong>` : html; //la persona del profilo in grassetto, come nei CV
+  });
+  const namesHtml = names.length ? names.join(' • ') : 'Unknown';
+  const source = _skgifProductSource(product);
+  const ids = _skgifIdList(product.identifiers, omid, true);
+  const roleBadge = badgeOf(_raPersonRoles(product));
+
+  return `
+    <div class="col-12 mb-2">
+      <div class="card shadow-sm ra-work">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start gap-3 mb-1">
+            <h5 class="ra-work-title"><a href="browser.html?value=${omid}" target="_blank">${_skgifEscape(_skgifProductTitle(product))}</a></h5>
+            <div class="d-flex gap-1 flex-shrink-0">
+              ${roleBadge ? `<span class="badge ra-role-badge">${roleBadge}</span>` : ''}
+              ${year ? `<span class="badge ra-year-badge">${_skgifEscape(year)}</span>` : ''}
+            </div>
+          </div>
+          <div class="ra-work-line"><span class="fw-bold">${role === 'author' || !names.length ? 'Authors' : 'Editors'}:</span> ${namesHtml}</div>
+          ${source ? `<div class="ra-work-line"><span class="fw-bold">Source:</span> ${source}</div>` : ''}
+          ${ids ? `<div class="ra-work-line"><span class="fw-bold">IDs:</span> ${ids}</div>` : ''}
+          <div class="d-flex justify-content-end gap-3 ra-work-links">
+            <a href="browser.html?value=doc_ref/${omid}" class="btn btn-sm" target="_blank">Go to References</a>
+            <a href="browser.html?value=doc_cit/${omid}" class="btn btn-sm" target="_blank">Go to Citations</a>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// Badge of the author profile: the person is editor of the work.
+function _raEditorBadge(roles) {
+  return !roles.has('editor') ? '' : roles.has('author') ? 'Author &amp; Editor' : 'Editor';
+}
+
+// A work of the list, or the card of a work the API could not give.
+function _renderAuthorWorkOrMissing(work) {
+  return work._skgifMissing ? _skgifMissingCard('publication') : _renderAuthorWorkCard(work);
+}
+
+// HTML of the whole list in the chosen order: the API's order, by
+// publication date (works without a date at the end) with a heading for
+// each year, or by title. renderCard: the card of one work.
+function _renderAuthorWorks(works, order, renderCard = _renderAuthorWorkCard) {
+  const sorted = _sortAuthorWorks(works, order);
+  if (order !== 'newest' && order !== 'oldest') return sorted.map(work => renderCard(work)).join('');
+  let lastYear = null;
+  return sorted.map(work => {
+    const year = String(_skgifProductRawDate(work) || '').slice(0, 4) || 'No date';
+    const heading = year !== lastYear ? `<div class="col-12"><h6 class="ra-year-heading">${_skgifEscape(year)}</h6></div>` : '';
+    lastYear = year;
+    return heading + _renderAuthorWorkCard(work);
+  }).join('');
+}
+
+// Works without repeated OMIDs (the same work could come on two pages).
+function _skgifDedupe(products) {
+  const seen = new Set();
+  return products.filter(p => {
+    const key = p.local_identifier;
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+// The works in the chosen order: the API's order, by publication date
+// (works without a date always at the end) or by title.
+function _sortAuthorWorks(works, order) {
+  const date = p => _skgifProductRawDate(p) || '';
+  const title = p => _skgifProductTitle(p);
+  const byDate = dir => (a, b) => (!date(a) - !date(b)) || dir * date(a).localeCompare(date(b));
+  const byTitle = dir => (a, b) => dir * title(a).localeCompare(title(b), undefined, { sensitivity: 'base' });
+  const compare = { newest: byDate(-1), oldest: byDate(1), 'title-asc': byTitle(1), 'title-desc': byTitle(-1) }[order];
+  return compare ? [...works].sort(compare) : works;
 }
 
 /*
@@ -3958,99 +4596,122 @@ function _skgifRaMessage(text) {
 // Replaces Pietro's SPARQL block on Meta (meta: the document) and his
 // ocapi_references() / ocapi_citations() (Index REST + Meta SPARQL on every
 // reference/citation) with:
-//   /products/<full OMID>              -> title, authors, editors, publisher,
-//                                         type, date, volume, issue, pages,
-//                                         identifiers, source
-//   /products/<full OMID of biblio.in> -> editors of the book that contains
-//                                         the document (see below)
-//   cf.cited_by:<OMID> / cf.cites:<OMID> -> References / Citations, two
-//                                         paginated lists of document cards
-//                                         (_renderDocumentCard()); their
-//                                         total_items are the two counters
-//                                         (= Index reference-count /
-//                                         citation-count, checked 2026-10-10)
-// Pietro's query also read type, volume, issue, pages, publisher and editors
-// but his page did not show them: shown here (decided 2026-10-10).
-// Editors: like Pietro, those of the document + those of its container. His
-// container is the direct frbr:partOf (the issue for a journal article, the
-// book for a chapter); SKG-IF only gives biblio.in, which for a journal
-// article is the whole journal, not the issue: so the container is asked
-// only when the document is not a journal article (journal issues have no
-// editors, e.g. br/06102227607; ISWC 2020 book of br/061701903780: 8).
+//   /products/<full OMID>                -> every field of the record: title,
+//                                           authors, editors and publisher
+//                                           (names), type, date, source,
+//                                           volume, issue, pages, identifiers
+//   cf.cited_by:<OMID> / cf.cites:<OMID> -> References / Citations, asked in
+//                                           pages of SKGIF_LIST_PAGE_SIZE; the
+//                                           total_items of page 1 are the two
+//                                           counters (= Index reference-count
+//                                           / citation-count, checked
+//                                           2026-10-10)
+// Only what /products gives for the document itself (decided 2026-10-17):
+// not the editors of the book or venue that contains it (Pietro's query added
+// them: here they would be information about the venue).
+// Layout of 2026-10-17: the record and the counters + chart side by side, then
+// one card with two tabs (References, Citations) of compact cards as in the
+// author profile (_renderAuthorWorkCard()), 10 per page, in the API's order
+// (no "Sort by", decided 2026-10-17: it needed every result).
+// Each list is a _skgifPagedList(): the cards of a page are cut out of the
+// pages of SKGIF_LIST_PAGE_SIZE it keeps, so the API is asked once per 50
+// results. Up to SKGIF_CHART_AUTO_LOAD citations, all of them are downloaded at once
+// (loadAll()) and the "Citations per year" chart is drawn from the same
+// pages: list and chart share the requests. Above that, the chart waits for
+// its "Load chart" button (SKG-IF has no date filter or sort: the chart
+// needs every citing product).
+// Requests: 1 (document) + 1 per 50 references + 1 per 50 citations (the
+// first page of each list also gives its counter and first cards). A page of
+// 50 that does not arrive is asked again in smaller pages (skgifFetchRange()),
+// so one result the API cannot give does not stop the list and the chart.
 // Data shown as the API gives it: dates are padded ("2020-01-01" when only
 // the year is known).
-// The "Citations per year" chart comes from the Index API (SKG-IF has no
-// date filter or sort: every citing product would have to be downloaded, 50
-// per page - 156 citations ~35 s), see _skgifCitationsPerYearChart()
-// (section 8).
-// The two lists are paginated and in the API's order (Pietro: all of them,
-// in one go).
 //
 // #callfun args: args[1] = Lucinda.data.main (has the omid_digit of
 // "br/{omid_digit}"), see api_search_author_skgif().
+
 function api_document_record_skgif(...args) {
   const id = _skgifUrlParam(args[1], 'omid_digit').trim();
-  _setCiField('br-id', `br/${_skgifEscape(id)}`); //titolo: l'OMID, come nella pagina di Pietro
+  _setCiField('br-id', `<div class="skgif-head-title">br/${_skgifEscape(id)}</div>`); //finché non arriva il documento
 
   const omidUrl = `https://w3id.org/oc/meta/br/${id}`;
-  const list = (filter, containerId, totalCountId, emptyMessage) => {
-    const source = `${SKGIF_API}/products?filter=${filter}:${encodeURIComponent(omidUrl)}`;
-    return {
-      source,
-      search: createSkgifPaginatedSearch({ sources: [source], renderItem: _renderDocumentCard, emptyMessage, containerId, totalCountId }).search
-    };
-  };
-  const refs = list('cf.cited_by', 'br-refs-list', 'br-refs-total', 'No references found.');
-  const cits = list('cf.cites', 'br-cits-list', 'br-cits-total', 'No citations found.');
-  const firstPage = src => skgifFetch(`${src}&page=1&page_size=${SKGIF_DEFAULT_PAGE_SIZE}`); //prima pagina in parallelo (in cache per search())
+  const listSource = filter => `${SKGIF_API}/products?filter=${filter}:${encodeURIComponent(omidUrl)}`;
+  const refsSource = listSource('cf.cited_by');
+  const citsSource = listSource('cf.cites');
 
-  holdSkgifPage(); //banner di caricamento finché non arrivano documento, editor del contenitore e prime pagine
-  const product = skgifFetch(`${SKGIF_API}/products/${omidUrl}`)
-    .then(data => data ? ((data['@graph'] || [])[0] || {}) : null); //{} = nessun documento con quell'OMID, null = richiesta fallita
-  Promise.all([
-    product,
-    product.then(_loadContainerEditors),
-    firstPage(refs.source),
-    firstPage(cits.source)
-  ]).then(([doc, containerEditors, refsPage, citsPage]) => {
-    if (!doc) return _skgifBrMessage(SKGIF_FAILED_MESSAGE);
-    if (!doc.local_identifier) return _skgifBrMessage(`No document with OMID br/${id} in OpenCitations.`);
+  // banner until the document AND the first page of both lists (totals +
+  // first 10 references and citations) have arrived (user's request
+  // 2026-10-17); the rest of the lists and the chart come after
+  holdSkgifPage();
+  const refsFirst = skgifFirstPage(refsSource, SKGIF_LIST_PAGE_SIZE); //prime pagine in parallelo: { total, items }
+  const citsFirst = skgifFirstPage(citsSource, SKGIF_LIST_PAGE_SIZE);
+  Promise.all([skgifFetch(`${SKGIF_API}/products/${omidUrl}`), refsFirst, citsFirst]).then(([data]) => {
+    const doc = data ? ((data['@graph'] || [])[0] || {}) : null; //{} = nessun documento con quell'OMID, null = richiesta fallita
+    if (!doc) return _skgifRecordMessage('br-message', 'The document could not be loaded (the API did not answer). Try again later.'); //non il messaggio delle ricerche ("shorter query")
+    if (!doc.local_identifier) return _skgifRecordMessage('br-message', `No document with OMID br/${id} in OpenCitations.`);
 
-    const manifestation = (Array.isArray(doc.manifestations) ? doc.manifestations : [])[0] || {};
-    const biblio = manifestation.biblio || {};
-    const pages = biblio.pages || {};
-    const agentLink = agentOmid => `browser.html?value=${agentOmid}`;
-    const editors = [_skgifAgents(doc.contributions, 'editor', agentLink), containerEditors].filter(Boolean).join(' • ');
-
-    _setCiField('br-title', `<a href="https://ldd.opencitations.net/meta/br/${_skgifEscape(id)}" target="_blank" class="text-reset text-decoration-none">${_skgifEscape(_skgifProductTitle(doc))}</a>`); //come create_br_header_link()
-    _setBrRow('br-type', _skgifEscape(manifestation.type?.labels?.en || ''));
-    _setBrRow('br-date', _skgifProductDate(doc) === 'Unknown' ? '' : _skgifProductDate(doc));
-    _setBrRow('br-authors', _skgifAgents(doc.contributions, 'author', agentLink));
-    _setBrRow('br-editors', editors);
-    _setCiField('br-ids', _skgifIdList(doc.identifiers, `br/${id}`));
-    _setBrRow('br-source', _skgifProductSource(doc));
-    _setBrRow('br-volume', _skgifEscape(biblio.volume || ''));
-    _setBrRow('br-issue', _skgifEscape(biblio.issue || ''));
-    _setBrRow('br-pages', _skgifEscape(pages.first && pages.last && pages.first !== pages.last ? `${pages.first}-${pages.last}` : (pages.first || pages.last || ''))); //come Pietro: una pagina sola se inizio = fine
-    _setBrRow('br-publisher', _skgifAgents(doc.contributions, 'publisher', agentOmid => `https://w3id.org/oc/meta/${agentOmid}`)); //come nelle card delle riviste
-    _setCiField('br-refs-count', _ciCount(refsPage ? skgifTotal(refsPage) : null));
-    _setCiField('br-cits-count', _ciCount(citsPage ? skgifTotal(citsPage) : null));
+    _fillDocumentRecord(doc, id);
+    _setCiField('br-id', _skgifHeaderLines(doc, `br/${id}`)); //intestazione: il documento come reference, una informazione per riga
+    _initBrTabs();
+    _initAuthorListUi(); //"Back to top", come nel profilo autore
+    _setCiField('br-cits-chart', '<em>Loading...</em>');
     document.getElementById('br-record')?.classList.remove('d-none');
-    refs.search(); //liste paginate: riempiono anche "(N documents)" e rilasciano la pagina
-    cits.search();
-    _skgifCitationsPerYearChart('br-cits-chart', id); //grafico per anno dall'Index (sezione 8)
-  }).catch(() => _skgifBrMessage(SKGIF_FAILED_MESSAGE));
+
+    refsFirst.then(refsPage => {
+      _setCiField('br-refs-count', _ciCount(refsPage ? refsPage.total : null));
+      _brList('refs', refsSource, refsPage); //sfogliate pagina per pagina, niente "Sort by"
+    });
+    citsFirst.then(citsPage => {
+      _setCiField('br-cits-count', _ciCount(citsPage ? citsPage.total : null));
+      _skgifListChart(_brList('cits', citsSource, citsPage), { boxId: 'br-cits-chart', noun: 'citation', owner: 'document', label: '# Citations' }); //sotto la soglia scarica tutte le citazioni (anche per la lista), sopra aspetta il bottone
+    });
+    Promise.all([refsFirst, citsFirst]).then(() => releaseSkgifPage()); //dopo che le prime card sono nella pagina
+  }).catch(() => _skgifRecordMessage('br-message', 'The document could not be loaded (the API did not answer). Try again later.'));
 }
 
-// Editors of the container of a document (see above): "" for a journal
-// article, a document without biblio.in or a failed request.
-function _loadContainerEditors(doc) {
-  const manifestation = (Array.isArray(doc?.manifestations) ? doc.manifestations : [])[0] || {};
-  const containerId = manifestation.biblio?.in?.local_identifier;
-  if (!containerId || /JournalArticle$/.test(manifestation.type?.class || '')) return "";
-  return skgifFetch(`${SKGIF_API}/products/${containerId}`).then(data => {
-    const container = (data?.['@graph'] || [])[0] || {};
-    return _skgifAgents(container.contributions, 'editor', agentOmid => `browser.html?value=${agentOmid}`);
+// Every field of the record, from /products/<OMID>. A row with an id
+// "...-row" is shown only when its field has a value.
+function _fillDocumentRecord(doc, id) {
+  const manifestation = _skgifArray(doc.manifestations)[0] || {};
+  const biblio = manifestation.biblio || {};
+  const date = _skgifProductDate(doc);
+  _setCiField('br-title', `<a href="https://ldd.opencitations.net/meta/br/${_skgifEscape(id)}" target="_blank" class="text-reset text-decoration-none">${_skgifEscape(_skgifProductTitle(doc))}</a>`); //come create_br_header_link()
+  _setBrRow('br-authors', _skgifAgents(doc.contributions, 'author', _skgifAgentUrl, false)); //solo i nomi (-> loro pagina, con gli ID): con tutti gli ID occupavano troppo spazio
+  _setBrRow('br-type', _skgifEscape(manifestation.type?.labels?.en || ''));
+  _setBrRow('br-date', date === 'Unknown' ? '' : date);
+  _setBrRow('br-volume', _skgifEscape(biblio.volume || ''));
+  _setBrRow('br-issue', _skgifEscape(biblio.issue || ''));
+  _setBrRow('br-pages', _skgifEscape(_skgifPageRange(biblio, '-'))); //come Pietro: una pagina sola se inizio = fine
+  _setBrRow('br-source', _skgifProductSource(doc));
+  _setBrRow('br-publisher', _skgifAgents(doc.contributions, 'publisher', _skgifAgentUrl, false));
+  _setBrRow('br-editors', _skgifAgents(doc.contributions, 'editor', _skgifAgentUrl, false)); //solo gli editor del documento
+  _setCiField('br-ids', _skgifIdList(doc.identifiers, `br/${id}`));
+}
+
+
+// The References / Citations tabs (one list visible at a time).
+function _initBrTabs() {
+  const tabs = document.querySelectorAll('[data-br-tab]');
+  tabs.forEach(tab => tab.addEventListener('click', () => {
+    tabs.forEach(t => {
+      const active = t === tab;
+      t.classList.toggle('active', active);
+      t.setAttribute('aria-selected', String(active));
+      document.getElementById(`br-${t.dataset.brTab}-pane`)?.classList.toggle('d-none', !active);
+    });
+  }));
+}
+
+// The References ('refs') or Citations ('cits') list of the document page
+// (elements br-refs-list... / br-cits-list..., see _skgifPagedList()).
+function _brList(kind, source, first) {
+  const noun = kind === 'refs' ? 'reference' : 'citation';
+  return _skgifPagedList({
+    prefix: `br-${kind}`, source, first, noun,
+    emptyMessage: `No ${noun}s found.`,
+    statusText: n => _skgifPlural(n, 'document'),
+    scrollId: 'br-lists',
+    renderCard: _renderAuthorWorkCard
   });
 }
 
@@ -4061,7 +4722,152 @@ function _setBrRow(id, html) {
   document.getElementById(`${id}-row`)?.classList.toggle('d-none', !html);
 }
 
-function _skgifBrMessage(text) {
-  _setCiField('br-message', `<div class="alert alert-danger mb-4">${_skgifEscape(text)}</div>`);
+/*
+################################################################################
+# 11. SCHEDA ORGANIZZAZIONE (new_org_browser)
+################################################################################
+*/
+// ---new_org_browser (SKG-IF)---
+// New page (Pietro had none). Persons and organisations share the ra/
+// prefix, so there is no template of its own in browser.html: the author
+// page (new_ra_browser) asks /persons first and, when there is no person
+// with that OMID, /organisations (_orgRecordSkgif()); for an organisation it
+// puts new_org_browser.html in the page in place of the author template
+// (_skgifSwapTemplate()). Decided 2026-10-17 to do it in JS for now (option
+// B of the type check).
+// Same layout as the author profile: the organisation (name, Crossref ID,
+// other identifiers, Publications) next to the "Publications per year"
+// chart, then the list of its publications. Requests:
+//   /organisations/<full OMID>                      -> name, identifiers
+//   /products?filter=contributions.by.local_identifier:<OMID>
+//                                                   -> its publications, every
+//                                                      role (publisher, author)
+// SKG-IF on OpenCitations has only name and identifiers (Crossref member
+// ID, sometimes) for an organisation: no country, type, ROR or affiliated
+// persons. A publisher can have tens of thousands to millions of
+// publications (IOS Press 90,253, Elsevier 17.5 million), so the list is
+// browsed page by page as on the document page (_skgifPagedList(), no
+// "Sort by"), and "Search in titles" asks the API for the publications of
+// the organisation with a word in the title (both filters together:
+// IOS Press + "semantic" = 559 in 2.4 s, checked 2026-10-17). The chart
+// needs every publication: drawn by itself up to SKGIF_CHART_AUTO_LOAD, with
+// "Load chart" up to SKGIF_ORG_CHART_MAX, never above.
+// Data shown as the API gives it: many publications of a publisher are
+// records with only a DOI (41 of the first 50 of IOS Press: no title,
+// authors, date), shown as cards "No title" (user's decision 2026-10-17).
+
+// Organisations with more publications than this have no chart (Load chart
+// would download them all). Estimated: 100 requests of 50.
+const SKGIF_ORG_CHART_MAX = 5000;
+
+// Called by api_author_record_skgif() when /persons has no record: the
+// organisation page if /organisations has one. Resolves to false when there
+// is no organisation either.
+function _orgRecordSkgif(id, omidUrl) {
+  return skgifFetch(`${SKGIF_API}/organisations/${omidUrl}`).then(data => {
+    const org = (data?.['@graph'] || [])[0];
+    if (!org?.local_identifier) return false;
+    const works = `${SKGIF_API}/products?filter=contributions.by.local_identifier:${encodeURIComponent(omidUrl)}`;
+    return Promise.all([_skgifSwapTemplate('new_org_browser'), skgifFirstPage(works, SKGIF_LIST_PAGE_SIZE)])
+      .then(([, first]) => {
+        _fillOrganisation(org, id, omidUrl, works, first);
+        return true;
+      });
+  });
+}
+
+// Puts another template in the page while the "Loading" banner is still on
+// (holdSkgifPage()), in place of the one Lucinda chose: fetched as Lucinda
+// does (templates_url + name + ".html"); it must have no [[Lucinda:...]]
+// placeholders. Used for ra/ (author or organisation, known only after the
+// first request).
+function _skgifSwapTemplate(name) {
+  return fetch(`${Lucinda.conf.templates_url}${name}.html?rand=${Math.random()}`)
+    .then(response => response.text())
+    .then(html => {
+      const root = document.getElementById('__lucinda__');
+      const held = _skgifHeldPage;
+      if (!root || !held) return;
+      held.children.forEach(({ el }) => el.remove());
+      const box = document.createElement('div');
+      box.innerHTML = html;
+      const children = Array.from(box.children);
+      children.forEach(el => {
+        el.style.display = 'none';
+        root.insertBefore(el, held.banner);
+      });
+      held.children = children.map(el => ({ el, display: '' }));
+    });
+}
+
+function _fillOrganisation(org, id, omidUrl, works, first) {
+  _raPersonOmid = omidUrl; //per il ruolo dell'organizzazione in ogni pubblicazione (badge, nome in grassetto)
+  const name = (org.name || '').trim() || 'Unknown Organisation';
+  const identifiers = _skgifArray(org.identifiers);
+  _setCiField('org-head', _skgifEscape(name));
+  _setCiField('org-name', `<a href="https://ldd.opencitations.net/meta/ra/${_skgifEscape(id)}" target="_blank" class="text-reset text-decoration-none">${_skgifEscape(name)}</a>`);
+  _setCiField('org-crossref', _skgifIdList(identifiers.filter(i => i.scheme === 'crossref')) || 'No Crossref ID found');
+  _setCiField('org-ids', _skgifIdList(identifiers.filter(i => i.scheme !== 'crossref'), `ra/${id}`));
+  _setCiField('org-count', _ciCount(first ? first.total : null));
+  document.getElementById('org-record')?.classList.remove('d-none');
+  _initAuthorListUi(); //"Back to top"
+
+  const allPublications = _orgList(works, first, n => _skgifPlural(n, 'publication'), 'No publications found.');
+  _skgifListChart(allPublications, { boxId: 'org-chart', noun: 'publication', owner: 'organisation', label: '# Publications', maxLoad: SKGIF_ORG_CHART_MAX });
+  _initOrgSearch(works, allPublications);
   releaseSkgifPage();
+}
+
+// A list of publications of the organisation page (all of them, or the
+// result of a title search).
+function _orgList(source, first, statusText, emptyMessage) {
+  return _skgifPagedList({
+    prefix: 'org-pubs', source, first, statusText, emptyMessage,
+    noun: 'publication',
+    scrollId: 'org-pubs',
+    renderCard: product => _renderAuthorWorkCard(product, _orgRoleBadge)
+  });
+}
+
+// Badge of the organisation page: its roles in the publication
+// ("Publisher", "Author", "Publisher & Author"...).
+function _orgRoleBadge(roles) {
+  const labels = { publisher: 'Publisher', author: 'Author', editor: 'Editor' };
+  return Object.keys(labels).filter(role => roles.has(role)).map(role => labels[role]).join(' &amp; ');
+}
+
+// "Search in titles": the publications of the organisation with the words
+// in the title (one request: contributions.by.local_identifier and
+// cf.search.title together), browsed as the full list; "Show all" (or an
+// empty search) gives the full list back, with what it had already loaded
+// (and its chart, which keeps loading meanwhile).
+function _initOrgSearch(works, allPublications) {
+  const form = document.getElementById('org-search');
+  const input = document.getElementById('org-search-input');
+  const reset = document.getElementById('org-search-reset');
+  if (!form || !input || !reset) return;
+  let current = ''; //ricerca in corso: una risposta arrivata tardi per una ricerca vecchia non viene mostrata
+
+  const showAll = () => {
+    current = '';
+    input.value = '';
+    reset.classList.add('d-none');
+    allPublications.activate();
+  };
+  reset.addEventListener('click', showAll);
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    const term = _skgifSafeTerm(input.value);
+    if (!term) return showAll();
+    current = term;
+    reset.classList.remove('d-none');
+    delete _skgifPaginators['org-pubs-list']; //nessuna lista attiva finché non arriva la risposta
+    _skgifListStatus('org-pubs-status', 'org-pubs-progress', 'Searching…', null);
+    _setCiField('org-pubs-list', SKGIF_LOADING_HTML);
+    const source = `${works},cf.search.title:${encodeURIComponent(term)}`;
+    skgifFirstPage(source, SKGIF_LIST_PAGE_SIZE).then(first => {
+      if (current !== term) return;
+      _orgList(source, first, n => `${_skgifPlural(n, 'publication')} with “${term}” in the title`, `No publications with “${term}” in the title.`);
+    });
+  });
 }

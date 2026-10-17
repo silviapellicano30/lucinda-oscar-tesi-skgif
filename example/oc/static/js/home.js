@@ -64,10 +64,15 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // Otherwise, treat as Free Text Search
-    // Matches: category/{query} -> handled by doc_free_text.hf / aut_free_text.hf etc.
-    const lucindaUrl = `http://127.0.0.1:5500/example/oc/html_template/browser.html?value=${category}/${encodeURIComponent(query)}`;
-    window.location.href = lucindaUrl;
+    // SILVIA (SKG-IF): an OCI typed without "ci/" (or as "oci:...") opens the
+    // citation record; any other text is not an OCI. It used to be sent as
+    // "citation/<text>", which no template matches ("No template is suitable").
+    const bareOci = query.replace(/^oci:/i, "");
+    if (/^\d+-\d+$/.test(bareOci)) {
+      window.location.href = `http://127.0.0.1:5500/example/oc/html_template/browser.html?value=ci/${bareOci}`;
+      return;
+    }
+    skgifShowHint("This is not a valid OCI.");
   });
 });
 

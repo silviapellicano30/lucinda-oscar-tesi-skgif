@@ -138,6 +138,211 @@ a:hover {
   background-image: linear-gradient(0deg, rgba(154, 49, 252, 0.2) 0%, transparent 100%)!important;
 }
 
+/* SILVIA: title links (cards, records) as inline boxes, so the purple
+   underline is drawn under every line of a title split on more lines,
+   not only under the last one (inline-block draws it once, at the bottom). */
+h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
+  display: inline!important;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* SILVIA: author profile (new_ra_browser) - list toolbar, compact work
+   cards, year headings, "Back to top" */
+.ra-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #fff;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #e3e3e3;
+}
+.ra-sort .btn {
+  border: 1px solid #c9c9c9;
+  background: #fff;
+  color: #212529;
+}
+.ra-sort .btn.active {
+  background: #9a31fc;
+  border-color: #9a31fc;
+  color: #fff;
+}
+.ra-sort .btn:disabled {
+  opacity: 0.45;
+}
+#ra-progress .progress-bar,
+.br-chart-progress .progress-bar {
+  background: #9a31fc;
+}
+.ra-work .card-body {
+  padding: 0.9rem 1rem 0.4rem;
+}
+.ra-work-title {
+  font-size: 1.12rem;
+  margin: 0 0 0.5rem;
+}
+/* SILVIA: the title stands out from the lines below (explicit weight: the
+   page text is "lighter" in lucinda.css) */
+.ra-work-title,
+.ra-work-title a {
+  font-weight: 600;
+}
+.ra-work-line {
+  font-size: 0.9rem;
+  margin-bottom: 0.45rem;
+}
+/* References / Citations links: little space, the room goes to the info above */
+.ra-work-links .btn {
+  padding: 0 0.1rem;
+  font-size: 0.85rem;
+}
+.ra-year-badge,
+.ra-id-badge {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  color: #212529;
+  font-weight: normal;
+}
+.ra-year-badge {
+  font-size: 0.85rem;
+}
+/* the person of the profile in the list of names (explicit weight: the page
+   text is "lighter" in lucinda.css, so a plain <strong> looks normal) */
+.ra-work-line strong {
+  font-weight: 700;
+}
+/* the person of the profile is editor of the work */
+.ra-role-badge {
+  font-size: 0.85rem;
+  font-weight: normal;
+  background: rgba(154, 49, 252, 0.12);
+  border: 1px solid rgba(154, 49, 252, 0.5);
+  color: #5a1aa8;
+}
+.ra-year-heading {
+  font-weight: 700;
+  margin: 1rem 0 0.5rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 2px solid rgba(154, 49, 252, 0.4);
+}
+/* the works list keeps the normal .row gutters (the 0.20rem margins of
+   #search-results-container below are for the search pages): its cards are
+   then as far from the screen edge as those of the document page */
+#ra-record #search-results-container {
+  margin-left: calc(-0.5 * var(--bs-gutter-x));
+  margin-right: calc(-0.5 * var(--bs-gutter-x));
+}
+/* Publications counter of the author card: not as wide as the card */
+.ra-count-box {
+  max-width: 14rem;
+}
+/* "Publications per year" chart of the author profile: centred in its
+   card, width in proportion to its height (not stretched) */
+#ra-pubs-chart > div,
+#org-chart > div {
+  max-width: 600px;
+  margin: 0 auto;
+}
+.ra-top {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  width: auto; /* it sits in a .row, whose children are full width */
+  padding: 0.35rem 0.9rem;
+  z-index: 10;
+  background: #9a31fc;
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* SILVIA: document page (new_br_any_browser) - record fields in a grid,
+   References/Citations tabs,
+   "Load chart" button. The lists reuse the author profile's classes above. */
+.br-title {
+  line-height: 1.35;
+}
+.br-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem 1.5rem;
+}
+.br-wide {
+  grid-column: 1 / -1;
+}
+.br-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #5f6368;
+  margin-bottom: 0.15rem;
+}
+.br-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  background: #fff;
+  padding: 0 1rem;
+}
+.br-tab {
+  border: none;
+  background: none;
+  padding: 0.85rem 1rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #5f6368;
+  border-bottom: 3px solid transparent;
+}
+.br-tab.active {
+  color: #5a1aa8;
+  border-bottom-color: #9a31fc;
+}
+.br-load-chart {
+  background: #9a31fc;
+  color: #fff;
+  padding: 0.4rem 1.2rem;
+}
+.br-load-chart:hover {
+  background: #5a1aa8;
+  color: #fff;
+}
+
+/* SILVIA: header of the document, citations, references pages
+   (_skgifHeaderLines()): one piece of information per line, a line too long
+   ends with "..." instead of going on a second line */
+.skgif-head > div {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.skgif-head-title {
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+.skgif-head-line {
+  margin-top: 0.15rem;
+}
+.skgif-head-meta {
+  font-size: 0.85rem;
+  color: #6c757d;
+  margin-top: 0.15rem;
+}
+
+/* SILVIA: organisation page (new_org_browser) - "Search in titles" */
+.org-search-input {
+  width: 16rem;
+  border-color: #9a31fc;
+}
+.org-search-input:focus {
+  border-color: #9a31fc;
+  box-shadow: 0 0 0 0.2rem rgba(154, 49, 252, 0.25);
+}
+.org-search-reset {
+  border: 1px solid #c9c9c9;
+  background: #fff;
+}
+
 a.anyid-doi{
   
 }

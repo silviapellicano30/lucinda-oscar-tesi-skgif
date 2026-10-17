@@ -1,0 +1,108 @@
+<html>
+  <head>
+    <style></style>
+  </head>
+  <body>
+
+    <!-- SILVIA (SKG-IF): organisation page (new, Pietro had none). Not in the
+         templates list of browser.html: persons and organisations share the
+         ra/ prefix, so the author page (new_ra_browser) puts this template in
+         the page when /persons has no record and /organisations has one
+         (_orgRecordSkgif() in localbrowser.js). Same layout as the author
+         profile; the fields are filled by _fillOrganisation() (ids below). -->
+
+    <br>
+
+    <div class="mb-3">
+      <a href="http://127.0.0.1:5500/example/oc/html_template/home.html" class="btn  btn-sm">
+        <i class="fas fa-arrow-left"></i> Home
+      </a>
+    </div>
+
+    <div class="row">
+
+      <div class="col-12 mb-4">
+        <div class="card shadow-sm p-3 h-100">
+          <div class="card-header text-center">
+            <!-- as the author page: Pietro's label small above, the name -->
+            <p class="mb-1 small text-muted">Responsible Agent Record</p>
+            <h3 class="my-0" id="org-head"></h3>
+          </div>
+        </div>
+      </div>
+
+      <!-- errors -->
+      <div class="col-12" id="org-message"></div>
+
+    </div>
+
+    <div class="row d-none" id="org-record">
+
+      <div class="col-12 col-lg-5 mb-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-body p-4">
+
+            <h4 class="br-title mb-3" id="org-name"></h4>
+
+            <!-- SKG-IF has only name and identifiers for an organisation on
+                 OpenCitations (Crossref member ID, sometimes) -->
+            <div class="br-field mb-3"><span class="br-label">Crossref</span><span id="org-crossref"></span></div>
+            <div class="br-field mb-3"><span class="br-label">Other identifiers</span><span id="org-ids"></span></div>
+
+            <div class="card shadow-sm ra-count-box">
+              <div class="card-header text-center py-1"><span class="fw-bold small">Publications</span></div>
+              <div class="card-body text-center py-1"><h3 class="text-primary my-1" id="org-count"></h3></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- drawn by _skgifListChart(): by itself for few publications, with
+           "Load chart" for more, never for publishers with very many -->
+      <div class="col-12 col-lg-7 mb-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header text-center">
+            <h6 class="my-1"><span class="fw-bold small">Publications per year</span></h6>
+          </div>
+          <div class="card-body text-center text-muted small d-flex flex-column justify-content-center" id="org-chart"></div>
+        </div>
+      </div>
+
+      <div class="col-12" id="org-pubs">
+        <div class="card shadow-sm">
+
+          <div class="card-header text-center">
+            <h4 class="my-1 fw-bold">List of Publications</h4>
+          </div>
+
+          <div class="card-body p-4">
+            <!-- browsed 10 per page in the API's order (_skgifPagedList());
+                 "Search in titles" asks the API for the publications of the
+                 organisation with those words in the title -->
+            <div class="ra-toolbar mb-3">
+              <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <span class="fw-bold" id="org-pubs-status"></span>
+                <form class="d-flex flex-wrap align-items-center gap-2" id="org-search" role="search">
+                  <input type="search" class="form-control form-control-sm org-search-input" id="org-search-input" placeholder="Search in titles" aria-label="Search in the titles of the publications">
+                  <button type="submit" class="btn btn-sm br-load-chart">Search</button>
+                  <button type="button" class="btn btn-sm org-search-reset d-none" id="org-search-reset">Show all</button>
+                </form>
+              </div>
+              <div class="progress mt-2 d-none br-chart-progress" id="org-pubs-progress" style="height: 6px;" role="progressbar" aria-label="Loading publications">
+                <div class="progress-bar" style="width: 0%"></div>
+              </div>
+            </div>
+            <div class="row" id="org-pubs-list"></div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- shown once the page is scrolled down -->
+    <button type="button" class="btn btn-sm ra-top d-none" id="ra-top">&uarr; Back to top</button>
+
+  </body>
+</html>
