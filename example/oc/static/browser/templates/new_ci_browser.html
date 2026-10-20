@@ -1,11 +1,13 @@
 <br>
 <div class="mb-3">
-  <a href="http://127.0.0.1:5500/example/oc/html_template/home.html" class="btn  btn-sm">
+  <a href="home2.html" class="btn  btn-sm">
     <i class="fas fa-arrow-left"></i> Home
   </a>
 </div>
-<!-- SILVIA (SKG-IF): the fields are filled by api_citation_record_skgif() in
-     localbrowser.js (ids below) instead of [[Lucinda:...]] SPARQL values.
+<!-- SILVIA (SKG-IF): the fields are filled by Lucinda from the #api blocks
+     of new_ci_browser.hf (#postprocess post_skgif_ci_doc / post_skgif_total +
+     view functions skgif_*); api_citation_record_skgif() shows the record
+     and draws the charts.
      Layout reorganised (prof's request): each "Citations per year" chart is
      under its own work, the two shared counters have their own section. -->
 <div class="row">
@@ -14,14 +16,14 @@
   <div class="col-12 mb-4">
     <div class="card shadow-sm p-3 h-100">
       <div class="card-header text-center">
-        <h3 class="my-0" id="ci-oci"></h3>
-        <p class="mb-0">Citation Record</p>
+        <p class="mb-1 small text-muted">Citation Record</p>
+        <h3 class="my-0" id="ci-oci">[[Lucinda:skgif_oci(main.oci)]]</h3>
       </div>
     </div>
   </div>
 
   <!-- errors (invalid OCI, missing document...) and the "citation not found" warning -->
-  <div class="col-12" id="ci-message"></div>
+  <div class="col-12" id="ci-message">[[Lucinda:skgif_ci_message(main.oci, citing_meta.status, cited_meta.status, citing_meta.cites)]]</div>
 
 </div>
 
@@ -32,27 +34,21 @@
 
     <!-- CITING WORK -->
     <div class="col-12 col-md">
-      <div class="card shadow-sm p-3 h-100">
+      <div class="card shadow-sm h-100">
         <div class="card-header text-center">
-          <h4 class="my-1 fw-bold">Citing work</h4>
+          <h5 class="my-1 fw-bold skgif-box-title">Citing work</h5>
         </div>
 
         <div class="card-body d-flex flex-column">
 
-          <h5 class="card-title text-center" id="citing-title"></h5>
+          <h5 class="ra-work-title" id="citing-title">[[Lucinda:skgif_doc_link(citing_meta.omid, citing_meta.title)]]</h5>
           <hr>
 
-          <span class="metadata-label fw-bold" id="citing-authors-label">Authors:</span>
-          <p id="citing-authors"></p>
-
-          <span class="metadata-label fw-bold">Publication Date:</span>
-          <p id="citing-date"></p>
-
-          <span class="metadata-label fw-bold">Identifiers:</span>
-          <p id="citing-ids"></p>
-
-          <span class="metadata-label fw-bold">Full URI:</span>
-          <p id="citing-uri"></p>
+          <!-- labels as the other record pages (br-label) -->
+          <div class="br-field mb-3"><span class="br-label" id="citing-authors-label">[[Lucinda:skgif_text(citing_meta.agents_label)]]</span><span id="citing-authors">[[Lucinda:ifcond(citing_meta.agents != null, skgif_agents(citing_meta.agents), _HTML_(Unknown))]]</span></div>
+          <div class="br-field mb-3"><span class="br-label">Publication date</span><span id="citing-date">[[Lucinda:ifcond(citing_meta.date != null, skgif_text(citing_meta.date), _HTML_(Unknown))]]</span></div>
+          <div class="br-field mb-3"><span class="br-label">Identifiers</span><span id="citing-ids">[[Lucinda:skgif_ids(citing_meta.ids, citing_meta.omid)]]</span></div>
+          <div class="br-field mb-3"><span class="br-label">Full URI</span><span id="citing-uri">[[Lucinda:skgif_uri(citing_meta.omid)]]</span></div>
 
           <!-- counters and chart at the bottom, aligned with the cited work -->
           <div class="mt-auto">
@@ -63,7 +59,7 @@
                     <span class="fw-bold small">References</span>
                   </div>
                   <div class="card-body text-center py-2">
-                    <h3 class="text-primary my-1" id="citing-refs"></h3>
+                    <h3 class="my-1 skgif-count-number" id="citing-refs">[[Lucinda:skgif_text(citing_refs.total)]]</h3>
                   </div>
                 </div>
               </div>
@@ -73,7 +69,7 @@
                     <span class="fw-bold small">Citations</span>
                   </div>
                   <div class="card-body text-center py-2">
-                    <h3 class="text-primary my-1" id="citing-cits"></h3>
+                    <h3 class="my-1 skgif-count-number" id="citing-cits">[[Lucinda:skgif_text(citing_cits.total)]]</h3>
                   </div>
                 </div>
               </div>
@@ -93,35 +89,28 @@
     </div>
 
     <!-- "cites" arrow: right on wide screens, down when the cards are stacked -->
-    <div class="col-12 col-md-auto d-flex flex-md-column align-items-center justify-content-center my-3 my-md-0 text-muted">
-      <span class="fs-2 lh-1 d-none d-md-block" aria-hidden="true">&rarr;</span>
-      <span class="fs-2 lh-1 d-md-none me-2" aria-hidden="true">&darr;</span>
-      <span class="fw-bold small">cites</span>
+    <div class="col-12 col-md-auto d-flex flex-md-column align-items-center justify-content-center gap-2 my-3 my-md-0">
+      <span class="ci-arrow" aria-hidden="true"><span class="d-none d-md-inline">&rarr;</span><span class="d-md-none">&darr;</span></span>
+      <span class="fw-bold small ci-arrow-label">cites</span>
     </div>
 
     <!-- CITED WORK -->
     <div class="col-12 col-md">
-      <div class="card shadow-sm p-3 h-100">
+      <div class="card shadow-sm h-100">
         <div class="card-header text-center">
-          <h4 class="my-1 fw-bold">Cited work</h4>
+          <h5 class="my-1 fw-bold skgif-box-title">Cited work</h5>
         </div>
 
         <div class="card-body d-flex flex-column">
 
-          <h5 class="card-title text-center" id="cited-title"></h5>
+          <h5 class="ra-work-title" id="cited-title">[[Lucinda:skgif_doc_link(cited_meta.omid, cited_meta.title)]]</h5>
           <hr>
 
-          <span class="metadata-label fw-bold" id="cited-authors-label">Authors:</span>
-          <p id="cited-authors"></p>
-
-          <span class="metadata-label fw-bold">Publication Date:</span>
-          <p id="cited-date"></p>
-
-          <span class="metadata-label fw-bold">Identifiers:</span>
-          <p id="cited-ids"></p>
-
-          <span class="metadata-label fw-bold">Full URI:</span>
-          <p id="cited-uri"></p>
+          <!-- labels as the other record pages (br-label) -->
+          <div class="br-field mb-3"><span class="br-label" id="cited-authors-label">[[Lucinda:skgif_text(cited_meta.agents_label)]]</span><span id="cited-authors">[[Lucinda:ifcond(cited_meta.agents != null, skgif_agents(cited_meta.agents), _HTML_(Unknown))]]</span></div>
+          <div class="br-field mb-3"><span class="br-label">Publication date</span><span id="cited-date">[[Lucinda:ifcond(cited_meta.date != null, skgif_text(cited_meta.date), _HTML_(Unknown))]]</span></div>
+          <div class="br-field mb-3"><span class="br-label">Identifiers</span><span id="cited-ids">[[Lucinda:skgif_ids(cited_meta.ids, cited_meta.omid)]]</span></div>
+          <div class="br-field mb-3"><span class="br-label">Full URI</span><span id="cited-uri">[[Lucinda:skgif_uri(cited_meta.omid)]]</span></div>
 
           <div class="mt-auto">
             <div class="row g-2 mb-3">
@@ -131,7 +120,7 @@
                     <span class="fw-bold small">References</span>
                   </div>
                   <div class="card-body text-center py-2">
-                    <h3 class="text-primary my-1" id="cited-refs"></h3>
+                    <h3 class="my-1 skgif-count-number" id="cited-refs">[[Lucinda:skgif_text(cited_refs.total)]]</h3>
                   </div>
                 </div>
               </div>
@@ -141,7 +130,7 @@
                     <span class="fw-bold small">Citations</span>
                   </div>
                   <div class="card-body text-center py-2">
-                    <h3 class="text-primary my-1" id="cited-cits"></h3>
+                    <h3 class="my-1 skgif-count-number" id="cited-cits">[[Lucinda:skgif_text(cited_cits.total)]]</h3>
                   </div>
                 </div>
               </div>
@@ -164,9 +153,9 @@
   <!-- WHAT THE TWO WORKS HAVE IN COMMON (Pietro's "Cited by Both" / "Citing Both") -->
   <div class="row mb-4">
     <div class="col-12">
-      <div class="card shadow-sm p-3">
+      <div class="card shadow-sm">
         <div class="card-header text-center">
-          <h4 class="my-1 fw-bold">Citation overlap</h4>
+          <h5 class="my-1 fw-bold skgif-box-title">Citation overlap</h5>
         </div>
         <div class="card-body">
           <div class="row g-3 justify-content-center">
@@ -176,7 +165,7 @@
                   <span class="fw-bold small">Shared references</span>
                 </div>
                 <div class="card-body text-center py-2">
-                  <h3 class="text-primary my-1" id="ci-cited-by-both"></h3>
+                  <h3 class="my-1 skgif-count-number" id="ci-cited-by-both">[[Lucinda:skgif_text(cited_by_both.total)]]</h3>
                   <p class="small text-muted mb-0">Works cited by both</p>
                 </div>
               </div>
@@ -187,7 +176,7 @@
                   <span class="fw-bold small">Co-citations</span>
                 </div>
                 <div class="card-body text-center py-2">
-                  <h3 class="text-primary my-1" id="ci-citing-both"></h3>
+                  <h3 class="my-1 skgif-count-number" id="ci-citing-both">[[Lucinda:skgif_text(citing_both.total)]]</h3>
                   <p class="small text-muted mb-0">Works that cite both</p>
                 </div>
               </div>

@@ -7,14 +7,15 @@
     <br>
 
     <div class="mb-3">
-      <a href="http://127.0.0.1:5500/example/oc/html_template/home.html" class="btn  btn-sm">
+      <a href="home2.html" class="btn  btn-sm">
         <i class="fas fa-arrow-left"></i> Home
       </a>
     </div>
 
-    <!-- SILVIA (SKG-IF): same layout as Pietro's; the fields are filled by
-         api_author_record_skgif() in localbrowser.js (ids below) instead of
-         [[Lucinda:...]] SPARQL values -->
+    <!-- SILVIA (SKG-IF): same layout as Pietro's; name, identifiers and count
+         are filled by Lucinda from the #api blocks of new_ra_browser.hf
+         (#postprocess post_skgif_person / post_skgif_total + view functions
+         skgif_*), the works and the chart by api_author_record_skgif() -->
     <div class="row">
 
       <div class="col-12 mb-4">
@@ -24,38 +25,42 @@
                  above, the name instead of the OMID (api_author_record_skgif());
                  the identifiers are in the card below -->
             <p class="mb-1 small text-muted">Responsible Agent Record</p>
-            <h3 class="my-0" id="ra-id"></h3>
+            <h3 class="my-0" id="ra-id">[[Lucinda:skgif_text(author_meta.head)]]</h3>
           </div>
         </div>
       </div>
 
       <!-- errors (no author with this OMID, failed request) -->
-      <div class="col-12" id="ra-message"></div>
+      <div class="col-12 skgif-lv" id="ra-message">[[Lucinda:ifcond(author_meta.message != null, concat(_HTML_(<div class="alert alert-danger mb-4">), skgif_text(author_meta.message), _HTML_(</div>)))]]</div>
 
     </div>
 
     <!-- SILVIA (SKG-IF): layout of 2026-10-17, aligned with the document
-         page (no "Author Profile" header, labels as br-label). Left: name,
+         page (no "Author Profile" header, labels as br-label). Left:
          ORCID, other identifiers and the Publications counter (same box as
          the document's References/Citations); right: the "Publications per
          year" chart as wide as its card, so the two cards have about the same
          height. Filled by api_author_record_skgif() / _loadAuthorWorks(). -->
     <div class="row d-none" id="ra-record">
 
-      <div class="col-12 col-lg-5 mb-4">
+      <!-- the name is only in the header above (not repeated here): the
+           identifiers and the count are centred in the card, beside the
+           chart, under a title as the other boxes ("Overview") -->
+      <div class="col-12 col-lg-4 mb-4">
         <div class="card shadow-sm h-100">
-          <div class="card-body p-4">
+          <div class="card-header text-center">
+            <h5 class="my-1 fw-bold skgif-box-title">Overview</h5>
+          </div>
+          <div class="card-body p-4 d-flex flex-column justify-content-center">
 
-            <h4 class="br-title mb-3" id="ra-name"></h4>
-
-            <div class="br-field mb-3"><span class="br-label">ORCID</span><span id="ra-orcid"></span></div>
+            <div class="br-field mb-4"><span class="br-label">ORCID</span><span id="ra-orcid">[[Lucinda:ifcond(author_meta.orcid != null, skgif_orcid(author_meta.orcid), _HTML_(<span class="skgif-none">No ORCID found</span>))]]</span></div>
             <!-- Pietro's query already read the other identifiers (otherIDs)
                  but did not show them -->
-            <div class="br-field mb-3"><span class="br-label">Other identifiers</span><span id="ra-ids"></span></div>
+            <div class="br-field mb-4"><span class="br-label">Other identifiers</span><span id="ra-ids">[[Lucinda:skgif_ids(author_meta.ids, author_meta.omid)]]</span></div>
 
             <div class="card shadow-sm ra-count-box">
               <div class="card-header text-center py-1"><span class="fw-bold small">Publications</span></div>
-              <div class="card-body text-center py-1"><h3 class="text-primary my-1" id="search-total-count"></h3></div>
+              <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number" id="search-total-count">[[Lucinda:skgif_text(author_works.total)]]</h3></div>
             </div>
 
           </div>
@@ -65,10 +70,10 @@
       <!-- Pietro's "Publications per year" chart; drawn by _loadAuthorWorks()
            from the dates of all the works (SKG-IF, every role) once they have
            all arrived -->
-      <div class="col-12 col-lg-7 mb-4">
+      <div class="col-12 col-lg-8 mb-4">
         <div class="card shadow-sm h-100">
           <div class="card-header text-center">
-            <h6 class="my-1"><span class="fw-bold small">Publications per year</span></h6>
+            <h5 class="my-1 fw-bold skgif-box-title">Publications per year</h5>
           </div>
           <div class="card-body text-center text-muted small d-flex flex-column justify-content-center" id="ra-pubs-chart"></div>
         </div>
@@ -80,7 +85,7 @@
         <div class="card shadow-sm">
 
             <div class="card-header text-center">
-                 <h4 class="my-1 fw-bold">List of Publications</h4>
+                 <h5 class="my-1 fw-bold skgif-box-title">List of Publications</h5>
             </div>
             
             <div class="card-body p-4">
@@ -112,6 +117,14 @@
                             </div>
                         </div>
                     </div>
+                    <!-- "Search in titles": filters the works already loaded, with the
+                         sort and the role filter (usable, as the sort buttons, when
+                         every work has arrived: _loadAuthorWorks()) -->
+                    <form class="d-flex flex-wrap align-items-center justify-content-md-end gap-2 mt-2" id="ra-search" role="search">
+                        <input type="search" class="form-control form-control-sm skgif-search-input" id="ra-search-input" placeholder="Search in titles" aria-label="Search in the titles of the publications" disabled>
+                        <button type="submit" class="btn btn-sm br-load-chart" disabled>Search</button>
+                        <button type="button" class="btn btn-sm skgif-search-reset d-none" id="ra-search-reset">Show all</button>
+                    </form>
                     <div class="progress mt-2 d-none" id="ra-progress" style="height: 6px;" role="progressbar" aria-label="Loading publications">
                         <div class="progress-bar" style="width: 0%"></div>
                     </div>

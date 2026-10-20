@@ -1,5 +1,45 @@
 #id main
 #url value=ci/{oci}
 
+#id citing_meta
+#api https://api.opencitations.net/skg-if/v1/products/https://w3id.org/oc/meta/br/[[citing]]
+#preprocess pre_skgif_oci(oci)
+#postprocess post_skgif_ci_doc(citing)
+
+#id cited_meta
+#api https://api.opencitations.net/skg-if/v1/products/https://w3id.org/oc/meta/br/[[cited]]
+#preprocess pre_skgif_oci(oci)
+#postprocess post_skgif_ci_doc(cited)
+
+#id citing_refs
+#api https://api.opencitations.net/skg-if/v1/products?filter=cf.cited_by:https%3A%2F%2Fw3id.org%2Foc%2Fmeta%2Fbr%2F[[citing]]&page_size=1
+#preprocess pre_skgif_oci(oci)
+#postprocess post_skgif_total()
+
+#id citing_cits
+#api https://api.opencitations.net/skg-if/v1/products?filter=cf.cites:https%3A%2F%2Fw3id.org%2Foc%2Fmeta%2Fbr%2F[[citing]]&page_size=1
+#preprocess pre_skgif_oci(oci)
+#postprocess post_skgif_total()
+
+#id cited_refs
+#api https://api.opencitations.net/skg-if/v1/products?filter=cf.cited_by:https%3A%2F%2Fw3id.org%2Foc%2Fmeta%2Fbr%2F[[cited]]&page_size=1
+#preprocess pre_skgif_oci(oci)
+#postprocess post_skgif_total()
+
+#id cited_cits
+#api https://api.opencitations.net/skg-if/v1/products?filter=cf.cites:https%3A%2F%2Fw3id.org%2Foc%2Fmeta%2Fbr%2F[[cited]]&page_size=1
+#preprocess pre_skgif_oci(oci)
+#postprocess post_skgif_total()
+
+#id cited_by_both
+#api https://api.opencitations.net/skg-if/v1/products?filter=cf.cited_by:https%3A%2F%2Fw3id.org%2Foc%2Fmeta%2Fbr%2F[[citing]],cf.cited_by:https%3A%2F%2Fw3id.org%2Foc%2Fmeta%2Fbr%2F[[cited]]&page_size=1
+#preprocess pre_skgif_oci(oci)
+#postprocess post_skgif_total()
+
+#id citing_both
+#api https://api.opencitations.net/skg-if/v1/products?filter=cf.cites:https%3A%2F%2Fw3id.org%2Foc%2Fmeta%2Fbr%2F[[citing]],cf.cites:https%3A%2F%2Fw3id.org%2Foc%2Fmeta%2Fbr%2F[[cited]]&page_size=1
+#preprocess pre_skgif_oci(oci)
+#postprocess post_skgif_total()
+
 #id ci_record
 #callfun api_citation_record_skgif()

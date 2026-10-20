@@ -1,5 +1,10 @@
 #id main
 #url value=document/{search_query}
 
+#id search_count
+#api [[search_url]]
+#preprocess pre_skgif_search(products, search_query)
+#postprocess post_skgif_search(search_url, search_label)
+
 #id api_search
 #callfun api_search_doc_skgif()

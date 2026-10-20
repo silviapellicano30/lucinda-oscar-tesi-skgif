@@ -1,6 +1,6 @@
 <br>
 <div class="mb-3">
-  <a href="http://127.0.0.1:5500/example/oc/html_template/home.html" class="btn  btn-sm">
+  <a href="home2.html" class="btn  btn-sm">
     <i class="fas fa-arrow-left"></i> Home
   </a>
 </div>
@@ -9,9 +9,10 @@
     <div class="card shadow-sm p-3">
       <div class="card-header text-center">
         <!-- SILVIA (SKG-IF): the reference of the document instead of the OMID
-             one piece of information per line, filled by _skgifCitationList() -->
-        <h3><span id="search-total-count"></span> References <span class="fw-normal">in:</span></h3>
-        <div class="skgif-head" id="skgif-list-target"><div class="skgif-head-title">br/[[Lucinda:remove_percent(main.id)]]</div></div>
+             one piece of information per line; count and header filled by Lucinda
+             (#api blocks of the .hf, view function skgif_head) -->
+        <h3><span id="search-total-count">[[Lucinda:skgif_text(list_count.total)]]</span> References <span class="fw-normal">in:</span></h3>
+        <div class="skgif-head">[[Lucinda:skgif_head(doc_meta.title, doc_meta.head_line, doc_meta.head_meta, doc_meta.omid)]]</div>
       </div>
     </div>
   </div>

@@ -7,7 +7,7 @@
     <br>
 
     <div class="mb-3">
-      <a href="http://127.0.0.1:5500/example/oc/html_template/home.html" class="btn  btn-sm">
+      <a href="home2.html" class="btn  btn-sm">
         <i class="fas fa-arrow-left"></i> Home
       </a>
     </div>
@@ -27,7 +27,7 @@
         <div class="card shadow-sm p-3 h-100">
             
             <div class="card-header text-center">
-                <h4 class="my-1 fw-bold">Venue Profile</h4>
+                <h5 class="my-1 fw-bold skgif-box-title">Venue Profile</h5>
             </div>
 
             <div class="card-body">
@@ -69,7 +69,7 @@
                            <span class="fw-bold small">Publications</span>
                       </div>
                       <div class="card-body text-center">
-                        <h3 class="text-primary my-1">[[Lucinda:getVal(venue_works.count)]]</h3>
+                        <h3 class="my-1 skgif-count-number">[[Lucinda:getVal(venue_works.count)]]</h3>
                       </div>
                   </div>
                 </div>
@@ -79,7 +79,7 @@
                 <div class="col">
                   <div class="card shadow-sm p-1 m-1">
                     <div class="card-header text-center">
-                         <h6 class="my-1"><span class="fw-bold small">Publications per year</span></h6>
+                         <h5 class="my-1 fw-bold skgif-box-title">Publications per year</h5>
                     </div>
                     <div class="card-body">
                       <div><canvas id="citsxyear_chart" style="display: block; margin: 0 auto;"></canvas></div>
@@ -99,7 +99,7 @@
       <div class="col-12">
         <div class="card shadow-sm p-3">
             <div class="card-header text-center">
-                 <h4 class="my-1 fw-bold">List of Publications</h4>
+                 <h5 class="my-1 fw-bold skgif-box-title">List of Publications</h5>
             </div>
             <div class="card-body p-4">
                 [[Lucinda:getVal(venue_works.pubList)]]

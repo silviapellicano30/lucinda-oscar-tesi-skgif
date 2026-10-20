@@ -1,5 +1,16 @@
 #id main
 #url value=doc_ref/br/{id}
 
+#id doc_meta
+#api https://api.opencitations.net/skg-if/v1/products/https://w3id.org/oc/meta/br/[[id]]
+#postprocess post_skgif_document(id)
+
+#id list_count
+#api https://api.opencitations.net/skg-if/v1/products?filter=cf.cited_by:https%3A%2F%2Fw3id.org%2Foc%2Fmeta%2Fbr%2F[[id]]&page=1&page_size=1
+#postprocess post_skgif_total()
+
+#id list_page
+#api https://api.opencitations.net/skg-if/v1/products?filter=cf.cited_by:https%3A%2F%2Fw3id.org%2Foc%2Fmeta%2Fbr%2F[[id]]&page=1&page_size=10
+
 #id references_list
 #callfun api_doc_references_skgif()

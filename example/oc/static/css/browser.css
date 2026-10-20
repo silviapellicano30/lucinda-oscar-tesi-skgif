@@ -225,13 +225,6 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
   padding-bottom: 0.25rem;
   border-bottom: 2px solid rgba(154, 49, 252, 0.4);
 }
-/* the works list keeps the normal .row gutters (the 0.20rem margins of
-   #search-results-container below are for the search pages): its cards are
-   then as far from the screen edge as those of the document page */
-#ra-record #search-results-container {
-  margin-left: calc(-0.5 * var(--bs-gutter-x));
-  margin-right: calc(-0.5 * var(--bs-gutter-x));
-}
 /* Publications counter of the author card: not as wide as the card */
 .ra-count-box {
   max-width: 14rem;
@@ -258,9 +251,6 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
 /* SILVIA: document page (new_br_any_browser) - record fields in a grid,
    References/Citations tabs,
    "Load chart" button. The lists reuse the author profile's classes above. */
-.br-title {
-  line-height: 1.35;
-}
 .br-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -302,6 +292,7 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
   background: #9a31fc;
   color: #fff;
   padding: 0.4rem 1.2rem;
+  align-self: center; /* SILVIA: not stretched in the chart box (flex column) */
 }
 .br-load-chart:hover {
   background: #5a1aa8;
@@ -311,7 +302,8 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
 /* SILVIA: header of the document, citations, references pages
    (_skgifHeaderLines()): one piece of information per line, a line too long
    ends with "..." instead of going on a second line */
-.skgif-head > div {
+.skgif-head > div,
+.skgif-head > .lucinda-skgif_head > div {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -329,16 +321,25 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
   margin-top: 0.15rem;
 }
 
+/* SILVIA: Lucinda puts every view function's result in a
+   <span class="lucinda-<function>">: in a page filled by view functions
+   (class skgif-lv) the spans of ifcond/concat must not count as boxes, or
+   the rows they contain would not be items of the grid (.br-grid, .br-wide) */
+.skgif-lv .lucinda-ifcond,
+.skgif-lv .lucinda-concat {
+  display: contents;
+}
+
 /* SILVIA: organisation page (new_org_browser) - "Search in titles" */
-.org-search-input {
+.skgif-search-input {
   width: 16rem;
   border-color: #9a31fc;
 }
-.org-search-input:focus {
+.skgif-search-input:focus {
   border-color: #9a31fc;
   box-shadow: 0 0 0 0.2rem rgba(154, 49, 252, 0.25);
 }
-.org-search-reset {
+.skgif-search-reset {
   border: 1px solid #c9c9c9;
   background: #fff;
 }
@@ -347,10 +348,15 @@ a.anyid-doi{
   
 }
 
-/* Search results .row sits directly inside #__lucinda__ (no .container),
-   so cancel its negative gutter margins to keep the cards equally inset
-   from the left and right edges of the page. */
-#search-results-container {
+/* The .rows of a page sit directly inside #__lucinda__ (no .container),
+   so cancel their negative gutter margins: the cards of the search results
+   and the boxes of the record pages (header, record, chart, lists) are all
+   equally inset from the left and right edges of the screen (SILVIA,
+   2026-10-20: before, only the search results had it). The rows inside a
+   box (e.g. the author's works list) keep the normal gutters; the second
+   selector is for the rows inside #br-record / #ci-record. */
+#__lucinda__ > .row,
+#__lucinda__ > div:not(.row) > .row {
   margin-left: 0.20rem;
   margin-right: 0.20rem;
 }
@@ -471,4 +477,70 @@ a.anyid-doi{
   .social-media {
     flex-direction: column;
   }
+}
+/* SILVIA: all the record pages. Counts in the site's purple (not
+   Bootstrap's blue); the titles of the boxes (chart, list...) all of the
+   same size; on phones the badges of a work card go above the title, which
+   keeps the whole width */
+.skgif-count-number {
+  color: #9a31fc;
+}
+.skgif-box-title {
+  font-size: 1.1rem;
+}
+@media (max-width: 575.98px) {
+  .ra-work .card-body > .d-flex:first-child {
+    flex-direction: column-reverse;
+    gap: 0.25rem !important;
+  }
+}
+
+/* SILVIA: on phones the "Sort by" buttons of the author profile are smaller
+   and never break inside ("Title A-Z" on one line) */
+@media (max-width: 575.98px) {
+  .ra-sort .btn {
+    padding: 0.25rem 0.4rem;
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+}
+
+/* SILVIA: a missing value (No ORCID found, No Crossref ID found): italic
+   and grey, as in the search cards, in every page */
+.skgif-none {
+  font-style: italic;
+  color: #6c757d;
+}
+
+/* SILVIA: citation record - the "cites" arrow in the site's purple; the
+   two "Citations per year" boxes always as high as a drawn chart (200 px +
+   padding), also when there is only a message ("No citations found."), so
+   the counters above stay at the same height on both sides */
+.ci-arrow {
+  color: #9a31fc;
+  font-size: 2rem;
+  line-height: 1;
+}
+#ci-citing-chart,
+#ci-cited-chart {
+  min-height: 232px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.ci-arrow-label {
+  color: #5a1aa8;
+}
+
+/* SILVIA: the logo links to the home (browser.html): no purple underline */
+header .logo a,
+header .logo a:hover {
+  background-image: none!important;
+}
+
+/* SILVIA: "Loading the resource..." (Lucinda's banner and the one while
+   changing page) in the site's purple instead of light blue */
+#__lucinda__ #lucinda_pendinghtml_main_loading,
+#__lucinda__ .skgif-page-loading {
+  color: #9a31fc;
 }

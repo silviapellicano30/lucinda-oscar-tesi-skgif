@@ -1,16 +1,6 @@
 #id main
 #url value=br/{id}
-#endpoint https://sparql.opencitations.net/meta
-#method get
-#sparql ASK { 
-  VALUES ?type { 
-      <http://purl.org/spar/fabio/Journal> 
-      <http://purl.org/spar/fabio/Series> 
-      <http://purl.org/spar/fabio/BookSeries> 
-      <http://purl.org/spar/fabio/AcademicProceedings> 
-  }
-  <https://w3id.org/oc/meta/br/[[id]]> a ?type .
-}
+#api https://api.opencitations.net/skg-if/v1/venues/https://w3id.org/oc/meta/br/[[id]]
 
 #id venue_meta
 #endpoint https://sparql.opencitations.net/meta

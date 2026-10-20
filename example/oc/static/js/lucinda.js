@@ -581,6 +581,8 @@ class Lucinda_view {
       if (variable && operator && value) {
         let var_value = lv_instance.get_nested_value(variable);
         var_value = this.getVal(var_value);
+        // SILVIA (SKG-IF): an empty value counts as null, so "x != null" = "x has a value"
+        if (var_value === "") var_value = null;
         const eval_opr = ___evaluate_opr(var_value, operator, value);
         return eval_opr;
       }
@@ -593,7 +595,8 @@ class Lucinda_view {
       if (value == "null") {
         val = null;
       }else {
-        let val = isNaN(parseFloat(value)) ? String(value) : parseFloat(value);
+        // SILVIA (SKG-IF): was "let val = ...", which left the outer val undefined
+        val = isNaN(parseFloat(value)) ? String(value) : parseFloat(value);
       }
       switch (operator) {
         case ">": return var_value > val;
@@ -858,6 +861,10 @@ class Lucinda {
       html_error_template: null,
       local_test: false,
       verbose: true,
+      // SILVIA (SKG-IF): an #api request is given up after this time (ms; null = never).
+      // 180 s: the first page of a big publisher, never asked before, takes 30-70 s
+      // (Springer, Wiley, Informa, 2026-10-20); with 60 s it was lost and came only on reload
+      api_timeout: 180000,
 
       endpoint: [
           {
@@ -985,8 +992,9 @@ class Lucinda {
 
             potential_templates = potential_templates.sort((a, b) => {
                 // Check if both or neither have the "query" key
-                const hasQueryA = 'sparql' in a.hfconf[0];
-                const hasQueryB = 'sparql' in b.hfconf[0];
+                // SILVIA (SKG-IF): an #api check in the main block counts as a query (like the ASK)
+                const hasQueryA = 'sparql' in a.hfconf[0] || 'api' in a.hfconf[0];
+                const hasQueryB = 'sparql' in b.hfconf[0] || 'api' in b.hfconf[0];
                 if (hasQueryA && !hasQueryB) return -1;
                 if (!hasQueryA && hasQueryB) return 1;
                 return a.template.localeCompare(b.template);
@@ -1005,6 +1013,21 @@ class Lucinda {
 
           const pa = potential_templates[c];
           const main_block = pa.hfconf[0];
+
+          // SILVIA (SKG-IF): #api <url> in the main block, in place of the ASK:
+          // the template is chosen if the API has the resource (HTTP 200), or
+          // if its #postprocess returns true; otherwise the next one is tried
+          if (("api" in main_block) && !("sparql" in main_block)) {
+            const param = Lucinda.preprocess( main_block, pa.param );
+            const api_call = Lucinda_util.replace_placeholders(main_block.api, param);
+            if(Lucinda.conf.verbose){console.log("API check call:",api_call);}
+            Lucinda.fetch_api(api_call).then(res => {
+              const found = ("postprocess" in main_block) ? Lucinda.postprocess_api(res, main_block, param) : res.ok;
+              if(Lucinda.conf.verbose){console.log("API check result is:",found);}
+              return found ? __template_found(pa) : _set_template(potential_templates, c + 1);
+            });
+            return null;
+          }
 
           if (c == potential_templates.length - 1) {
             if (!("sparql" in main_block)) {
@@ -1074,13 +1097,23 @@ class Lucinda {
         }
 
         // do sparql queries
-        const l_callsparql = Lucinda_util.get_hf_callsparql(current_resource_hfconf);
+        // SILVIA (SKG-IF): without the main block, as the loop above: its #sparql is the
+        // ASK that chose the template, not data (run again it broke reqhandler_spqrqljson)
+        const l_callsparql = Lucinda_util.get_hf_callsparql(current_resource_hfconf.slice(1));
 
-        // SILVIA (SKG-IF): no #sparql blocks -> build the page right away;
+        // SILVIA (SKG-IF): #api blocks (the main block's #api is the template check, not data)
+        const l_callapi = current_resource_hfconf.slice(1).filter(block => "api" in block);
+
+        // SILVIA (SKG-IF): no #sparql or #api blocks -> build the page right away;
         // #callfun blocks (SKG-IF fetches) are then run by run_extdata()
-        if (l_callsparql.length === 0) {
+        if (l_callsparql.length === 0 && l_callapi.length === 0) {
           Lucinda.build_success_html_page();
           return null;
+        }
+
+        // SILVIA (SKG-IF)
+        for (let i = 0; i < l_callapi.length; i++) {
+          Lucinda.query_api( l_callapi[i] );
         }
 
         for (let i = 0; i < l_callsparql.length; i++) {
@@ -1143,6 +1176,72 @@ class Lucinda {
             if(Lucinda.conf.verbose){console.error('Error:', error);}
             Lucinda.build_error_html_page();
           });
+    }
+
+    // SILVIA (SKG-IF): data block with #api <url> (placeholders [[param]], after
+    // #preprocess): the JSON response goes to #postprocess, which returns the
+    // table the view functions read (no further requests there). Without
+    // #postprocess the JSON is stored as it is.
+    static query_api( cr_block ) {
+      const param = Lucinda.preprocess( cr_block, Lucinda.current_resource.param );
+      const api_call = Lucinda_util.replace_placeholders(cr_block.api, param);
+      if(Lucinda.conf.verbose){console.log("API call:",api_call);}
+      Lucinda.fetch_api(api_call).then(res => {
+        Lucinda.data[cr_block.id] = ("postprocess" in cr_block) ? Lucinda.postprocess_api(res, cr_block, param) : res.json;
+        // when all pending queries are done build the HTML page (as in query_endpoint)
+        const excluded = Lucinda_util.get_hf_callfun(Lucinda.current_resource["hfconf"]).map(item => item.id);
+        if (
+          Object.entries(Lucinda.data)
+            .filter(([key]) => !excluded.includes(key))
+            .every(([, value]) => value !== undefined)
+        ) {
+          Lucinda.build_success_html_page();
+        }
+      });
+    }
+
+    // SILVIA (SKG-IF): GET of an #api url -> {status, ok, json}; never rejects
+    // (network error, conf.api_timeout or url not requested = status 0, json null). The same url is
+    // requested once: e.g. the main block's check and a data block with the
+    // same url share it (and the page's own JS can read it here too).
+    static api_responses = {};
+    static fetch_api( api_call ) {
+      // an empty url, or one with a [[param]] the #preprocess did not give (e.g.
+      // an invalid OCI), is not requested: the #postprocess gets status 0
+      if (!api_call || /\[\[[^\]]*\]\]/.test(api_call)) {
+        return Promise.resolve({ status: 0, ok: false, json: null });
+      }
+      if (!(api_call in Lucinda.api_responses)) {
+        const controller = new AbortController();
+        const timer = Lucinda.conf.api_timeout ? setTimeout(() => controller.abort(), Lucinda.conf.api_timeout) : null;
+        Lucinda.api_responses[api_call] = fetch(api_call, { headers: { "Accept": "application/json" }, signal: controller.signal })
+          .then(response => response.json()
+            .then(json => ({ status: response.status, ok: response.ok, json: json }))
+            // body not JSON or cut (e.g. timeout while reading): a failure, unless it is an error status
+            .catch(() => ({ status: response.ok ? 0 : response.status, ok: false, json: null })))
+          .catch(error => {
+            if(Lucinda.conf.verbose){console.error("Error during API call:", error);}
+            return { status: 0, ok: false, json: null };
+          })
+          .finally(() => clearTimeout(timer));
+      }
+      return Lucinda.api_responses[api_call];
+    }
+
+    // SILVIA (SKG-IF): #postprocess f(a, b) of an #api block -> f(response, param.a, param.b),
+    // response = {status, ok, json} of fetch_api()
+    static postprocess_api( res, conf_block, param ) {
+      const match = conf_block["postprocess"].match(/^(\w+)\((.*?)\)$/);
+      if (!match) {
+        throw new Error(`Invalid function call syntax in HF file: ${conf_block["postprocess"]}`);
+      }
+      const [_, functionName, args] = match;
+      if (typeof window[functionName] !== 'function') {
+        throw new Error(`Postprocess function not found: ${functionName}`);
+      }
+      const values = args.split(',').map(arg => arg.trim()).filter(arg => arg !== "")
+        .map(key => (key in param) ? (Array.isArray(param[key]) ? param[key][0] : param[key]) : key);
+      return window[functionName](res, ...values);
     }
 
     static preprocess( conf_block, param ) {

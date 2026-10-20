@@ -1,0 +1,16 @@
+#id main
+#url value=ra/{id}
+
+#id org_meta
+#api https://api.opencitations.net/skg-if/v1/organisations/https://w3id.org/oc/meta/ra/[[id]]
+#postprocess post_skgif_org(id)
+
+#id org_works
+#api https://api.opencitations.net/skg-if/v1/products?filter=contributions.by.local_identifier:https%3A%2F%2Fw3id.org%2Foc%2Fmeta%2Fra%2F[[id]]&page=1&page_size=1
+#postprocess post_skgif_total()
+
+#id org_works_page
+#api https://api.opencitations.net/skg-if/v1/products?filter=contributions.by.local_identifier:https%3A%2F%2Fw3id.org%2Foc%2Fmeta%2Fra%2F[[id]]&page=1&page_size=10
+
+#id org_record
+#callfun api_org_record_skgif()
