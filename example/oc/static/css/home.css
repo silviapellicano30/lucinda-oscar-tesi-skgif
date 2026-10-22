@@ -38,8 +38,7 @@
 .search-bar .btn i { font-size: 16px; }
 
 /* ==========================================================================
-   SILVIA (SKG-IF): search panel of home.html and home2.html
-   (resource tabs, text / names fields, identifier panel, Search button)
+   SILVIA: pannello di ricerca di home.html e home2.html
    ========================================================================== */
 .oc-search {
   --oc-purple: #8A2BE2;
@@ -51,13 +50,12 @@
   --bs-border-radius: 10px;
   width: 100%;
   position: relative;
-  z-index: 5; /* the dropdown list opens above the resource cards of home2 */
+  z-index: 5; /* /* il menu si apre sopra le card di home2 */ */
 }
 
-/* no box of its own: the bar sits on the page background, as before */
 .oc-search-card { padding: 0; }
 
-/* resource tabs */
+/* schede delle risorse */
 .oc-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -88,7 +86,7 @@
 }
 .oc-tab:focus-visible { outline: 2px solid var(--oc-purple); outline-offset: 1px; }
 
-/* fields row: text / names | or | identifier | Search */
+/* riga dei campi: testo / nomi | or | identificativo | Search */
 .oc-search-row {
   display: flex;
   align-items: flex-end;
@@ -153,15 +151,12 @@
 }
 .oc-btn:hover, .oc-btn:focus { background: var(--oc-purple-dark); color: #fff; }
 
-/* ID panel hidden (Citation): the OCI field takes the row (same height);
-   on small screens, where the fields are stacked, it keeps its space
-   instead (see the media query), so the panel doesn't change size.
-   Side not searched (the other one is active) dimmed */
+/* pannello ID nascosto (Citation) e lato non cercato sbiadito */
 .oc-hidden { display: none; }
 .oc-inactive { opacity: .35; filter: grayscale(1); transition: opacity .15s ease; }
 .oc-inactive:hover { opacity: .7; }
 
-/* message under the bar (empty query...): fixed height, always there */
+/* messaggio sotto la barra, altezza fissa */
 .oc-hint {
   min-height: 1.3rem;
   margin-top: 8px;
@@ -169,7 +164,7 @@
   color: #b42318;
 }
 
-/* identifier scheme dropdown (skgifDropdown() in home.js): opens below */
+/* menu degli schemi di ID */
 .oc-dd {
   position: relative;
   flex: 0 0 140px;

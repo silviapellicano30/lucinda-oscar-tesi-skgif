@@ -4,12 +4,8 @@
     <i class="fas fa-arrow-left"></i> Home
   </a>
 </div>
-<!-- SILVIA (SKG-IF): the fields are filled by Lucinda from the #api blocks
-     of new_ci_browser.hf (#postprocess post_skgif_ci_doc / post_skgif_total +
-     view functions skgif_*); api_citation_record_skgif() shows the record
-     and draws the charts.
-     Layout reorganised (prof's request): each "Citations per year" chart is
-     under its own work, the two shared counters have their own section. -->
+<!-- SILVIA: i campi li mette Lucinda (blocchi #api del .hf + view functions skgif_*);
+     api_citation_record_skgif() mostra il record e disegna i grafici -->
 <div class="row">
 
   <!-- TITLE CARD -->
@@ -22,7 +18,7 @@
     </div>
   </div>
 
-  <!-- errors (invalid OCI, missing document...) and the "citation not found" warning -->
+  <!-- errori (OCI non valido, documento mancante...) e avviso "citazione non trovata" -->
   <div class="col-12" id="ci-message">[[Lucinda:skgif_ci_message(main.oci, citing_meta.status, cited_meta.status, citing_meta.cites)]]</div>
 
 </div>
@@ -44,13 +40,12 @@
           <h5 class="ra-work-title" id="citing-title">[[Lucinda:skgif_doc_link(citing_meta.omid, citing_meta.title)]]</h5>
           <hr>
 
-          <!-- labels as the other record pages (br-label) -->
           <div class="br-field mb-3"><span class="br-label" id="citing-authors-label">[[Lucinda:skgif_text(citing_meta.agents_label)]]</span><span id="citing-authors">[[Lucinda:ifcond(citing_meta.agents != null, skgif_agents(citing_meta.agents), _HTML_(Unknown))]]</span></div>
           <div class="br-field mb-3"><span class="br-label">Publication date</span><span id="citing-date">[[Lucinda:ifcond(citing_meta.date != null, skgif_text(citing_meta.date), _HTML_(Unknown))]]</span></div>
           <div class="br-field mb-3"><span class="br-label">Identifiers</span><span id="citing-ids">[[Lucinda:skgif_ids(citing_meta.ids, citing_meta.omid)]]</span></div>
           <div class="br-field mb-3"><span class="br-label">Full URI</span><span id="citing-uri">[[Lucinda:skgif_uri(citing_meta.omid)]]</span></div>
 
-          <!-- counters and chart at the bottom, aligned with the cited work -->
+          <!-- contatori e grafico in basso, allineati con l'altra scheda -->
           <div class="mt-auto">
             <div class="row g-2 mb-3">
               <div class="col-6">
@@ -75,7 +70,7 @@
               </div>
             </div>
 
-            <!-- data from the Index API, drawn by _skgifCitationsPerYearChart() -->
+            <!-- dati dall'Index API, disegnati da _skgifCitationsPerYearChart() -->
             <div class="card shadow-sm">
               <div class="card-header text-center py-1">
                 <span class="fw-bold small">Citations per year</span>
@@ -88,7 +83,7 @@
       </div>
     </div>
 
-    <!-- "cites" arrow: right on wide screens, down when the cards are stacked -->
+    <!-- freccia "cites": a destra su schermi larghi, in basso su quelli stretti -->
     <div class="col-12 col-md-auto d-flex flex-md-column align-items-center justify-content-center gap-2 my-3 my-md-0">
       <span class="ci-arrow" aria-hidden="true"><span class="d-none d-md-inline">&rarr;</span><span class="d-md-none">&darr;</span></span>
       <span class="fw-bold small ci-arrow-label">cites</span>
@@ -106,7 +101,6 @@
           <h5 class="ra-work-title" id="cited-title">[[Lucinda:skgif_doc_link(cited_meta.omid, cited_meta.title)]]</h5>
           <hr>
 
-          <!-- labels as the other record pages (br-label) -->
           <div class="br-field mb-3"><span class="br-label" id="cited-authors-label">[[Lucinda:skgif_text(cited_meta.agents_label)]]</span><span id="cited-authors">[[Lucinda:ifcond(cited_meta.agents != null, skgif_agents(cited_meta.agents), _HTML_(Unknown))]]</span></div>
           <div class="br-field mb-3"><span class="br-label">Publication date</span><span id="cited-date">[[Lucinda:ifcond(cited_meta.date != null, skgif_text(cited_meta.date), _HTML_(Unknown))]]</span></div>
           <div class="br-field mb-3"><span class="br-label">Identifiers</span><span id="cited-ids">[[Lucinda:skgif_ids(cited_meta.ids, cited_meta.omid)]]</span></div>
@@ -150,7 +144,7 @@
 
   </div>
 
-  <!-- WHAT THE TWO WORKS HAVE IN COMMON (Pietro's "Cited by Both" / "Citing Both") -->
+  <!-- COSA HANNO IN COMUNE I DUE DOCUMENTI -->
   <div class="row mb-4">
     <div class="col-12">
       <div class="card shadow-sm">

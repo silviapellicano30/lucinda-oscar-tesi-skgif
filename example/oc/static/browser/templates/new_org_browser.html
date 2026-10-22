@@ -4,13 +4,8 @@
   </head>
   <body>
 
-    <!-- SILVIA (SKG-IF): organisation page (new, Pietro had none). Persons and
-         organisations share the ra/ prefix: Lucinda opens this template for
-         every ra/ that /persons does not have (#api check of new_ra_browser.hf).
-         Same layout as the author profile; name, identifiers and count are
-         filled by Lucinda from the #api blocks of new_org_browser.hf
-         (#postprocess post_skgif_org / post_skgif_total + view functions
-         skgif_*), the publications and the chart by api_org_record_skgif(). -->
+    <!-- SILVIA: scheda organizzazione, si apre per un ra/ che non è in /persons.
+         Nome, ID e conteggio li mette Lucinda; pubblicazioni e grafico li fa api_org_record_skgif() -->
 
     <br>
 
@@ -25,23 +20,20 @@
       <div class="col-12 mb-4">
         <div class="card shadow-sm p-3 h-100">
           <div class="card-header text-center">
-            <!-- as the author page: Pietro's label small above, the name -->
             <p class="mb-1 small text-muted">Responsible Agent Record</p>
             <h3 class="my-0" id="org-head">[[Lucinda:skgif_text(org_meta.head)]]</h3>
           </div>
         </div>
       </div>
 
-      <!-- errors -->
+      <!-- errori -->
       <div class="col-12 skgif-lv" id="org-message">[[Lucinda:ifcond(org_meta.message != null, concat(_HTML_(<div class="alert alert-danger mb-4">), skgif_text(org_meta.message), _HTML_(</div>)))]]</div>
 
     </div>
 
     <div class="row d-none" id="org-record">
 
-      <!-- the name is only in the header above (not repeated here): the
-           identifiers and the count are centred in the card, beside the
-           chart, under a title as the other boxes ("Overview") -->
+      <!-- il nome è solo nell'intestazione: qui ID e conteggio -->
       <div class="col-12 col-lg-4 mb-4">
         <div class="card shadow-sm h-100">
           <div class="card-header text-center">
@@ -49,8 +41,7 @@
           </div>
           <div class="card-body p-4 d-flex flex-column justify-content-center">
 
-            <!-- SKG-IF has only name and identifiers for an organisation on
-                 OpenCitations (Crossref member ID, sometimes) -->
+            <!-- SKG-IF ha solo nome e identificativi per le organizzazioni -->
             <div class="br-field mb-4"><span class="br-label">Crossref</span><span id="org-crossref">[[Lucinda:ifcond(org_meta.crossref != null, skgif_ids(org_meta.crossref), _HTML_(<span class="skgif-none">No Crossref ID found</span>))]]</span></div>
             <div class="br-field mb-4"><span class="br-label">Other identifiers</span><span id="org-ids">[[Lucinda:skgif_ids(org_meta.ids, org_meta.omid)]]</span></div>
 
@@ -63,8 +54,7 @@
         </div>
       </div>
 
-      <!-- drawn by _skgifListChart(): by itself for few publications, with
-           "Load chart" for more, never for publishers with very many -->
+      <!-- grafico per anno, disegnato da _skgifListChart() -->
       <div class="col-12 col-lg-8 mb-4">
         <div class="card shadow-sm h-100">
           <div class="card-header text-center">
@@ -82,28 +72,33 @@
           </div>
 
           <div class="card-body p-4">
-            <!-- browsed 10 per page in the API's order (_skgifPagedList());
-                 "Search in titles" asks the API for the publications of the
-                 organisation with those words in the title -->
+            <!-- lista delle pubblicazioni a pagine, con i suoi strumenti (_skgifListTools()) -->
             <div class="ra-toolbar mb-3">
               <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                 <span class="fw-bold" id="org-pubs-status"></span>
-                <!-- "Sort by": shown when every publication has arrived (_initOrgSort()) -->
-                <div class="d-flex flex-wrap align-items-center gap-2 d-none" id="org-sort-box">
-                  <span class="small fw-bold">Sort by:</span>
-                  <div class="btn-group btn-group-sm ra-sort" role="group" aria-label="Sort publications">
-                    <button type="button" class="btn" data-order="newest">Newest</button>
-                    <button type="button" class="btn" data-order="oldest">Oldest</button>
-                    <button type="button" class="btn" data-order="title-asc">Title A–Z</button>
-                    <button type="button" class="btn" data-order="title-desc">Title Z–A</button>
-                    <button type="button" class="btn active" data-order="default">Default</button>
+                <form class="d-flex flex-wrap align-items-center gap-2" id="org-pubs-search" role="search">
+                  <input type="search" class="form-control form-control-sm skgif-search-input" id="org-pubs-search-input" placeholder="Search in titles" aria-label="Search in the titles of the publications" disabled>
+                  <button type="submit" class="btn btn-sm br-load-chart" disabled>Search</button>
+                  <button type="button" class="btn btn-sm skgif-search-reset d-none" id="org-pubs-search-reset">Clear search</button>
+                </form>
+              </div>
+              <div class="d-flex flex-wrap align-items-center gap-3 skgif-toolbar-row">
+                <button type="button" class="btn btn-sm br-load-chart d-none" id="org-pubs-load">Load all publications</button>
+                <span class="small text-muted d-none" id="org-pubs-note"></span>
+                <div class="d-flex flex-wrap align-items-center gap-3 d-none" id="org-pubs-tools">
+                  <div class="d-flex flex-wrap align-items-center gap-3 skgif-filters"></div>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="small fw-bold">Sort by:</span>
+                    <div class="btn-group btn-group-sm ra-sort" role="group" aria-label="Sort publications">
+                      <button type="button" class="btn" data-order="newest" disabled>Newest</button>
+                      <button type="button" class="btn" data-order="oldest" disabled>Oldest</button>
+                      <button type="button" class="btn" data-order="title-asc" disabled>Title A–Z</button>
+                      <button type="button" class="btn" data-order="title-desc" disabled>Title Z–A</button>
+                      <button type="button" class="btn active" data-order="default" disabled>Default order</button>
+                    </div>
                   </div>
                 </div>
-                <form class="d-flex flex-wrap align-items-center gap-2" id="org-search" role="search">
-                  <input type="search" class="form-control form-control-sm skgif-search-input" id="org-search-input" placeholder="Search in titles" aria-label="Search in the titles of the publications" disabled>
-                  <button type="submit" class="btn btn-sm br-load-chart" disabled>Search</button>
-                  <button type="button" class="btn btn-sm skgif-search-reset d-none" id="org-search-reset">Show all</button>
-                </form>
+                <div class="d-flex align-items-center gap-2 ms-auto d-none" id="org-pubs-perpage"><span class="small fw-bold">Per page:</span></div>
               </div>
               <div class="progress mt-2 d-none br-chart-progress" id="org-pubs-progress" style="height: 6px;" role="progressbar" aria-label="Loading publications">
                 <div class="progress-bar" style="width: 0%"></div>
@@ -117,7 +112,7 @@
 
     </div>
 
-    <!-- shown once the page is scrolled down -->
+    <!-- bottone "Back to top" -->
     <button type="button" class="btn btn-sm ra-top d-none" id="ra-top">&uarr; Back to top</button>
 
   </body>

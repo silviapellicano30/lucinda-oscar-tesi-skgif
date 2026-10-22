@@ -12,40 +12,29 @@
       </a>
     </div>
 
-    <!-- SILVIA (SKG-IF): same layout as Pietro's; name, identifiers and count
-         are filled by Lucinda from the #api blocks of new_ra_browser.hf
-         (#postprocess post_skgif_person / post_skgif_total + view functions
-         skgif_*), the works and the chart by api_author_record_skgif() -->
+    <!-- SILVIA: nome, ID e conteggio li mette Lucinda (blocchi #api del .hf + view functions skgif_*);
+         opere e grafico li fa api_author_record_skgif() -->
     <div class="row">
 
       <div class="col-12 mb-4">
         <div class="card shadow-sm p-3 h-100">
           <div class="card-header text-center">
-            <!-- SILVIA (SKG-IF): as the document page: Pietro's label small
-                 above, the name instead of the OMID (api_author_record_skgif());
-                 the identifiers are in the card below -->
+            <!-- SILVIA: il nome al posto dell'OMID -->
             <p class="mb-1 small text-muted">Responsible Agent Record</p>
             <h3 class="my-0" id="ra-id">[[Lucinda:skgif_text(author_meta.head)]]</h3>
           </div>
         </div>
       </div>
 
-      <!-- errors (no author with this OMID, failed request) -->
+      <!-- errori (autore inesistente, chiamata fallita) -->
       <div class="col-12 skgif-lv" id="ra-message">[[Lucinda:ifcond(author_meta.message != null, concat(_HTML_(<div class="alert alert-danger mb-4">), skgif_text(author_meta.message), _HTML_(</div>)))]]</div>
 
     </div>
 
-    <!-- SILVIA (SKG-IF): layout of 2026-10-17, aligned with the document
-         page (no "Author Profile" header, labels as br-label). Left:
-         ORCID, other identifiers and the Publications counter (same box as
-         the document's References/Citations); right: the "Publications per
-         year" chart as wide as its card, so the two cards have about the same
-         height. Filled by api_author_record_skgif() / _loadAuthorWorks(). -->
+    <!-- SILVIA: a sinistra ORCID, altri ID e contatore, a destra il grafico per anno -->
     <div class="row d-none" id="ra-record">
 
-      <!-- the name is only in the header above (not repeated here): the
-           identifiers and the count are centred in the card, beside the
-           chart, under a title as the other boxes ("Overview") -->
+      <!-- il nome è solo nell'intestazione: qui ID e conteggio -->
       <div class="col-12 col-lg-4 mb-4">
         <div class="card shadow-sm h-100">
           <div class="card-header text-center">
@@ -54,8 +43,6 @@
           <div class="card-body p-4 d-flex flex-column justify-content-center">
 
             <div class="br-field mb-4"><span class="br-label">ORCID</span><span id="ra-orcid">[[Lucinda:ifcond(author_meta.orcid != null, skgif_orcid(author_meta.orcid), _HTML_(<span class="skgif-none">No ORCID found</span>))]]</span></div>
-            <!-- Pietro's query already read the other identifiers (otherIDs)
-                 but did not show them -->
             <div class="br-field mb-4"><span class="br-label">Other identifiers</span><span id="ra-ids">[[Lucinda:skgif_ids(author_meta.ids, author_meta.omid)]]</span></div>
 
             <div class="card shadow-sm ra-count-box">
@@ -67,9 +54,7 @@
         </div>
       </div>
 
-      <!-- Pietro's "Publications per year" chart; drawn by _loadAuthorWorks()
-           from the dates of all the works (SKG-IF, every role) once they have
-           all arrived -->
+      <!-- grafico "Publications per year", disegnato quando sono arrivate tutte le opere -->
       <div class="col-12 col-lg-8 mb-4">
         <div class="card shadow-sm h-100">
           <div class="card-header text-center">
@@ -79,9 +64,7 @@
         </div>
       </div>
 
-      <div class="col-12">
-        <!-- SILVIA: no p-3 here, so the work cards are as far from the screen
-             edge as the document page's ones -->
+      <div class="col-12" id="ra-pubs">
         <div class="card shadow-sm">
 
             <div class="card-header text-center">
@@ -89,42 +72,32 @@
             </div>
             
             <div class="card-body p-4">
-                <!-- SILVIA (SKG-IF): all the works as compact cards, no pages,
-                     first in the API's order (SKG-IF has no sort). The toolbar
-                     stays at the top while scrolling; its sort buttons are
-                     disabled until every work has arrived (_loadAuthorWorks()) -->
+                <!-- SILVIA: tutte le opere, senza pagine; Sort by attivo quando sono arrivate tutte -->
                 <div class="ra-toolbar mb-3">
                     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                         <span class="fw-bold" id="ra-sort-status"></span>
-                        <!-- role filter: shown only when the person is author of some
-                             works and editor of others (_loadAuthorWorks()) -->
-                        <div class="d-flex flex-wrap align-items-center gap-2 d-none" id="ra-role">
-                            <span class="small fw-bold">Show:</span>
-                            <div class="btn-group btn-group-sm ra-sort" role="group" aria-label="Filter publications by role">
-                                <button type="button" class="btn active" data-role="all">All (<span class="ra-role-count"></span>)</button>
-                                <button type="button" class="btn" data-role="author">As author (<span class="ra-role-count"></span>)</button>
-                                <button type="button" class="btn" data-role="editor">As editor (<span class="ra-role-count"></span>)</button>
-                            </div>
-                        </div>
-                        <div class="d-flex flex-wrap align-items-center gap-2">
+                        <!-- "Search in titles": filtra le opere già caricate -->
+                        <form class="d-flex flex-wrap align-items-center gap-2" id="ra-search" role="search">
+                            <input type="search" class="form-control form-control-sm skgif-search-input" id="ra-search-input" placeholder="Search in titles" aria-label="Search in the titles of the publications" disabled>
+                            <button type="submit" class="btn btn-sm br-load-chart" disabled>Search</button>
+                            <button type="button" class="btn btn-sm skgif-search-reset d-none" id="ra-search-reset">Clear search</button>
+                        </form>
+                    </div>
+                    <!-- filtri Type, Year, Role (_skgifListFilters()) -->
+                    <div class="d-flex flex-wrap align-items-center gap-3 skgif-toolbar-row">
+                        <span class="small text-muted d-none" id="ra-note"></span>
+                        <div class="d-flex flex-wrap align-items-center gap-3 skgif-filters" id="ra-filters"></div>
+                        <div class="d-flex align-items-center gap-2">
                             <span class="small fw-bold">Sort by:</span>
                             <div class="btn-group btn-group-sm ra-sort" id="ra-sort" role="group" aria-label="Sort publications">
                                 <button type="button" class="btn" data-order="newest" disabled>Newest</button>
                                 <button type="button" class="btn" data-order="oldest" disabled>Oldest</button>
                                 <button type="button" class="btn" data-order="title-asc" disabled>Title A–Z</button>
                                 <button type="button" class="btn" data-order="title-desc" disabled>Title Z–A</button>
-                                <button type="button" class="btn active" data-order="default" disabled>Default</button>
+                                <button type="button" class="btn active" data-order="default" disabled>Default order</button>
                             </div>
                         </div>
                     </div>
-                    <!-- "Search in titles": filters the works already loaded, with the
-                         sort and the role filter (usable, as the sort buttons, when
-                         every work has arrived: _loadAuthorWorks()) -->
-                    <form class="d-flex flex-wrap align-items-center justify-content-md-end gap-2 mt-2" id="ra-search" role="search">
-                        <input type="search" class="form-control form-control-sm skgif-search-input" id="ra-search-input" placeholder="Search in titles" aria-label="Search in the titles of the publications" disabled>
-                        <button type="submit" class="btn btn-sm br-load-chart" disabled>Search</button>
-                        <button type="button" class="btn btn-sm skgif-search-reset d-none" id="ra-search-reset">Show all</button>
-                    </form>
                     <div class="progress mt-2 d-none" id="ra-progress" style="height: 6px;" role="progressbar" aria-label="Loading publications">
                         <div class="progress-bar" style="width: 0%"></div>
                     </div>
@@ -135,7 +108,7 @@
         </div>
       </div>
 
-      <!-- SILVIA (SKG-IF): shown once the page is scrolled down -->
+      <!-- SILVIA: bottone "Back to top" -->
       <button type="button" class="btn btn-sm ra-top d-none" id="ra-top">&uarr; Back to top</button>
 
       <footer>

@@ -11,43 +11,29 @@
       </a>
     </div>
 
-    <!-- SILVIA (SKG-IF): same layout as Pietro's. The record is filled by
-         Lucinda: #api blocks of new_br_any_browser.hf (doc_meta, doc_refs,
-         doc_cits), their #postprocess in localbrowser.js turns the JSON into
-         tables, the view functions (skgif_*, localbrowser.js section 10) build
-         the HTML; a row with no value is left out with ifcond(... != null), as
-         Pietro's. The lists and the chart are filled by
-         api_document_record_skgif() (#callfun). -->
+    <!-- SILVIA: i dati del documento li mette Lucinda (blocchi #api del .hf + view functions skgif_*);
+         liste e grafico li fa api_document_record_skgif() (#callfun) -->
     <div class="row">
 
       <div class="col-12 mb-4">
           <div class="card shadow-sm p-3 h-100">
           <div class="card-header text-center">
-              <!-- SILVIA (SKG-IF): the document as a reference, one piece of
-                   information per line (_skgifHeaderLines()) instead of the OMID -->
+              <!-- SILVIA: intestazione del documento, una informazione per riga -->
               <p class="mb-1 small text-muted">Bibliographic Resource Record</p>
               <div class="skgif-head">[[Lucinda:skgif_head(doc_meta.title, doc_meta.head_line, doc_meta.head_meta, doc_meta.omid)]]</div>
           </div>
           </div>
       </div>
 
-      <!-- errors (no document with this OMID, failed request) -->
+      <!-- errori (documento inesistente, chiamata fallita) -->
       <div class="col-12 skgif-lv">[[Lucinda:ifcond(doc_meta.message != null, concat(_HTML_(<div class="alert alert-danger mb-4">), skgif_text(doc_meta.message), _HTML_(</div>)))]]</div>
 
     </div>
 
-    <!-- SILVIA (SKG-IF): layout of 2026-10-17. Header and Home button as
-         Pietro's; below, the record (every field of /products) next to the
-         counters and the chart, then one card with the References and
-         Citations tabs. Shown by api_document_record_skgif() when the
-         document exists. -->
+    <!-- SILVIA: dati del documento accanto a contatori e grafico, sotto le tab Citations / References -->
     <div class="d-none skgif-lv" id="br-record">
 
-    <!-- 2026-10-20: same layout as the author and organisation pages:
-         "Overview" on the left (every field of /products; the title is only
-         in the header above), "Citation metrics" on the right: the
-         References / Citations counters and the "Citations per year" chart,
-         as each work of the citation record -->
+    <!-- a sinistra "Overview" (dati di /products), a destra "Citation metrics" (contatori e grafico) -->
     <div class="row">
 
       <div class="col-12 col-lg-8 mb-4">
@@ -57,10 +43,7 @@
           </div>
           <div class="card-body p-4">
 
-            <!-- order of a bibliographic citation (as APA/Chicago): who wrote
-                 and edited it; when and what it is; where it was published
-                 (source, volume, issue, pages); by whom; its identifiers
-                 (DOI first, _skgifIdList()) -->
+            <!-- campi nell'ordine di una citazione bibliografica -->
             [[Lucinda:ifcond(doc_meta.authors != null, concat(_HTML_(<div class="br-field mb-3"><span class="br-label">Authors</span>), skgif_agents(doc_meta.authors), _HTML_(</div>)))]]
 
             [[Lucinda:ifcond(doc_meta.editors != null, concat(_HTML_(<div class="br-field mb-3"><span class="br-label">Editors</span>), skgif_agents(doc_meta.editors), _HTML_(</div>)))]]
@@ -90,22 +73,18 @@
           </div>
           <div class="card-body d-flex flex-column gap-4">
 
-            <!-- flex and not .row g-3: the row's gutters made the counters
-                 overflow it and stick to the chart below -->
             <div class="d-flex gap-3">
-              <div class="card shadow-sm flex-fill">
-                <div class="card-header text-center py-1"><span class="fw-bold small">References</span></div>
-                <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number">[[Lucinda:getVal(doc_refs.total)]]</h3></div>
-              </div>
               <div class="card shadow-sm flex-fill">
                 <div class="card-header text-center py-1"><span class="fw-bold small">Citations</span></div>
                 <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number">[[Lucinda:getVal(doc_cits.total)]]</h3></div>
               </div>
+              <div class="card shadow-sm flex-fill">
+                <div class="card-header text-center py-1"><span class="fw-bold small">References</span></div>
+                <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number">[[Lucinda:getVal(doc_refs.total)]]</h3></div>
+              </div>
             </div>
 
-            <!-- "Citations per year": drawn from the citations of the list
-                 (_brCitationsChart()), by itself or with its "Load chart"
-                 button; small title as in the citation record -->
+            <!-- grafico "Citations per year", disegnato da _skgifListChart() -->
             <div class="card shadow-sm flex-grow-1">
               <div class="card-header text-center py-1"><span class="fw-bold small">Citations per year</span></div>
               <div class="card-body text-center text-muted small d-flex flex-column justify-content-center align-items-center" id="br-cits-chart"></div>
@@ -122,34 +101,80 @@
         <div class="card shadow-sm">
 
           <div class="card-header br-tabs" role="tablist">
-            <button type="button" class="br-tab active" role="tab" aria-selected="true" data-br-tab="refs">References (<span id="br-refs-total"></span>)</button>
-            <button type="button" class="br-tab" role="tab" aria-selected="false" data-br-tab="cits">Citations (<span id="br-cits-total"></span>)</button>
+            <button type="button" class="br-tab active" role="tab" aria-selected="true" data-br-tab="cits">Citations (<span id="br-cits-total"></span>)</button>
+            <button type="button" class="br-tab" role="tab" aria-selected="false" data-br-tab="refs">References (<span id="br-refs-total"></span>)</button>
           </div>
 
           <div class="card-body p-4">
-            <div id="br-refs-pane" role="tabpanel">
-              <!-- no "Sort by" (decided 2026-10-17): the list is browsed in the API's order, as on the Go to References page -->
-              <div class="ra-toolbar mb-3">
-                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                  <span class="fw-bold" id="br-refs-status"></span>
-                </div>
-                <div class="progress mt-2 d-none br-chart-progress" id="br-refs-progress" style="height: 6px;" role="progressbar" aria-label="Loading references">
-                  <div class="progress-bar" style="width: 0%"></div>
-                </div>
-              </div>
-              <div class="row" id="br-refs-list"></div>
-            </div>
-            <div id="br-cits-pane" role="tabpanel" class="d-none">
-              <!-- no "Sort by" (decided 2026-10-17): the list is browsed in the API's order, as on the Go to Citations page -->
+            <div id="br-cits-pane" role="tabpanel">
+              <!-- lista delle citazioni a pagine, con i suoi strumenti (_skgifListTools()) -->
               <div class="ra-toolbar mb-3">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <span class="fw-bold" id="br-cits-status"></span>
+                  <form class="d-flex flex-wrap align-items-center gap-2" id="br-cits-search" role="search">
+                    <input type="search" class="form-control form-control-sm skgif-search-input" id="br-cits-search-input" placeholder="Search in titles" aria-label="Search in the titles of the citations" disabled>
+                    <button type="submit" class="btn btn-sm br-load-chart" disabled>Search</button>
+                    <button type="button" class="btn btn-sm skgif-search-reset d-none" id="br-cits-search-reset">Clear search</button>
+                  </form>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-3 skgif-toolbar-row">
+                  <button type="button" class="btn btn-sm br-load-chart d-none" id="br-cits-load">Load all citations</button>
+                  <span class="small text-muted d-none" id="br-cits-note"></span>
+                  <div class="d-flex flex-wrap align-items-center gap-3 d-none" id="br-cits-tools">
+                    <div class="d-flex flex-wrap align-items-center gap-3 skgif-filters"></div>
+                    <div class="d-flex align-items-center gap-2">
+                      <span class="small fw-bold">Sort by:</span>
+                      <div class="btn-group btn-group-sm ra-sort" role="group" aria-label="Sort citations">
+                        <button type="button" class="btn" data-order="newest" disabled>Newest</button>
+                        <button type="button" class="btn" data-order="oldest" disabled>Oldest</button>
+                        <button type="button" class="btn" data-order="title-asc" disabled>Title A–Z</button>
+                        <button type="button" class="btn" data-order="title-desc" disabled>Title Z–A</button>
+                        <button type="button" class="btn active" data-order="default" disabled>Default order</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="d-flex align-items-center gap-2 ms-auto d-none" id="br-cits-perpage"><span class="small fw-bold">Per page:</span></div>
                 </div>
                 <div class="progress mt-2 d-none br-chart-progress" id="br-cits-progress" style="height: 6px;" role="progressbar" aria-label="Loading citations">
                   <div class="progress-bar" style="width: 0%"></div>
                 </div>
               </div>
               <div class="row" id="br-cits-list"></div>
+            </div>
+            <div id="br-refs-pane" role="tabpanel" class="d-none">
+              <!-- lista dei riferimenti a pagine, con i suoi strumenti (_skgifListTools()) -->
+              <div class="ra-toolbar mb-3">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                  <span class="fw-bold" id="br-refs-status"></span>
+                  <form class="d-flex flex-wrap align-items-center gap-2" id="br-refs-search" role="search">
+                    <input type="search" class="form-control form-control-sm skgif-search-input" id="br-refs-search-input" placeholder="Search in titles" aria-label="Search in the titles of the references" disabled>
+                    <button type="submit" class="btn btn-sm br-load-chart" disabled>Search</button>
+                    <button type="button" class="btn btn-sm skgif-search-reset d-none" id="br-refs-search-reset">Clear search</button>
+                  </form>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-3 skgif-toolbar-row">
+                  <button type="button" class="btn btn-sm br-load-chart d-none" id="br-refs-load">Load all references</button>
+                  <span class="small text-muted d-none" id="br-refs-note"></span>
+                  <div class="d-flex flex-wrap align-items-center gap-3 d-none" id="br-refs-tools">
+                    <div class="d-flex flex-wrap align-items-center gap-3 skgif-filters"></div>
+                    <div class="d-flex align-items-center gap-2">
+                      <span class="small fw-bold">Sort by:</span>
+                      <div class="btn-group btn-group-sm ra-sort" role="group" aria-label="Sort references">
+                        <button type="button" class="btn" data-order="newest" disabled>Newest</button>
+                        <button type="button" class="btn" data-order="oldest" disabled>Oldest</button>
+                        <button type="button" class="btn" data-order="title-asc" disabled>Title A–Z</button>
+                        <button type="button" class="btn" data-order="title-desc" disabled>Title Z–A</button>
+                        <button type="button" class="btn active" data-order="default" disabled>Default order</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="d-flex align-items-center gap-2 ms-auto d-none" id="br-refs-perpage"><span class="small fw-bold">Per page:</span></div>
+                </div>
+                <div class="progress mt-2 d-none br-chart-progress" id="br-refs-progress" style="height: 6px;" role="progressbar" aria-label="Loading references">
+                  <div class="progress-bar" style="width: 0%"></div>
+                </div>
+              </div>
+              <div class="row" id="br-refs-list"></div>
             </div>
 
           </div>
@@ -159,7 +184,7 @@
 
     </div>
 
-    <!-- SILVIA (SKG-IF): "Back to top", as in the author profile -->
+    <!-- SILVIA: bottone "Back to top" -->
     <button type="button" class="btn btn-sm ra-top d-none" id="ra-top">&uarr; Back to top</button>
 
   </body>

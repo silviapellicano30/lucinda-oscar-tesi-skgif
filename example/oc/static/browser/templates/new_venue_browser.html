@@ -4,6 +4,9 @@
   </head>
   <body>
 
+    <!-- SILVIA: scheda rivista. I dati li mette Lucinda (blocchi #api del .hf + view functions skgif_*);
+         le pubblicazioni sono in stand-by (SKG-IF non ha un filtro per rivista) -->
+
     <br>
 
     <div class="mb-3">
@@ -17,102 +20,48 @@
       <div class="col-12 mb-4">
         <div class="card shadow-sm p-3 h-100">
           <div class="card-header text-center">
-            <h3 class="my-0">br/[[Lucinda:getVal(main.id)]]</h3>
-            <p class="mb-0">Venue Record</p>
+            <p class="mb-1 small text-muted">Venue Record</p>
+            <h3 class="my-0">[[Lucinda:skgif_text(venue_meta.head)]]</h3>
           </div>
         </div>
       </div>
 
-      <div class="col-12 col-md-8 mb-4">
-        <div class="card shadow-sm p-3 h-100">
-            
-            <div class="card-header text-center">
-                <h5 class="my-1 fw-bold skgif-box-title">Venue Profile</h5>
+      <!-- errori (rivista inesistente, chiamata fallita) -->
+      <div class="col-12 skgif-lv">[[Lucinda:ifcond(venue_meta.message != null, concat(_HTML_(<div class="alert alert-danger mb-4">), skgif_text(venue_meta.message), _HTML_(</div>)))]]</div>
+
+    </div>
+
+    <div class="row d-none skgif-lv" id="venue-record">
+
+      <div class="col-12 mb-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header text-center">
+            <h5 class="my-1 fw-bold skgif-box-title">Overview</h5>
+          </div>
+          <div class="card-body p-4">
+            <div class="br-grid">
+              [[Lucinda:ifcond(venue_meta.type != null, concat(_HTML_(<div class="br-field"><span class="br-label">Type</span>), skgif_text(venue_meta.type), _HTML_(</div>)))]]
+              [[Lucinda:ifcond(venue_agents.publisher != null, concat(_HTML_(<div class="br-field br-wide"><span class="br-label">Publisher</span>), skgif_agents(venue_agents.publisher), _HTML_(</div>)))]]
+              [[Lucinda:ifcond(venue_agents.editors != null, concat(_HTML_(<div class="br-field br-wide"><span class="br-label">Editors</span>), skgif_agents(venue_agents.editors), _HTML_(</div>)))]]
+              <div class="br-field br-wide"><span class="br-label">Identifiers</span>[[Lucinda:skgif_ids(venue_meta.ids, venue_meta.omid)]]</div>
             </div>
-
-            <div class="card-body">
-
-              <h5 class="card-title text-center">
-                  [[Lucinda:create_link(main.id, venue_meta.Title)]]
-              </h5>
-                
-
-                
-                <hr>
-                
-                <div class="row">
-                    <div class="col-12">
-                        <span class="metadata-label fw-bold">Identifiers:</span>
-                        <p>[[Lucinda:getVal(venue_meta.Identifiers)]]</p>
-                    </div>
-                </div>
-
-                <!--<span class="metadata-label fw-bold">Full URI:</span>
-                <p class="text-break">
-                  <a href="https://w3id.org/oc/meta/br/[[Lucinda:getVal(main.id)]]">
-                    https://w3id.org/oc/meta/br/[[Lucinda:getVal(main.id)]]
-                  </a>
-                </p>-->
-
-            </div>
-        </div>
-      </div>
-
-      <div class="col-12 col-md-4 mb-4">
-        <div class="card shadow-sm p-1  h-100"> 
-          <div class="card-body">
-
-              <div class="row g-3 column-gap-3">
-                <div class="col">
-                  <div class="card shadow-sm p-1 m-1 h-100">
-                      <div class="card-header text-center py-1">
-                           <span class="fw-bold small">Publications</span>
-                      </div>
-                      <div class="card-body text-center">
-                        <h3 class="my-1 skgif-count-number">[[Lucinda:getVal(venue_works.count)]]</h3>
-                      </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="row g-3 column-gap-3 mt-1">
-                <div class="col">
-                  <div class="card shadow-sm p-1 m-1">
-                    <div class="card-header text-center">
-                         <h5 class="my-1 fw-bold skgif-box-title">Publications per year</h5>
-                    </div>
-                    <div class="card-body">
-                      <div><canvas id="citsxyear_chart" style="display: block; margin: 0 auto;"></canvas></div>
-                      [[Lucinda:barchart_simple(
-                        _DATA_("citsxyear_chart"),
-                        venue_works.years_pipe
-                      )]]
-                    </div>
-                  </div>
-                </div>
-              </div>
-
           </div>
         </div>
       </div>
 
+      <!-- stand-by: SKG-IF non permette di avere le pubblicazioni di una rivista -->
       <div class="col-12">
-        <div class="card shadow-sm p-3">
-            <div class="card-header text-center">
-                 <h5 class="my-1 fw-bold skgif-box-title">List of Publications</h5>
-            </div>
-            <div class="card-body p-4">
-                [[Lucinda:getVal(venue_works.pubList)]]
-            </div>
+        <div class="card shadow-sm">
+          <div class="card-header text-center">
+            <h5 class="my-1 fw-bold skgif-box-title">List of Publications</h5>
+          </div>
+          <div class="card-body p-4 text-center">
+            <span class="skgif-none">The publications of a venue are not available in SKG-IF yet.</span>
+          </div>
         </div>
       </div>
 
     </div>
-    
-    <footer>
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-        <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
-    </footer>
 
   </body>
 </html>

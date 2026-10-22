@@ -65,11 +65,11 @@
       <img src="../static/img/oc-medium.png" alt="OpenCitations Logo" class="img-fluid" style="max-height: 100px;">
     </div>
 
-    <!-- SILVIA (SKG-IF): search panel, same markup as home.html, styled in home.css (.oc-search) -->
+    <!-- SILVIA: pannello di ricerca (uguale a home.html, stile in home.css) -->
     <div class="oc-search mb-5 search-container">
       <form id="searchForm" class="oc-search-card">
 
-        <!-- resource type: the hidden select keeps Pietro's logic, the tabs (filled by home.js) drive it -->
+        <!-- tipo di risorsa: select nascosto comandato dalle schede -->
         <select name="category" class="d-none" aria-hidden="true" tabindex="-1">
           <option value="document">Document</option>
           <option value="author">Author</option>
@@ -80,7 +80,7 @@
         <div class="oc-tabs" role="tablist" aria-label="Resource type"></div>
 
         <div class="oc-search-row">
-          <!-- free text (title / name / OCI) or, for authors, given + family name -->
+          <!-- testo libero o, per gli autori, nome + cognome -->
           <div class="oc-field" id="textSide">
             <label class="oc-label" id="textLabel" for="searchQuery">Title</label>
             <div class="oc-input-icon text-field">
@@ -95,7 +95,7 @@
 
           <div class="oc-or id-field">or</div>
 
-          <!-- identifier: scheme (filled per resource by home.js) + value -->
+          <!-- identificativo: schema + valore -->
           <div class="oc-field id-field" id="idSide">
             <label class="oc-label" for="idQuery">Identifier</label>
             <div class="input-group">
@@ -152,7 +152,7 @@
         </div>
       </div>
 
-      <!-- SILVIA (SKG-IF): new organisation search -->
+      <!-- SILVIA: ricerca organizzazioni -->
       <div class="col-12 col-md-6 col-lg">
         <div class="card resource-card p-4 text-center">
           <div class="icon-box">

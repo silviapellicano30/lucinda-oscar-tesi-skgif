@@ -6,7 +6,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- 1. Placeholder Logic ---
   // SILVIA (SKG-IF): tabs, labels and placeholders of the search panel are
   // set by skgifInitSearchFields() (SKGIF_CATEGORIES, at the end of the file)
-  skgifInitSearchFields(searchForm, searchInput, categorySelect); // SILVIA (SKG-IF): schede, campi nome/cognome + pannello ID
+  skgifInitSearchFields(searchForm, searchInput, categorySelect); // SILVIA: schede, campi nome/cognome + pannello ID
 
 
   // --- 2. Regex Definitions ---
@@ -45,16 +45,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const category = categorySelect.value;
 
-    // SILVIA (SKG-IF): documents, authors, venues and organisations are
-    // searched by free text / names or by the ID panel (skgifSearch(), no
-    // more IDs recognised in the free text field); Citation Record (OCI)
-    // keeps Pietro's logic below
+    // SILVIA: documenti, autori, riviste e organizzazioni si cercano con skgifSearch();
+    // il Citation Record (OCI) usa ancora la logica precedente qui sotto
     if (category !== "citation") return skgifSearch(category, searchInput);
 
     const query = searchInput.value.trim();
 
     if (!query) {
-      skgifShowHint("Please enter an OCI."); // SILVIA (SKG-IF): message under the search bar, was alert()
+      skgifShowHint("Please enter an OCI."); // SILVIA: messaggio sotto la barra di ricerca (al posto di alert())
       return;
     }
 
@@ -64,9 +62,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // SILVIA (SKG-IF): an OCI typed without "ci/" (or as "oci:...") opens the
-    // citation record; any other text is not an OCI. It used to be sent as
-    // "citation/<text>", which no template matches ("No template is suitable").
+    // SILVIA: un OCI scritto senza "ci/" (o come "oci:...") apre il record di citazione
     const bareOci = query.replace(/^oci:/i, "");
     if (/^\d+-\d+$/.test(bareOci)) {
       window.location.href = `http://127.0.0.1:5500/example/oc/html_template/browser.html?value=ci/${bareOci}`;
@@ -158,7 +154,7 @@ async function openLucinda(identifier, category) {
       orcidRegex.test(identifier) ||
       issnRegex.test(identifier)
     ) {
-      omid = await skgifIdToOmid(identifier); // SILVIA (SKG-IF): was idToOmid() (SPARQL)
+      omid = await skgifIdToOmid(identifier); // SILVIA: prima era idToOmid() (SPARQL)
     } else {
       // Input is already a Lucinda ID (br/..., ra/...)
       omid = identifier;
@@ -167,8 +163,7 @@ async function openLucinda(identifier, category) {
     // Clean OMID (remove base URL if present)
     const omidId = omid.replace("https://w3id.org/oc/meta/", "");
 
-    // SILVIA (SKG-IF): the Citations/References redirect (doc_cit/, doc_ref/)
-    // was removed with its menu entries: they open only from the document cards
+    // SILVIA: tolti i reindirizzamenti doc_cit/ e doc_ref/ (si aprono dalle card dei documenti)
     const lucindaUrl = `http://127.0.0.1:5500/example/oc/html_template/browser.html?value=${omidId}`;
     window.location.href = lucindaUrl;
 
@@ -183,12 +178,8 @@ async function openLucinda(identifier, category) {
 # SILVIA (SKG-IF)
 ################################################################################
 */
-// SILVIA (SKG-IF): replaces Pietro's idToOmid() above, used by openLucinda().
-// Resolves an external identifier to an OMID through the
-// SKG-IF API (was a SPARQL query on Meta). Only document IDs typed in
-// "Citation Record" get here, looked up on /products; the first record is
-// taken, as the old LIMIT 1 did. The other categories use the ID panel
-// (skgifSearch()).
+// SILVIA: trova l'OMID di un ID di documento con SKG-IF (/products), al posto di idToOmid().
+// Usata solo dal Citation Record.
 const SKGIF_ID_LOOKUP = [
   { test: /^doi:|^10\.\d{4,9}\//i, scheme: "doi", entity: "products", field: "identifiers.id" },
   { test: /^pmid:/i, scheme: "pmid", entity: "products", field: "identifiers.id" },
@@ -203,7 +194,7 @@ async function skgifIdToOmid(identifier) {
   const url = `https://api.opencitations.net/skg-if/v1/${lookup.entity}` +
     `?filter=identifiers.scheme:${lookup.scheme},${lookup.field}:${encodeURIComponent(value)}&page_size=1`;
   const response = await fetch(url);
-  if (!response.ok && response.status !== 404) { //404 = nessun record con quell'ID
+  if (!response.ok && response.status !== 404) { // 404 = nessun record con quell'ID
     throw new Error(`The SKG-IF API returned an error (${response.status}).`);
   }
 
@@ -212,9 +203,7 @@ async function skgifIdToOmid(identifier) {
   return omid;
 }
 
-// SILVIA (SKG-IF): the resources of the search panel (home.html, home2.html):
-// tab icon and name, label and placeholder of the free-text field (authors
-// have the given / family name fields instead).
+// SILVIA: le risorse del pannello di ricerca: icona, nome, etichetta e placeholder.
 const SKGIF_CATEGORIES = {
   document: { tab: "Document", icon: "fa-regular fa-file-lines", label: "Title", placeholder: "Enter a title" },
   author: { tab: "Author", icon: "fa-solid fa-user-pen", label: "Name" },
@@ -223,14 +212,8 @@ const SKGIF_CATEGORIES = {
   citation: { tab: "Citation", icon: "fa-solid fa-share-nodes", label: "OCI", placeholder: "Enter an OCI (ci/...)" }
 };
 
-// SILVIA (SKG-IF): identifier schemes of the ID panel for each category, from
-// the SKG-IF list of external identifiers
-// (https://skg-if.github.io/interoperability-framework/), each with the kind
-// of entity it identifies, as scheme: example shown as placeholder. All are
-// offered, also the ones OC has no data for (they return 0 results), in one
-// list: the main scheme first (the default one), then the others in
-// alphabetical order. opendoar is left out: it identifies repositories
-// (SKG-IF datasources), not one of these entities.
+// SILVIA: schemi di ID del pannello per ogni risorsa (lista SKG-IF), con un esempio come placeholder.
+// Il primo è quello predefinito.
 const SKGIF_ID_SCHEMES = {
   document: { doi: "10.1007/s11192-019-03217-6", arxiv: "1909.01284", bibcode: "2019ApJ...882L..12A", handle: "11585/123456", isbn: "9780203417447", ivoid: "ivo://authority/resource", omid: "br/06010123732", openalex: "W4409315295", pmcid: "PMC7500415", pmid: "24936838", spase: "spase://NASA/...", url: "https://...", urn: "urn:nbn:...", w3id: "https://w3id.org/..." },
   author: { orcid: "0000-0003-0530-4305", omid: "ra/0614010840729", openalex: "A5023888391", url: "https://...", viaf: "102333412", w3id: "https://w3id.org/..." },
@@ -238,23 +221,16 @@ const SKGIF_ID_SCHEMES = {
   organisation: { crossref: "78", omid: "ra/0610116009", openalex: "I12345678", ror: "02mhbdp94", url: "https://...", viaf: "123456789", w3id: "https://w3id.org/..." }
 };
 
-// Name of each scheme in the dropdown (the value sent is the scheme itself).
+// Nome di ogni schema nel menu.
 const SKGIF_ID_NAMES = {
   doi: "DOI", pmid: "PMID", pmcid: "PMCID", arxiv: "arXiv", isbn: "ISBN", openalex: "OpenAlex", omid: "OMID",
   bibcode: "Bibcode", handle: "Handle", ivoid: "IVOID", spase: "SPASE", url: "URL", urn: "URN", w3id: "w3id",
   orcid: "ORCID", viaf: "VIAF", issn: "ISSN", eissn: "eISSN", lissn: "ISSN-L", crossref: "Crossref ID", ror: "ROR"
 };
 
-// SILVIA (SKG-IF): search panel. The tabs choose the resource (they set the
-// hidden category select, read by the submit listener); "Author" shows given
-// name / family name instead of the single search box; every resource but
-// "Citation" shows the ID panel (scheme + value), whose schemes are the ones
-// of SKGIF_ID_SCHEMES for that resource and whose placeholder is an example
-// of the chosen scheme. The panel keeps the same size for every resource
-// (for "Citation" the ID panel is hidden but keeps its space).
-// Text/names and ID are alternative: the side last focused or typed in is
-// the one searched (form.dataset.side), the other one, if filled, is dimmed
-// (not disabled: clicking on it makes it the active one again).
+// SILVIA: pannello di ricerca. Le schede scelgono la risorsa; "Author" mostra nome e cognome;
+// tutte tranne "Citation" mostrano il pannello ID. Testo e ID sono alternativi: si cerca
+// il lato usato per ultimo, l'altro viene sbiadito.
 function skgifInitSearchFields(searchForm, searchInput, categorySelect) {
   const givenInput = document.getElementById("givenName");
   const familyInput = document.getElementById("familyName");
@@ -270,7 +246,7 @@ function skgifInitSearchFields(searchForm, searchInput, categorySelect) {
   const textInputs = [searchInput, givenInput, familyInput];
   const schemeDropdown = skgifDropdown(schemeSelect);
 
-  // one tab per option of the category select
+  // una scheda per ogni opzione del select
   tabs.innerHTML = [...categorySelect.options].map(o => {
     const c = SKGIF_CATEGORIES[o.value] || { tab: o.text, icon: "fa-solid fa-magnifying-glass" };
     return `<button type="button" class="oc-tab" role="tab" data-category="${o.value}"><i class="${c.icon}"></i>${c.tab}</button>`;
@@ -279,7 +255,7 @@ function skgifInitSearchFields(searchForm, searchInput, categorySelect) {
     const tab = e.target.closest(".oc-tab");
     if (!tab || tab.dataset.category === categorySelect.value) return;
     categorySelect.value = tab.dataset.category;
-    idInput.value = ""; // the schemes change with the resource
+    idInput.value = ""; // gli schemi cambiano con la risorsa
     searchForm.dataset.side = "text";
     categorySelect.dispatchEvent(new Event("change"));
     (categorySelect.value === "author" ? givenInput : searchInput).focus();
@@ -336,21 +312,14 @@ function skgifInitSearchFields(searchForm, searchInput, categorySelect) {
   searchInput.focus();
 }
 
-// SILVIA (SKG-IF): message under the search bar (empty query...), instead of
-// alert(); "" clears it. Its line has a fixed height, so the panel doesn't
-// change size.
+// SILVIA: messaggio sotto la barra di ricerca; "" lo cancella.
 function skgifShowHint(text) {
   const hint = document.getElementById("searchHint");
   if (hint) hint.textContent = text;
 }
 
-// SILVIA (SKG-IF): dropdown drawn in place of a native <select> (whose list
-// the browser may open upwards and colours with the system blue): a button +
-// a list that always opens below, with the select's optgroups as headings.
-// The select stays in the page, hidden, and keeps the value: choosing an item
-// sets it and fires its "change" event. render() rebuilds the list after the
-// select's options change. Keyboard: Enter / Space / arrows open it, arrows
-// move, Enter chooses, Esc / Tab close.
+// SILVIA: menu a tendina personalizzato al posto del <select> (si apre sempre verso il basso).
+// Il select resta nascosto e tiene il valore.
 function skgifDropdown(select) {
   const wrap = document.createElement("div");
   wrap.className = "oc-dd";
@@ -363,7 +332,7 @@ function skgifDropdown(select) {
     `<ul class="oc-dd-menu" role="listbox"></ul>`);
   const btn = wrap.querySelector(".oc-dd-btn");
   const menu = wrap.querySelector(".oc-dd-menu");
-  let current = -1; // index of the highlighted item
+  let current = -1; // voce evidenziata
 
   const items = () => [...menu.querySelectorAll(".oc-dd-item")];
   const isOpen = () => wrap.classList.contains("open");
@@ -408,7 +377,7 @@ function skgifDropdown(select) {
   }
 
   btn.addEventListener("click", () => (isOpen() ? close() : open()));
-  menu.addEventListener("mousedown", e => e.preventDefault()); // keeps the focus on the button
+  menu.addEventListener("mousedown", e => e.preventDefault()); // il focus resta sul bottone
   menu.addEventListener("click", e => {
     const li = e.target.closest(".oc-dd-item");
     if (li) choose(li);
@@ -436,18 +405,10 @@ function skgifDropdown(select) {
   return { render };
 }
 
-// SILVIA (SKG-IF): search of documents, authors, venues, organisations ->
-// <category>/ + one of (URL-encoded), read by the api_search_*_skgif()
-// functions in localbrowser.js:
-//   scheme=doi&id=10.1/...      ID panel (a "doi:" typed before the value is
-//                               dropped, except for urn; ORCID / ISSN /
-//                               eISSN / ISSN-L uppercased, as stored). No
-//                               other change: the API matches the value
-//                               exactly (case-sensitive, no URL forms)
-//   given=...&family=...        author names
-//   <text>                      free text of the other categories
-// The active side (see skgifInitSearchFields()) is searched; if it is empty,
-// the other one.
+// SILVIA: ricerca di documenti, autori, riviste e organizzazioni -> <categoria>/ + uno tra:
+//   scheme=doi&id=10.1/...   pannello ID
+//   given=...&family=...     nome e cognome dell'autore
+//   <testo>                  testo libero delle altre categorie
 function skgifSearch(category, searchInput) {
   const form = document.getElementById("searchForm");
   const scheme = document.getElementById("idScheme").value;
@@ -459,7 +420,7 @@ function skgifSearch(category, searchInput) {
 
   let query;
   if (useId) {
-    // "urn:" is part of the value itself (urn:nbn:...), not a prefix to drop
+    // "urn:" fa parte del valore, non va tolto
     let value = scheme === "urn" ? id : id.replace(new RegExp(`^${scheme}:\\s*`, "i"), "");
     if (["orcid", "issn", "eissn", "lissn"].includes(scheme)) value = value.toUpperCase();
     query = new URLSearchParams({ scheme, id: value }).toString();

@@ -3,66 +3,12 @@
 #api https://api.opencitations.net/skg-if/v1/venues/https://w3id.org/oc/meta/br/[[id]]
 
 #id venue_meta
-#endpoint https://sparql.opencitations.net/meta
-#method post
-#preprocess strip(id)
-#postprocess post_venue_meta(title, identifiers)
-#sparql PREFIX datacite: <http://purl.org/spar/datacite/>
-PREFIX literal: <http://www.essepuntato.it/2010/06/literalreification/>
-PREFIX dcterms: <http://purl.org/dc/terms/>
-PREFIX fabio: <http://purl.org/spar/fabio/>
+#api https://api.opencitations.net/skg-if/v1/venues/https://w3id.org/oc/meta/br/[[id]]
+#postprocess post_skgif_venue(id)
 
-SELECT ?title (GROUP_CONCAT(DISTINCT ?formattedID; separator=" | ") AS ?identifiers)
-WHERE {
-  BIND(IRI(CONCAT("https://w3id.org/oc/meta/br/", "[[id]]")) AS ?venue)
-  
-  OPTIONAL { ?venue dcterms:title ?title . }
-  
-  OPTIONAL {
-    ?venue datacite:hasIdentifier ?idNode .
-    ?idNode datacite:usesIdentifierScheme ?scheme ;
-            literal:hasLiteralValue ?value .
-    BIND(STRAFTER(STR(?scheme), "http://purl.org/spar/datacite/") AS ?schemeLabel)
-    BIND(CONCAT(?schemeLabel, ":", STR(?value)) AS ?formattedID)
-  }
-}
-GROUP BY ?title
+#id venue_agents
+#api https://api.opencitations.net/skg-if/v1/products/https://w3id.org/oc/meta/br/[[id]]
+#postprocess post_skgif_venue_agents()
 
-#id venue_works
-#endpoint https://sparql.opencitations.net/meta
-#method post
-#preprocess strip(id)
-#postprocess post_venue_works(article, title, pubdate, identifiers)
-#sparql PREFIX frbr: <http://purl.org/vocab/frbr/core#>
-PREFIX dcterms: <http://purl.org/dc/terms/>
-PREFIX datacite: <http://purl.org/spar/datacite/>
-PREFIX literal: <http://www.essepuntato.it/2010/06/literalreification/>
-PREFIX prism: <http://prismstandard.org/namespaces/basic/2.0/>
-
-SELECT ?article ?title ?pubdate (GROUP_CONCAT(DISTINCT ?formattedID; separator=" | ") AS ?identifiers)
-WHERE {
-  {
-    SELECT DISTINCT ?article ?pubdate
-    WHERE {
-      
-      VALUES ?targetVenue { <https://w3id.org/oc/meta/br/[[id]]> }
-      
-      ?article frbr:partOf+ ?targetVenue .
-      OPTIONAL { ?article prism:publicationDate ?pubdate . }
-    }
-    ORDER BY DESC(?pubdate)
-    LIMIT 1000
-  }
-  
-  OPTIONAL { ?article dcterms:title ?title . }
-  
-  OPTIONAL {
-      ?article datacite:hasIdentifier ?idNode .
-      ?idNode datacite:usesIdentifierScheme ?scheme ;
-              literal:hasLiteralValue ?value .
-      BIND(STRAFTER(STR(?scheme), "http://purl.org/spar/datacite/") AS ?schemeLabel)
-      BIND(CONCAT(?schemeLabel, ":", STR(?value)) AS ?formattedID)
-  }
-}
-GROUP BY ?article ?title ?pubdate
-ORDER BY DESC(?pubdate)
+#id venue_record
+#callfun api_venue_record_skgif()
