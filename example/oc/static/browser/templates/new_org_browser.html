@@ -45,7 +45,7 @@
             <div class="br-field mb-4"><span class="br-label">Crossref</span><span id="org-crossref">[[Lucinda:ifcond(org_meta.crossref != null, skgif_ids(org_meta.crossref), _HTML_(<span class="skgif-none">No Crossref ID found</span>))]]</span></div>
             <div class="br-field mb-4"><span class="br-label">Other identifiers</span><span id="org-ids">[[Lucinda:skgif_ids(org_meta.ids, org_meta.omid)]]</span></div>
 
-            <div class="card shadow-sm ra-count-box">
+            <div class="card shadow-sm ra-count-box skgif-count-link" role="button" tabindex="0" data-skgif-goto="org-pubs">
               <div class="card-header text-center py-1"><span class="fw-bold small">Publications</span></div>
               <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number" id="org-count">[[Lucinda:skgif_text(org_works.total)]]</h3></div>
             </div>

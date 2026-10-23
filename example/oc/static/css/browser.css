@@ -559,6 +559,26 @@ a.anyid-doi{
 .skgif-count-number {
   color: #9a31fc;
 }
+/* SILVIA: "Loading citations… N/M" delle liste, ben visibile */
+#__lucinda__ .skgif-loading-note {
+  color: #9a31fc;
+  font-weight: 700;
+  font-size: 1rem;
+}
+#__lucinda__ .skgif-loading-note .loading-dots span {
+  margin: 0 1px;
+}
+/* SILVIA: riquadri dei numeri cliccabili (portano alla lista) */
+.skgif-count-link {
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.skgif-count-link:hover,
+.skgif-count-link:focus-visible {
+  border-color: #9a31fc;
+  box-shadow: 0 0 0 2px rgba(154, 49, 252, 0.25) !important;
+  outline: none;
+}
 .skgif-box-title {
   font-size: 1.1rem;
 }

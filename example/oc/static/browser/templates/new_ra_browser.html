@@ -45,7 +45,7 @@
             <div class="br-field mb-4"><span class="br-label">ORCID</span><span id="ra-orcid">[[Lucinda:ifcond(author_meta.orcid != null, skgif_orcid(author_meta.orcid), _HTML_(<span class="skgif-none">No ORCID found</span>))]]</span></div>
             <div class="br-field mb-4"><span class="br-label">Other identifiers</span><span id="ra-ids">[[Lucinda:skgif_ids(author_meta.ids, author_meta.omid)]]</span></div>
 
-            <div class="card shadow-sm ra-count-box">
+            <div class="card shadow-sm ra-count-box skgif-count-link" role="button" tabindex="0" data-skgif-goto="ra-pubs">
               <div class="card-header text-center py-1"><span class="fw-bold small">Publications</span></div>
               <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number" id="search-total-count">[[Lucinda:skgif_text(author_works.total)]]</h3></div>
             </div>
@@ -72,7 +72,7 @@
             </div>
             
             <div class="card-body p-4">
-                <!-- SILVIA: tutte le opere, senza pagine; Sort by attivo quando sono arrivate tutte -->
+                <!-- SILVIA: tutte le opere scaricate, pagine lato client (Per page); Sort by attivo quando sono arrivate tutte -->
                 <div class="ra-toolbar mb-3">
                     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                         <span class="fw-bold" id="ra-sort-status"></span>
@@ -97,6 +97,7 @@
                                 <button type="button" class="btn active" data-order="default" disabled>Default order</button>
                             </div>
                         </div>
+                        <div class="d-flex align-items-center gap-2 ms-auto d-none" id="ra-perpage"><span class="small fw-bold">Per page:</span></div>
                     </div>
                     <div class="progress mt-2 d-none" id="ra-progress" style="height: 6px;" role="progressbar" aria-label="Loading publications">
                         <div class="progress-bar" style="width: 0%"></div>

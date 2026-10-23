@@ -2791,11 +2791,16 @@ function _skgifScrollToList(el) {
   if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// Testo grigio sotto la barra della lista ("Loading… 150/422"); '' lo nasconde.
-function _skgifSetNote(id, text) {
+// Testo grigio sotto la barra della lista; '' lo nasconde. loading: "Loading… 150/422"
+// in viola, grassetto, con i puntini animati al posto di "…".
+function _skgifSetNote(id, text, loading = false) {
   const note = document.getElementById(id);
   if (!note) return;
-  note.textContent = text;
+  if (loading) note.innerHTML = _skgifEscape(text).replace('…', '<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>');
+  else note.textContent = text;
+  note.classList.toggle('skgif-loading-note', loading);
+  note.classList.toggle('text-muted', !loading);
+  note.classList.toggle('small', !loading);
   note.classList.toggle('d-none', !text);
 }
 
@@ -2990,7 +2995,7 @@ function _skgifListChart(list, { boxId, noun, owner, label, maxLoad = Infinity, 
     drawing = true;
     box.innerHTML = `<div class="mb-2">Loading ${noun}s…</div>`;
     list.onProgress((loaded, total) => {
-      box.innerHTML = `<div class="mb-2">Loading ${noun}s… ${loaded}/${total}</div>
+      box.innerHTML = `<div class="mb-2 skgif-loading-note">Loading ${noun}s<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span> ${loaded}/${total}</div>
         <div class="progress br-chart-progress" style="height: 6px; width: 100%;"><div class="progress-bar" style="width: ${Math.round(loaded / total * 100)}%"></div></div>`;
     });
     list.loadAll().then(() => {
@@ -3110,7 +3115,7 @@ function _skgifProductType(product) {
 }
 
 // Crea i menu dei filtri `keys` in box, con il numero di risultati per ogni valore.
-// Un filtro con meno di 2 valori è nascosto. onChange(keep) riceve la funzione di filtro.
+// Un filtro senza valori è nascosto. onChange(keep) riceve la funzione di filtro.
 // select(key, value): usato dal clic sul grafico.
 function _skgifListFilters(box, keys, onChange) {
   const chosen = {};
@@ -3164,7 +3169,7 @@ function _skgifListFilters(box, keys, onChange) {
       all = items;
       parts.forEach(({ key, def, wrap, dropdown }) => {
         values[key] = [...new Set(items.flatMap(def.values))].sort(def.sort);
-        wrap.classList.toggle('d-none', values[key].length < 2);
+        wrap.classList.toggle('d-none', !values[key].length); // anche con un solo valore
         dropdown.enable(true);
       });
       recount();
@@ -3187,10 +3192,9 @@ function _skgifListFilters(box, keys, onChange) {
 
 // Menu "Per page" (10, 20, 50, 100), nascosto se basta una pagina.
 const SKGIF_PER_PAGE = [10, 20, 50, 100];
-function _skgifInitPerPage(prefix, list) {
+function _skgifInitPerPage(prefix, list, containerId = `${prefix}-list`) {
   const box = document.getElementById(`${prefix}-perpage`);
   if (!box || list.failed || list.total <= SKGIF_DEFAULT_PAGE_SIZE) return;
-  const containerId = `${prefix}-list`;
   const dropdown = _skgifDropdown('Results per page', SKGIF_PER_PAGE.map(n => ({ value: String(n), text: String(n) })), value => {
     _skgifPageSizes[containerId] = Number(value);
     _skgifPaginators[containerId]?.refresh?.(); // torna alla pagina 1
@@ -3213,7 +3217,7 @@ function _skgifListTools({ prefix, list, source, autoLoad, maxLoad, noun, search
   const tools = document.getElementById(`${prefix}-tools`);
   const load = document.getElementById(`${prefix}-load`);
   const bar = document.getElementById(`${prefix}-progress`);
-  const loadable = !list.failed && list.total > 1 && list.total <= maxLoad;
+  const loadable = !list.failed && list.total >= 1 && list.total <= maxLoad;
   const state = { started: list.total <= autoLoad, loaded: false, searching: false, arrived: 0 }; // scaricamento partito
   const update = () => {
     const loading = loadable && state.started && !state.loaded && !state.searching;
@@ -3223,7 +3227,7 @@ function _skgifListTools({ prefix, list, source, autoLoad, maxLoad, noun, search
     const text = state.searching ? '' : loading ? `Loading ${noun}s… ${state.arrived}/${list.total}`
       : loadable && !state.started ? 'Load them all to filter and sort the list.'
       : !list.failed && list.total > maxLoad ? 'Filters and sorting are not available.' : '';
-    _skgifSetNote(`${prefix}-note`, text);
+    _skgifSetNote(`${prefix}-note`, text, loading && !!text);
   };
   const filters = _skgifListFilters(tools?.querySelector('.skgif-filters'), ['type', 'year'], keep => list.filter(keep));
   const sortButtons = tools ? [...tools.querySelectorAll('.ra-sort button')] : [];
@@ -3980,13 +3984,26 @@ function _skgifDedupe(products) {
   });
 }
 
-// Bottone "Back to top", visibile dopo aver scrollato.
-function _initAuthorListUi() {
+// Bottone "Back to top": riporta all'inizio della lista (ricerca, filtri, Sort by),
+// visibile quando la si è superata. listId: riquadro della lista.
+function _initAuthorListUi(listId) {
   const top = document.getElementById('ra-top');
-  if (!top) return;
-  top.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
-  window.addEventListener('scroll', () => top.classList.toggle('d-none', window.scrollY < 800));
+  const list = document.getElementById(listId);
+  if (!top || !list) return;
+  top.addEventListener('click', () => list.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  window.addEventListener('scroll', () => top.classList.toggle('d-none', list.getBoundingClientRect().top > -400));
 }
+
+// Riquadri dei numeri (Publications, Citations, References): clic o Invio portano alla lista
+// (data-skgif-goto); nella scheda documento aprono anche il tab giusto (data-br-goto-tab).
+function _skgifGoToList(e) {
+  const box = e.target.closest('[data-skgif-goto]');
+  if (!box || (e.type === 'keydown' && e.key !== 'Enter')) return;
+  if (box.dataset.brGotoTab) document.querySelector(`[data-br-tab="${box.dataset.brGotoTab}"]`)?.click();
+  document.getElementById(box.dataset.skgifGoto)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+document.addEventListener('click', _skgifGoToList);
+document.addEventListener('keydown', _skgifGoToList);
 
 // --- Grafici ---
 
@@ -4518,7 +4535,8 @@ function api_author_record_skgif(...args) {
 // Quante pagine di opere chiedere in parallelo.
 const SKGIF_AUTHOR_PARALLEL_PAGES = 6;
 
-// Scarica tutte le opere dell'autore e le mostra man mano, in ordine, con la barra di avanzamento.
+// Scarica tutte le opere dell'autore e le mostra man mano, in ordine, con la barra di avanzamento,
+// a pagine lato client (Per page, come References/Citations).
 // Quando sono arrivate tutte attiva Sort by, filtri (Type, Year, Role) e disegna il grafico.
 // personOmid: OMID completo della persona, per trovare il suo ruolo in ogni opera.
 let _raPersonOmid = '';
@@ -4528,17 +4546,17 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
   const container = document.getElementById('search-results-container');
   const chart = document.getElementById('ra-pubs-chart');
   const setChart = html => { if (chart) chart.innerHTML = html; };
-  _initAuthorListUi();
+  _initAuthorListUi('ra-pubs');
   let order = 'default', keep = null, term = ''; // ordinamento, filtri e parole cercate nel titolo
   let show = () => {};
   let downloaded = false;
   const filters = _skgifListFilters(document.getElementById('ra-filters'), ['type', 'year', 'role'], newKeep => { keep = newKeep; show(); });
 
-  const hideTools = () => { // 0-1 opere: niente filtri, Sort by e ricerca
+  const hideTools = () => { // nessuna opera: niente filtri, Sort by e ricerca
     document.getElementById('ra-filters')?.parentElement.classList.add('d-none');
     document.getElementById('ra-search')?.classList.add('d-none');
   };
-  if (!firstPage || firstPage.total < 2) hideTools();
+  if (!firstPage || !firstPage.total) hideTools();
   if (!firstPage) {
     _skgifFallbackCount('search-total-count', '–');
     if (container) container.innerHTML = '<div class="col-12"><p>The publications could not be loaded (the API did not answer).</p></div>';
@@ -4556,17 +4574,50 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
   const pageCount = Math.ceil(total / SKGIF_DEFAULT_PAGE_SIZE);
   const pages = new Array(pageCount); // opere di ogni pagina
   pages[0] = firstPage.items;
-  let shownPages = 0; // pagine già mostrate
   setChart('<em>Loading...</em>');
 
+  // Paginazione lato client: tutte le opere sono scaricate, a schermo una pagina alla volta.
+  const listId = 'search-results-container';
+  const pageSize = () => _skgifPageSizes[listId] || SKGIF_DEFAULT_PAGE_SIZE;
+  const cards = items => items.map(_renderAuthorWorkOrMissing).join('');
+  let current = 1; // pagina mostrata
+  let view = () => {}; // mostra la pagina `current` della lista attuale
+  let shown = ''; // pagina già sullo schermo, per non ridisegnarla a ogni arrivo
+  // Pagina `current` di list; count = quante opere avrà la lista (anche non ancora arrivate).
+  const showPage = (list, count, render) => {
+    const size = pageSize();
+    const pageTotal = Math.max(1, Math.ceil(count / size));
+    current = Math.min(current, pageTotal);
+    const items = list.slice((current - 1) * size, current * size);
+    const key = `${current}/${size}/${items.length}/${count}`;
+    if (key === shown) return;
+    shown = key;
+    _skgifTogglePerPage('ra', count);
+    if (!container) return;
+    container.innerHTML = items.length ? render(items) + _skgifPaginationBar(listId, current, pageTotal)
+      : list.length < count ? SKGIF_LOADING_HTML : ''; // pagina non ancora arrivata
+  };
+  const goToPage = p => {
+    current = p;
+    shown = '';
+    _skgifScrollToList(document.getElementById('ra-pubs'));
+    view();
+  };
+  _skgifPaginators[listId] = { goToPage, refresh: () => goToPage(1) };
+  _skgifInitPerPage('ra', { failed: false, total }, listId);
+
   const loadedCount = () => pages.reduce((n, page) => n + (page ? page.length : 0), 0);
-  const showArrived = () => { // mostra le pagine in fila, senza buchi
+  const arrived = () => { // le pagine arrivate in fila, senza buchi
+    const list = [];
+    for (let i = 0; i < pageCount && pages[i]; i++) list.push(...pages[i]);
+    return list;
+  };
+  const showArrived = () => {
     const loaded = Math.min(loadedCount(), total);
-    _skgifSetNote('ra-note', loaded < total ? `Loading publications… ${loaded}/${total}` : '');
+    _skgifSetNote('ra-note', loaded < total ? `Loading publications… ${loaded}/${total}` : '', loaded < total);
     if (term) return;
-    let html = '';
-    while (shownPages < pageCount && pages[shownPages]) html += pages[shownPages++].map(_renderAuthorWorkOrMissing).join('');
-    if (html && container) container.insertAdjacentHTML('beforeend', html);
+    view = () => showPage(arrived(), total, cards);
+    view();
     _setAuthorListStatus(_skgifPlural(total, 'publication'), loaded / total);
   };
   if (container) container.innerHTML = '';
@@ -4575,11 +4626,9 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
   // Ricerca nel titolo mentre le opere arrivano ancora: la fa l'API.
   const searchApi = value => {
     term = value;
-    if (!term) {
-      shownPages = 0;
-      if (container) container.innerHTML = '';
-      return showArrived();
-    }
+    current = 1;
+    shown = '';
+    if (!term) return showArrived();
     _setAuthorListStatus('Searching…', null);
     if (container) container.innerHTML = SKGIF_LOADING_HTML;
     const source = `${works},cf.search.title:${encodeURIComponent(term)}`;
@@ -4594,7 +4643,8 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
       skgifFetchAllPages(source, first.total, SKGIF_DEFAULT_PAGE_SIZE, SKGIF_AUTHOR_PARALLEL_PAGES, (n, items) => { foundPages[n - 1] = items; }, { 1: first.items }).then(() => {
         if (term !== value || downloaded) return;
         const results = _skgifDedupe(foundPages.flat());
-        if (container) container.innerHTML = results.map(_renderAuthorWorkOrMissing).join('');
+        view = () => showPage(results, results.length, cards);
+        view();
         _setAuthorListStatus(found(first.total), null);
       });
     });
@@ -4615,11 +4665,17 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
     _skgifSetNote('ra-note', '');
     downloaded = true;
 
-    show = () => {
-      _skgifScrollToList(document.getElementById('ra-pubs'));
+    show = keepPage => { // keepPage: resta sulla pagina mostrata (fine dello scaricamento)
+      if (!keepPage) {
+        current = 1;
+        _skgifScrollToList(document.getElementById('ra-pubs'));
+      }
+      shown = '';
       let works = keep ? all.filter(keep) : order === 'default' && !term ? inOrder : all;
       if (term) works = works.filter(w => _raTitleHas(w, term));
-      container.innerHTML = works.length ? _renderAuthorWorks(works, order, _renderAuthorWorkOrMissing) : '';
+      works = _sortAuthorWorks(works, order); // ordinate tutte, poi divise in pagine
+      view = () => showPage(works, works.length, items => _renderAuthorWorks(items, order, _renderAuthorWorkOrMissing)); // per data: intestazione per anno
+      view();
       const found = n => `${plural(n)} with “${term}” in the title`;
       _setAuthorListStatus(term && keep ? `${works.length} of ${found(all.filter(w => _raTitleHas(w, term)).length)}`
         : term ? found(works.length) : !keep ? plural(all.length) + missingNote : `${works.length} of ${plural(all.length)}`, null);
@@ -4630,7 +4686,8 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
       filters.setMatch(term ? w => _raTitleHas(w, term) : null);
       show();
     };
-    _onAuthorSearch(term);
+    if (term) _onAuthorSearch(term);
+    else show(true);
     document.querySelectorAll('#ra-sort button').forEach(button => {
       button.disabled = false;
       button.addEventListener('click', () => {
@@ -4742,7 +4799,7 @@ function api_document_record_skgif(...args) {
   const citsSource = listSource('cf.cites');
 
   _initBrTabs();
-  _initAuthorListUi();
+  _initAuthorListUi('br-lists');
   _skgifSetField('br-cits-chart', '<em>Loading...</em>');
   document.getElementById('br-record')?.classList.remove('d-none');
 
@@ -4873,7 +4930,7 @@ function api_org_record_skgif(...args) {
   const works = `${SKGIF_API}/products?filter=contributions.by.local_identifier:${encodeURIComponent(omidUrl)}`;
   _raPersonOmid = omidUrl; // per il ruolo dell'organizzazione in ogni pubblicazione
   document.getElementById('org-record')?.classList.remove('d-none');
-  _initAuthorListUi();
+  _initAuthorListUi('org-pubs');
   _skgifSetField('org-chart', '<em>Loading publications…</em>');
 
   skgifFirstPage(works, SKGIF_DEFAULT_PAGE_SIZE).then(first => {
