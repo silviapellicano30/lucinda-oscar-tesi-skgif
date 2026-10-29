@@ -1,3 +1,5 @@
+<!-- SILVIA: ricerca per ID, finché non si sa se il record è uno solo (allora si apre la sua scheda) -->
+<div class="skgif-id-loading">Loading the resource<br><span class="loading-dots"><span>.</span><span>.</span><span>.</span> </span></div>
 <br>
 <div class="mb-3">
   <a href="home2.html" class="btn  btn-sm">
@@ -9,8 +11,14 @@
   <div class="col-12 mb-4">
     <div class="card shadow-sm p-3 h-100">
       <div class="card-header text-center">
-        <p class="mb-1 small text-muted">Responsible Agent Records</p>
-        <h3 class="my-0"><span id="search-total-count">[[Lucinda:skgif_text(search_count.total)]]</span> Results for: <span class="fw-bold" id="search-query-label">[[Lucinda:skgif_text(search_count.label)]]</span></h3>
+        <!-- SILVIA: conteggio e ricerca su una riga; tipo di risorsa nella riga dei controlli -->
+        <h3><span id="search-total-count">[[Lucinda:skgif_text(search_count.total)]]</span> Results <span class="fw-normal">for:</span> <span id="search-query-label">[[Lucinda:skgif_text(search_count.label)]]</span></h3>
+      </div>
+      <!-- SILVIA: tipo di risorsa, filtri della ricerca (_skgifSearchRefine) e "Show [N] entries" -->
+      <div class="d-flex flex-wrap align-items-center gap-3 skgif-search-tools">
+        <div class="skgif-head-meta me-auto">Responsible Agent Records</div>
+        <div class="d-flex flex-wrap align-items-center gap-2" id="search-refine"></div>
+        <div class="d-flex align-items-center gap-2 d-none" id="search-perpage"><span class="small fw-bold">Show</span></div>
       </div>
     </div>
   </div>

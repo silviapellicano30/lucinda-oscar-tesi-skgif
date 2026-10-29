@@ -2672,8 +2672,20 @@ const SKGIF_API = "https://api.opencitations.net/skg-if/v1"; // URL base di tutt
 
 const SKGIF_DEFAULT_PAGE_SIZE = 10; // risultati per pagina (come il default dell'API)
 
-// Messaggio mostrato quando l'API non risponde.
-const SKGIF_FAILED_MESSAGE = "The search failed or took too long (the API did not answer). Try again or use a shorter query.";
+// Messaggio unico quando l'API non risponde (errore, timeout, rete).
+const SKGIF_UNAVAILABLE_TEXT = "The OpenCitations API is temporarily unable to answer (maintenance or high load). Please try again later.";
+const SKGIF_UNAVAILABLE_MESSAGE = `Service unavailable. ${SKGIF_UNAVAILABLE_TEXT}`; // solo testo (schede di Lucinda)
+
+// Riquadro "Service unavailable" con il bottone "Try again"; search = consiglio sulle query lunghe.
+function _skgifUnavailableHtml(search = false) {
+  return `<div class="col-12"><div class="alert alert-danger mb-4 skgif-unavailable">`
+    + `<strong>Service unavailable</strong><br>${SKGIF_UNAVAILABLE_TEXT}${search ? '<br>If the query is long, try a shorter one.' : ''}`
+    + `<div class="mt-2"><button type="button" class="btn btn-sm skgif-search-reset skgif-retry">Try again</button></div></div></div>`;
+}
+
+document.addEventListener('click', e => {
+  if (e.target.closest('.skgif-retry')) location.reload();
+});
 
 // Testo "Loading" mostrato mentre una lista carica.
 const SKGIF_LOADING_HTML = "<div class='col-12 skgif-page-loading'>Loading the results<br><span class='loading-dots'><span>.</span><span>.</span><span>.</span> </span></div>";
@@ -2714,9 +2726,7 @@ function _skgifNormalizeUrl(url) { // rende confrontabili due URL
 // Chiamate in corso: chi chiede lo stesso URL aspetta quella già partita.
 const _skgifPendingRequests = {};
 
-// Scarica un URL SKG-IF passando dalla cache. Non dà mai errore:
-// se fallisce restituisce null; 404 = nessun risultato (risposta vuota).
-// Se Lucinda ha già chiesto lo stesso URL usa la sua risposta.
+// Scarica un URL SKG-IF (riusa le risposte di Lucinda); null se fallisce, 404 = nessun risultato.
 function skgifFetch(url, timeoutMs) {
   const fromLucinda = Lucinda.api_responses[url];
   if (fromLucinda) return fromLucinda.then(res => res.ok ? res.json : res.status === 404 ? {} : _skgifFetchUrl(url, timeoutMs));
@@ -2764,8 +2774,7 @@ function releaseSkgifPage() { // toglie il banner e rimostra il template
   _skgifHeldPage = null;
 }
 
-// Scarica TUTTE le pagine di una ricerca (servono per ordinare e per i grafici).
-// onPage(n, items) viene chiamata a ogni pagina arrivata; le pagine in `have` non vengono richieste.
+// Scarica tutte le pagine di una ricerca; onPage(n, items) a ogni pagina, salta quelle in `have`.
 function skgifFetchAllPages(source, total, pageSize, parallel, onPage, have = {}) {
   const pageCount = Math.ceil(total / pageSize);
   const todo = [];
@@ -2791,8 +2800,7 @@ function _skgifScrollToList(el) {
   if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// Testo grigio sotto la barra della lista; '' lo nasconde. loading: "Loading… 150/422"
-// in viola, grassetto, con i puntini animati al posto di "…".
+// Nota sotto la barra della lista ('' = nascosta); loading = viola con i puntini animati.
 function _skgifSetNote(id, text, loading = false) {
   const note = document.getElementById(id);
   if (!note) return;
@@ -2819,6 +2827,14 @@ function _skgifListStatus(statusId, barId, text, fraction) {
   if (inner && fraction !== null) inner.style.width = `${Math.round(fraction * 100)}%`;
 }
 
+// Riga di stato con l'intervallo mostrato ("11–20 of 240 citations") quando la lista ha più pagine.
+// single = testo con una sola pagina; phrase = testo per `count` risultati; from = totale prima dei filtri.
+function _skgifRangeStatus(page, size, { count, single, phrase = single, from = null }) {
+  if (count <= size) return single;
+  const range = `${(page - 1) * size + 1}–${Math.min(page * size, count)}`;
+  return `${range} of ${phrase}${from === null ? '' : ` (filtered from ${from})`}`;
+}
+
 // Liste sfogliabili: dimensione delle pagine chieste all'API e quante chiamate in parallelo.
 const SKGIF_LIST_PAGE_SIZE = 50;
 const SKGIF_LIST_PARALLEL = 4;
@@ -2827,10 +2843,7 @@ const SKGIF_CHART_AUTO_LOAD = 500;
 // Risultati per pagina scelti con "Per page", per ogni lista.
 const _skgifPageSizes = {};
 
-// Lista sfogliabile con Previous/Next (References/Citations della scheda documento,
-// pubblicazioni dell'organizzazione). Scarica i risultati in pagine da 50 e ne mostra 10
-// (o quanti scelti con "Per page"), nell'ordine dell'API. loadAll() scarica tutto (per
-// grafico, filtri e ordinamento). Un risultato che non arriva diventa la card "could not be loaded".
+// Lista sfogliabile: scarica pagine da 50 e ne mostra 10/20/50/100; loadAll() scarica tutto (grafico, filtri, Sort by).
 function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText, scrollId, renderCard, showTotal = true }) {
   const containerId = `${prefix}-list`;
   const total = first ? first.total : 0;
@@ -2857,9 +2870,12 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
     lastStatus = [text, fraction];
     if (active()) _skgifListStatus(`${prefix}-status`, `${prefix}-progress`, text, fraction);
   };
+  let info = null; // riga di stato: { count, single, phrase, from } (_skgifRangeStatus)
+  const showStatus = () => status(info ? _skgifRangeStatus(page, pageSize(), info) : '');
+  const setStatus = newInfo => { info = newInfo; showStatus(); };
   _skgifPaginators[containerId] = paginator;
   if (showTotal) _skgifSetField(`${prefix}-total`, _ciCount(first ? total : null)); // nella ricerca nei titoli il totale resta quello della lista completa
-  status(first ? statusText(total) : '');
+  setStatus(first ? { count: total, single: statusText(total) } : null);
 
   const renderItems = items => items.map(item => item._skgifMissing ? _skgifMissingCard(noun) : renderCard(item)).join('');
 
@@ -2886,9 +2902,10 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
     const container = document.getElementById(containerId);
     if (!container) return;
     if (!active()) return; // nello stesso posto è mostrata un'altra lista
+    showStatus();
     _skgifTogglePerPage(prefix, first ? (ordered || inOrder || { length: total }).length : 0);
     if (!first || !total) container.style.minHeight = '';
-    if (!first) return void (container.innerHTML = `<div class="col-12"><p>The ${noun}s could not be loaded (the API did not answer).</p></div>`);
+    if (!first) return void (container.innerHTML = _skgifUnavailableHtml());
     if (!total) return void (container.innerHTML = emptyMessage ? `<div class="col-12"><p>${_skgifEscape(emptyMessage)}</p></div>` : '');
     if (scroll) _skgifScrollToList(document.getElementById(scrollId));
     const render = items => {
@@ -2925,7 +2942,7 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
       all = inOrder.filter(item => !item._skgifMissing);
       const missing = inOrder.length - all.length;
       fullStatus = statusText(all.length) + (missing ? ` (${missing} could not be loaded)` : '');
-      status(fullStatus);
+      setStatus({ count: inOrder.length, single: fullStatus });
       loadedListeners.forEach(listener => listener());
       return true;
     });
@@ -2943,8 +2960,13 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
       : order === 'default' ? null : all;
     ordered = base && _sortAuthorWorks(base, order);
     const found = n => `${statusText(n)} with “${term}” in the title`;
-    status(term && keep ? `${ordered.length} of ${found(all.filter(p => _raTitleHas(p, term)).length)}`
-      : term ? found(ordered.length) : keep ? `${ordered.length} of ${fullStatus}` : fullStatus);
+    const count = (ordered || inOrder).length;
+    if (term && keep) {
+      const withTerm = all.filter(p => _raTitleHas(p, term)).length;
+      info = { count, single: `${count} of ${found(withTerm)}`, phrase: found(count), from: withTerm };
+    } else if (term) info = { count, single: found(count) };
+    else if (keep) info = { count, single: `${count} of ${fullStatus}`, phrase: statusText(count), from: all.length };
+    else info = { count, single: fullStatus };
     show(1, true);
     return (ordered || inOrder).length;
   }
@@ -2979,9 +3001,7 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
   };
 }
 
-// Grafico per anno di una lista: si carica da solo fino ad autoLoad risultati,
-// con il bottone "Load chart" fino a maxLoad, oltre non è disponibile.
-// onYear(anno): clic su una barra (filtro Year).
+// Grafico per anno di una lista: da solo fino ad autoLoad, col bottone fino a maxLoad; onYear = clic su una barra.
 function _skgifListChart(list, { boxId, noun, owner, label, maxLoad = Infinity, autoLoad = SKGIF_CHART_AUTO_LOAD,
   after = Promise.resolve(), buttonText = 'Load chart', buttonNote = '', onYear }) {
   const box = document.getElementById(boxId);
@@ -3114,27 +3134,38 @@ function _skgifProductType(product) {
   return _skgifArray(product.manifestations).map(m => m?.type?.labels?.en).find(Boolean) || 'unknown type';
 }
 
-// Crea i menu dei filtri `keys` in box, con il numero di risultati per ogni valore.
-// Un filtro senza valori è nascosto. onChange(keep) riceve la funzione di filtro.
-// select(key, value): usato dal clic sul grafico.
+// Menu dei filtri `keys` con i conteggi (Year = intervallo From-To); onChange(keep); select(key, value) per il grafico.
 function _skgifListFilters(box, keys, onChange) {
   const chosen = {};
   let all = [];
   let match = null; // ricerca nel titolo attiva
   let values = {}; // valori di ogni filtro
-  const passes = (product, except) => parts.every(part => part === except || !chosen[part.key]
-    || part.def.values(product).includes(chosen[part.key]));
-  // Aggiorna i numeri nei menu.
+  const isSet = part => part.range ? !!(chosen.from || chosen.to) : !!chosen[part.key];
+  const inRange = product => {
+    const year = SKGIF_FILTERS.year.values(product)[0];
+    return year !== 'No date' && (!chosen.from || year >= chosen.from) && (!chosen.to || year <= chosen.to);
+  };
+  const passes = (product, except) => parts.every(part => part === except || !isSet(part)
+    || (part.range ? inRange(product) : part.def.values(product).includes(chosen[part.key])));
+  // Aggiorna i numeri nei menu (From/To: solo gli anni compatibili con l'altro estremo).
   const recount = () => parts.forEach(part => {
     const base = all.filter(product => (!match || match(product)) && passes(product, part));
+    if (part.range) {
+      const years = values.year.filter(y => y !== 'No date');
+      part.from.set([{ value: '', text: 'From' }, ...years.filter(y => !chosen.to || y <= chosen.to).map(y => ({ value: y, text: y }))], chosen.from);
+      part.to.set([{ value: '', text: 'To' }, ...years.filter(y => !chosen.from || y >= chosen.from).map(y => ({ value: y, text: y }))], chosen.to);
+      return;
+    }
     const counts = {};
     base.forEach(product => part.def.values(product).forEach(v => { counts[v] = (counts[v] || 0) + 1; }));
     part.dropdown.set([{ value: '', text: `All (${base.length})` },
       ...values[part.key].map(v => ({ value: v, text: `${part.def.text ? part.def.text(v) : v} (${counts[v] || 0})` }))]);
   });
+  const yearListeners = []; // chi segue l'intervallo Year (grafico)
   const changed = () => {
     recount();
-    const any = parts.some(part => chosen[part.key]);
+    yearListeners.forEach(listener => listener(chosen.from || '', chosen.to || ''));
+    const any = parts.some(isSet);
     clear.classList.toggle('d-none', !any);
     onChange(any ? product => passes(product, null) : null);
   };
@@ -3143,6 +3174,17 @@ function _skgifListFilters(box, keys, onChange) {
     const wrap = document.createElement('div');
     wrap.className = `d-flex align-items-center gap-2${def.startHidden ? ' d-none' : ''}`;
     wrap.innerHTML = `<span class="small fw-bold">${def.label}:</span>`;
+    if (key === 'year') {
+      const end = name => _skgifDropdown(`Filter by year: ${name.toLowerCase()}`, [{ value: '', text: name }], value => {
+        chosen[name.toLowerCase()] = value;
+        changed();
+      });
+      const from = end('From');
+      const to = end('To');
+      wrap.append(from.el, Object.assign(document.createElement('span'), { className: 'small', textContent: '–' }), to.el);
+      box?.appendChild(wrap);
+      return { key, def, wrap, range: true, from, to, dropdown: from };
+    }
     const dropdown = _skgifDropdown(`Filter by ${def.label.toLowerCase()}`, [{ value: '', text: 'All' }], value => {
       chosen[key] = value;
       changed();
@@ -3159,20 +3201,30 @@ function _skgifListFilters(box, keys, onChange) {
   clear.addEventListener('click', () => {
     parts.forEach(part => {
       chosen[part.key] = '';
-      part.dropdown.select('');
+      if (!part.range) part.dropdown.select('');
     });
+    chosen.from = chosen.to = '';
     changed();
   });
   box?.appendChild(clear);
   return {
     fill(items) {
       all = items;
-      parts.forEach(({ key, def, wrap, dropdown }) => {
+      parts.forEach(part => {
+        const { key, def, wrap } = part;
         values[key] = [...new Set(items.flatMap(def.values))].sort(def.sort);
-        wrap.classList.toggle('d-none', !values[key].length); // anche con un solo valore
-        dropdown.enable(true);
+        const shown = part.range ? values[key].some(y => y !== 'No date') : values[key].length;
+        wrap.classList.toggle('d-none', !shown); // anche con un solo valore
+        (part.range ? [part.from, part.to] : [part.dropdown]).forEach(d => d.enable(true));
       });
       recount();
+    },
+    onYears(listener) {
+      yearListeners.push(listener);
+    },
+    clearYears() {
+      chosen.from = chosen.to = '';
+      changed();
     },
     // La ricerca nel titolo cambia i numeri.
     setMatch(newMatch) {
@@ -3182,24 +3234,32 @@ function _skgifListFilters(box, keys, onChange) {
     select(key, value) {
       const part = parts.find(p => p.key === key);
       if (!part || !part.dropdown.enabled() || !part.wrap.offsetParent) return false;
-      chosen[key] = part.dropdown.value() === value ? '' : value;
-      part.dropdown.select(chosen[key]);
+      if (part.range) { // stesso anno già scelto: lo toglie
+        const same = chosen.from === value && chosen.to === value;
+        chosen.from = chosen.to = same ? '' : value;
+      } else {
+        chosen[key] = part.dropdown.value() === value ? '' : value;
+        part.dropdown.select(chosen[key]);
+      }
       changed();
       return true;
     }
   };
 }
 
-// Menu "Per page" (10, 20, 50, 100), nascosto se basta una pagina.
+// Menu "Show [N] entries" (10, 20, 50, 100), nascosto se basta una pagina.
 const SKGIF_PER_PAGE = [10, 20, 50, 100];
-function _skgifInitPerPage(prefix, list, containerId = `${prefix}-list`) {
+// Ricerche e pagine Go to: una pagina = una chiamata, e l'API dà al massimo 50 risultati.
+const SKGIF_SEARCH_PER_PAGE = [10, 20, 50];
+function _skgifInitPerPage(prefix, list, containerId = `${prefix}-list`, sizes = SKGIF_PER_PAGE) {
   const box = document.getElementById(`${prefix}-perpage`);
-  if (!box || list.failed || list.total <= SKGIF_DEFAULT_PAGE_SIZE) return;
-  const dropdown = _skgifDropdown('Results per page', SKGIF_PER_PAGE.map(n => ({ value: String(n), text: String(n) })), value => {
+  if (!box || box.querySelector('.skgif-dd') || list.failed || list.total <= SKGIF_DEFAULT_PAGE_SIZE) return;
+  const dropdown = _skgifDropdown('Results per page', sizes.map(n => ({ value: String(n), text: String(n) })), value => {
     _skgifPageSizes[containerId] = Number(value);
     _skgifPaginators[containerId]?.refresh?.(); // torna alla pagina 1
   });
   box.appendChild(dropdown.el);
+  box.insertAdjacentHTML('beforeend', '<span class="small fw-bold">entries</span>'); // "Show [10] entries"
   dropdown.enable(true);
   box.classList.remove('d-none');
 }
@@ -3210,9 +3270,7 @@ function _skgifTogglePerPage(prefix, count) {
   if (box?.querySelector('.skgif-dd')) box.classList.toggle('d-none', count <= SKGIF_DEFAULT_PAGE_SIZE);
 }
 
-// Barra degli strumenti di una lista sfogliabile: filtri, Sort by, Per page,
-// Search in titles, bottone "Load all". Filtri e Sort by servono tutti i risultati:
-// disattivati finché non sono arrivati, nascosti se non servono.
+// Strumenti di una lista: filtri, Sort by, Show, Search in titles, "Load all" (filtri e Sort by a lista completa).
 function _skgifListTools({ prefix, list, source, autoLoad, maxLoad, noun, search }) {
   const tools = document.getElementById(`${prefix}-tools`);
   const load = document.getElementById(`${prefix}-load`);
@@ -3257,9 +3315,7 @@ function _skgifListTools({ prefix, list, source, autoLoad, maxLoad, noun, search
   return filters;
 }
 
-// "Search in titles" di una lista sfogliabile: se la lista è tutta scaricata cerca
-// tra i risultati (senza chiamate), altrimenti chiede all'API (cf.search.title).
-// "Clear search" o ricerca vuota rimostrano la lista completa.
+// "Search in titles": locale se la lista è tutta scaricata, altrimenti cf.search.title.
 function _skgifListSearch(prefix, source, list, { noun, statusNoun, scrollId, renderCard }, filters, onSearching) {
   const form = document.getElementById(`${prefix}-search`);
   const input = document.getElementById(`${prefix}-search-input`);
@@ -3287,6 +3343,7 @@ function _skgifListSearch(prefix, source, list, { noun, statusNoun, scrollId, re
   form.addEventListener('submit', event => {
     event.preventDefault();
     _skgifKeepCursor(input);
+    _skgifKeepScroll();
     const term = _skgifSafeTerm(input.value);
     if (!term) return showAll();
     current = term;
@@ -3322,11 +3379,15 @@ function _skgifListSearch(prefix, source, list, { noun, statusNoun, scrollId, re
   });
 }
 
-// Dopo una ricerca il cursore resta nel campo, dopo l'ultima lettera (anche cliccando "Search"):
-// per tornare alla lista completa basta cancellare il testo.
+// Dopo una ricerca il cursore resta nel campo, dopo l'ultima lettera.
 function _skgifKeepCursor(input) {
   input.focus({ preventScroll: true });
   input.setSelectionRange(input.value.length, input.value.length);
+}
+
+// Tiene la pagina alta almeno fino allo scroll attuale: con pochi risultati non risale.
+function _skgifKeepScroll() {
+  document.body.style.minHeight = `${window.scrollY + window.innerHeight}px`;
 }
 
 // Tempo massimo di attesa per pagina: se scade, i risultati vengono richiesti in pagine più piccole.
@@ -3335,9 +3396,7 @@ const SKGIF_SMALL_PAGE_TIMEOUT = 15000;
 const SKGIF_ITEM_TIMEOUT = 10000;
 const _skgifTimeout = size => size === 1 ? SKGIF_ITEM_TIMEOUT : size <= SKGIF_DEFAULT_PAGE_SIZE ? SKGIF_SMALL_PAGE_TIMEOUT : SKGIF_PAGE_TIMEOUT;
 
-// Chiede `count` risultati di una lista a partire da `start`, in una pagina di `size`.
-// Se non arriva in tempo li richiede in pagine da 10 e poi uno alla volta; un risultato
-// che non arriva neanche da solo diventa { _skgifMissing: true }.
+// Chiede `count` risultati da `start`; se non arrivano riprova a pagine da 10 e da 1 (mancante = { _skgifMissing }).
 function skgifFetchRange(source, start, count, size, timeoutMs = _skgifTimeout(size)) {
   return skgifFetch(`${source}&page=${start / size + 1}&page_size=${size}`, timeoutMs)
     .then(data => data ? (data['@graph'] || []) : skgifSplitRange(source, start, count, size));
@@ -3383,7 +3442,7 @@ Opzioni di createSkgifPaginatedSearch():
   renderItem     - funzione che crea l'HTML di una card
   rankItems      - (facoltativa) riordina i risultati di una pagina
   emptyMessage   - (facoltativo) testo se non ci sono risultati
-  pageSize       - (facoltativo) risultati per pagina
+  pageSize       - (facoltativo) risultati per pagina (poi "Show [N] entries")
   containerId    - (facoltativo) dove mettere le card
   totalCountId   - (facoltativo) dove scrivere il totale
   dedupeKey      - (facoltativa) chiave per togliere i doppioni
@@ -3394,7 +3453,7 @@ function createSkgifPaginatedSearch(config) { // Gestisce la paginazione
   const containerId = config.containerId || 'search-results-container';
   const totalCountId = config.totalCountId || 'search-total-count';
   const dedupeKey = config.dedupeKey || (item => item.local_identifier || JSON.stringify(item));
-  const pageSize = config.pageSize || SKGIF_DEFAULT_PAGE_SIZE;
+  let pageSize = _skgifPageSizes[containerId] || config.pageSize || SKGIF_DEFAULT_PAGE_SIZE; // cambia con "Show [N] entries"
   const sources = config.sources || [];
   let sourceTotals = null; // totale di ogni fonte
   let listedTotal = 0; // somma dei totali delle fonti
@@ -3404,7 +3463,7 @@ function createSkgifPaginatedSearch(config) { // Gestisce la paginazione
 
   // Scarica più pagine; se una fallisce dà errore (così non sembra una pagina vuota).
   const fetchAll = urls => Promise.all(urls.map(skgifFetch)).then(responses => {
-    if (responses.some(r => !r)) throw new Error(SKGIF_FAILED_MESSAGE);
+    if (responses.some(r => !r)) throw new Error('The API did not answer.');
     return responses;
   });
 
@@ -3419,7 +3478,7 @@ function createSkgifPaginatedSearch(config) { // Gestisce la paginazione
     if (sourceTotals) return Promise.resolve();
     if (config.missingNoun) {
       return Promise.all(sources.map(src => skgifFirstPage(src, pageSize))).then(firsts => {
-        if (firsts.some(f => !f)) throw new Error(`The ${config.missingNoun}s could not be loaded (the API did not answer).`);
+        if (firsts.some(f => !f)) throw new Error('The API did not answer.');
         firstItems = firsts.map(f => f.items);
         sourceTotals = firsts.map(f => f.total);
         listedTotal = sourceTotals.reduce((a, b) => a + b, 0);
@@ -3464,6 +3523,7 @@ function createSkgifPaginatedSearch(config) { // Gestisce la paginazione
   function fetchPage(page) {
     const container = document.getElementById(containerId);
     if (container) {
+      _skgifHoldHeight(container); // la lista tiene la sua altezza durante il "Loading": la pagina non sobbalza
       container.innerHTML = SKGIF_LOADING_HTML;
     }
 
@@ -3479,14 +3539,17 @@ function createSkgifPaginatedSearch(config) { // Gestisce la paginazione
           return true;
         });
         const ranked = config.rankItems ? config.rankItems(items) : items;
+        if (container) container.style.minHeight = '';
         _render(container, ranked, page, listedTotal);
         showCount();
+        if (page === 1) _skgifInitPerPage('search', { failed: false, total: listedTotal }, containerId, SKGIF_SEARCH_PER_PAGE);
         // Precarica la pagina successiva, così Next è più veloce.
         if (page * pageSize < listedTotal) itemsForPage(page + 1).catch(() => {});
       })
       .catch(error => {
         console.error("SKG-IF search failed:", error);
-        if (container) container.innerHTML = `<div class="col-12"><div class="alert alert-danger">${_skgifEscape(error.message)}</div></div>`;
+        if (container) container.style.minHeight = '';
+        if (container) container.innerHTML = _skgifUnavailableHtml(!config.missingNoun); // ricerche: consiglio sulle query lunghe
         releaseSkgifPage(); // la ricerca non è riuscita
       });
   }
@@ -3521,7 +3584,14 @@ function createSkgifPaginatedSearch(config) { // Gestisce la paginazione
     fetchPage(page);
   }
 
-  _skgifPaginators[containerId] = { goToPage };
+  // "Show [N] entries": nuova dimensione delle pagine, pagina 1, senza far scorrere la pagina.
+  const refresh = () => {
+    pageSize = _skgifPageSizes[containerId] || SKGIF_DEFAULT_PAGE_SIZE;
+    if (config.missingNoun) sourceTotals = null; // la prima pagina di ogni fonte va richiesta con la nuova dimensione
+    _skgifKeepScroll();
+    fetchPage(1);
+  };
+  _skgifPaginators[containerId] = { goToPage, refresh };
   // La ricerca tiene il banner "Loading" finché non arrivano totale e primi risultati.
   return {
     search: () => {
@@ -3531,29 +3601,42 @@ function createSkgifPaginatedSearch(config) { // Gestisce la paginazione
   };
 }
 
-// Barra di paginazione sotto una lista (First/Previous, "Page N of M", Next/Last).
+// Paginazione a cerchi (prima, ultima e vicine); i "…" diventano un campo per scrivere la pagina.
 function _skgifPaginationBar(containerId, page, totalPages) {
-  const btn = (target, label, cls) =>
-    `<button type="button" class="btn ${cls} skgif-page-btn" data-skgif-page="${target}" data-skgif-container="${containerId}">${label}</button>`;
-  const prevBtns = page > 1
-    ? `<span class="skgif-page-group">${btn(1, '&laquo; First', 'btn-outline-secondary')}${btn(page - 1, '&lsaquo; Previous', 'btn-outline-secondary')}</span>`
-    : `<span></span>`;
-  const nextBtns = page < totalPages
-    ? `<span class="skgif-page-group">${btn(page + 1, 'Next &rsaquo;', 'btn-outline-primary')}${btn(totalPages, 'Last &raquo;', 'btn-outline-primary')}</span>`
-    : `<span></span>`;
-  // Numero di pagina + Invio: va a quella pagina.
-  const pageInput = totalPages > 1
-    ? `<input type="number" class="form-control form-control-sm skgif-page-input" min="1" max="${totalPages}" value="${page}" aria-label="Go to page" data-skgif-container="${containerId}">`
-    : `${page}`;
+  const btn = (target, label, cls = '') =>
+    `<button type="button" class="btn skgif-page-btn ${cls}" data-skgif-page="${target}" data-skgif-container="${containerId}"${target === page ? ' disabled aria-current="page"' : ''}>${label}</button>`;
+  const shown = [...new Set([1, page - 1, page, page + 1, totalPages])].filter(n => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+  const dots = `<button type="button" class="btn skgif-page-dots" title="Go to page (1-${totalPages})" aria-label="Go to page">…</button>`
+    + `<input type="number" class="form-control skgif-page-input" min="1" max="${totalPages}" placeholder="#" aria-label="Go to page (1-${totalPages})" data-skgif-container="${containerId}" hidden>`;
+  const numbers = shown.map((n, i) => (i && n - shown[i - 1] > 1 ? dots : '')
+    + btn(n, n, `skgif-page-num${n === page ? ' current' : ''}${String(n).length > 4 ? ' skgif-page-long' : ''}`)).join('');
   return `
     <div class="col-12">
       <nav class="skgif-pagination" aria-label="Search results pages">
-        ${prevBtns}
-        <span class="skgif-page-info">Page ${pageInput} of ${totalPages}</span>
-        ${nextBtns}
+        <span class="skgif-page-group">
+          ${numbers}
+        </span>
       </nav>
     </div>`;
 }
+
+// Clic sui "…": compare il campo; uscendo senza Invio tornano i "…".
+document.addEventListener('click', function (e) {
+  const dots = e.target.closest('.skgif-page-dots');
+  if (!dots) return;
+  const input = dots.nextElementSibling;
+  dots.hidden = true;
+  input.hidden = false;
+  input.focus();
+});
+
+document.addEventListener('focusout', function (e) {
+  const input = e.target.closest && e.target.closest('.skgif-page-input');
+  if (!input) return;
+  input.value = '';
+  input.hidden = true;
+  input.previousElementSibling.hidden = false;
+});
 
 // Gestori dei clic e dell'Invio della barra di paginazione, comuni a tutte le liste.
 document.addEventListener('click', function (e) {
@@ -3603,8 +3686,7 @@ function _skgifPlural(n, noun) {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
-// Rende sicuro un testo scritto dall'utente per un filtro cf.search.*:
-// i caratteri che rompono la richiesta (, " ' \ * & # %) diventano spazi.
+// I caratteri che rompono i filtri cf.search.* diventano spazi.
 function _skgifSafeTerm(s) {
   return String(s || "").normalize('NFC')
     .replace(/[,"'\\*&#%]/g, ' ') //caratteri che rompono la richiesta
@@ -3621,10 +3703,7 @@ function _skgifIdQuery(query) {
 // Campo del filtro con il valore dell'ID: identifiers.id, per le riviste identifiers.value.
 const SKGIF_ID_FIELD = { products: 'identifiers.id', persons: 'identifiers.id', organisations: 'identifiers.id', venues: 'identifiers.value' };
 
-// Cosa chiede all'API una pagina di ricerca, a partire da search_query:
-// { label, source } = URL di ricerca ("" = niente da cercare), oppure
-// { label, omidUrl } per la ricerca per OMID. Usata sia dal #preprocess sia dal #callfun,
-// così la prima pagina viene chiesta una sola volta.
+// URL della ricerca da search_query ({ label, source } o { label, omidUrl }), comune a #preprocess e #callfun.
 function _skgifSearchPlan(entity, query) {
   const idQuery = _skgifIdQuery(query);
   if (idQuery) {
@@ -3633,9 +3712,9 @@ function _skgifSearchPlan(entity, query) {
     if (!scheme || !id) return { label, source: '' };
     if (scheme === 'omid') {
       const shortOmid = id.replace(/^omid:/i, '').replace(/^https?:\/\/w3id\.org\/oc\/meta\//i, '');
-      return { label, omidUrl: `${SKGIF_API}/${entity}/https://w3id.org/oc/meta/${shortOmid}` };
+      return { label, isId: true, omidUrl: `${SKGIF_API}/${entity}/https://w3id.org/oc/meta/${shortOmid}` };
     }
-    return { label, source: `${SKGIF_API}/${entity}?filter=identifiers.scheme:${encodeURIComponent(scheme)},${SKGIF_ID_FIELD[entity]}:${encodeURIComponent(id)}` };
+    return { label, isId: true, source: `${SKGIF_API}/${entity}?filter=identifiers.scheme:${encodeURIComponent(scheme)},${SKGIF_ID_FIELD[entity]}:${encodeURIComponent(id)}` };
   }
   const apiTerm = s => encodeURIComponent(_skgifSafeTerm(s));
   if (entity === 'persons') {
@@ -3646,9 +3725,42 @@ function _skgifSearchPlan(entity, query) {
     if (fields.family) filters.push(`cf.search.family_name:${apiTerm(fields.family)}`);
     return { label, fields, source: filters.length ? `${SKGIF_API}/persons?filter=${filters.join(',')}` : '' }; // virgola = AND
   }
-  const term = _skgifSafeTerm(query);
+  const { text, type } = _skgifTextQuery(query);
+  const term = _skgifSafeTerm(text);
   const field = entity === 'products' ? 'cf.search.title' : 'cf.search.name';
-  return { label: term, source: term ? `${SKGIF_API}/${entity}?filter=${field}:${encodeURIComponent(term)}` : '' };
+  const filters = [`${field}:${encodeURIComponent(term)}`];
+  if (entity === 'venues' && SKGIF_VENUE_TYPES[type]) filters.push(`type:${type}`); // il tipo scelto si vede nel menu Type
+  return { label: term, text, type, source: term ? `${SKGIF_API}/${entity}?filter=${filters.join(',')}` : '' }; // virgola = AND
+}
+
+// Ricerca riviste: nome libero o "text=...&type=..." (filtro Type della home).
+function _skgifTextQuery(query) {
+  if (!/^text=/.test(query)) return { text: query, type: '' };
+  const params = new URLSearchParams(query);
+  return { text: params.get('text') || '', type: params.get('type') || '' };
+}
+function _skgifBuildTextQuery({ text, type = '' }) {
+  return type ? new URLSearchParams({ text, type }).toString() : text;
+}
+// Tipi di venue ammessi dal filtro `type` di /venues.
+const SKGIF_VENUE_TYPES = { journal: 'Journal', book: 'Book', conference: 'Conference', repository: 'Repository', other: 'Other', unknown: 'Unknown' };
+
+// Filtro Type sopra i risultati delle riviste: cambiarlo rifà la ricerca.
+function _skgifSearchRefine(category, plan) {
+  const box = document.getElementById('search-refine');
+  if (!box || plan.omidUrl || !plan.source) return; // ricerca per ID: niente filtri
+  const go = changes => {
+    const query = _skgifBuildTextQuery({ text: plan.text, type: plan.type, ...changes });
+    location.href = `browser.html?value=${category}/${encodeURIComponent(query)}`;
+  };
+  if (category === 'venue') {
+    box.innerHTML = '<span class="small fw-bold">Type:</span>';
+    const options = [{ value: '', text: 'All types' }, ...Object.entries(SKGIF_VENUE_TYPES).map(([value, text]) => ({ value, text }))];
+    const dropdown = _skgifDropdown('Filter by venue type', options, value => go({ type: value }));
+    dropdown.select(SKGIF_VENUE_TYPES[plan.type] ? plan.type : '');
+    dropdown.enable(true);
+    box.appendChild(dropdown.el);
+  }
 }
 
 // #preprocess di Lucinda per le ricerche: search_url ("" = nessuna chiamata) e search_label.
@@ -3657,6 +3769,7 @@ function pre_skgif_search(entity, searchQuery) {
   try { query = decodeURIComponent(query); } catch (e) { /* keep as is */ }
   const plan = _skgifSearchPlan(entity, query);
   const url = plan.omidUrl || (plan.source ? `${plan.source}&page=1&page_size=${SKGIF_DEFAULT_PAGE_SIZE}` : '');
+  if (plan.isId && url) document.documentElement.classList.add('skgif-id-pending'); // pagina nascosta: forse si apre subito la scheda
   return { search_url: url, search_label: plan.label };
 }
 
@@ -3670,10 +3783,31 @@ function post_skgif_search(res, searchUrl, searchLabel) {
 }
 
 // Esegue la ricerca di una pagina (#callfun): crea le card pagina per pagina.
+// Ricerca per ID con un solo record: apre direttamente la sua scheda; con più record (duplicati) mostra la lista.
 function _skgifRunSearch(plan, renderItem, rankItems) {
+  if (plan.isId && (plan.omidUrl || plan.source)) {
+    return _skgifOpenSingleRecord(plan).then(opened => {
+      if (opened) return;
+      document.documentElement.classList.remove('skgif-id-pending'); // più record (o nessuno): si mostra la pagina dei risultati
+      _skgifRunSearch({ ...plan, isId: false }, renderItem, rankItems);
+    });
+  }
   if (plan.omidUrl) return _skgifShowByOmid(plan.omidUrl, renderItem);
   if (!plan.source) return _skgifShowMessage('No results found.');
   createSkgifPaginatedSearch({ sources: [plan.source], rankItems, renderItem }).search();
+}
+
+// Prima pagina della ricerca per ID (la stessa URL di Lucinda, nessuna chiamata in più): se il record è uno solo
+// apre la sua scheda; replace = "Indietro" riporta alla home e non a questa pagina.
+function _skgifOpenSingleRecord(plan) {
+  const url = plan.omidUrl || `${plan.source}&page=1&page_size=${SKGIF_DEFAULT_PAGE_SIZE}`;
+  return skgifFetch(url).then(data => {
+    const items = data?.['@graph'] || [];
+    const total = plan.omidUrl ? items.length : skgifTotal(data);
+    const omid = total === 1 ? _skgifOmid(items[0]?.local_identifier) : '';
+    if (omid) location.replace(`browser.html?value=${omid}`);
+    return Boolean(omid);
+  });
 }
 
 // Ricerca per OMID: un solo record, mostrato senza paginazione (404 = non trovato).
@@ -3682,7 +3816,7 @@ function _skgifShowByOmid(url, renderItem) {
   holdSkgifPage();
   skgifFetch(url)
     .then(data => {
-      if (!data) return _skgifShowMessage(SKGIF_FAILED_MESSAGE);
+      if (!data) return void (container.innerHTML = _skgifUnavailableHtml());
       const record = (data['@graph'] || [])[0];
       if (record) container.innerHTML = renderItem(record);
       else _skgifShowMessage('No results found.');
@@ -3702,8 +3836,7 @@ function _skgifOmid(localId) {
   return match ? match[1] : "";
 }
 
-// Indirizzo della pagina esterna di ogni tipo di identificativo.
-// Una funzione che restituisce "" = nessun link.
+// Link alla pagina esterna di ogni schema di ID ("" = nessun link).
 const _skgifUrlPart = v => encodeURI(v).replace(/[?#]/g, encodeURIComponent);
 const _skgifHttpUrl = v => /^https?:\/\//i.test(v) ? encodeURI(v) : "";
 const SKGIF_ID_URLS = {
@@ -3751,8 +3884,27 @@ function _skgifIdLink(scheme, value) {
     : label;
 }
 
-// Riga degli identificativi ("doi:... • omid:br/..."); asBadges = come badge.
-function _skgifIdList(identifiers, omid, asBadges = false) {
+// Icona per copiare un valore (solo nelle schede, non nelle card); il clic è gestito sotto.
+const SKGIF_COPY_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 3.5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+const SKGIF_COPIED_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+function _skgifCopyButton(value) {
+  const v = _skgifEscape(value);
+  return `<button type="button" class="skgif-copy" data-copy="${v}" title="Copy ${v}" aria-label="Copy ${v}">${SKGIF_COPY_ICON}</button>`;
+}
+// Copia il valore e per un secondo e mezzo mostra la spunta e "Copied".
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.skgif-copy');
+  if (!btn) return;
+  navigator.clipboard.writeText(btn.dataset.copy).then(() => {
+    btn.innerHTML = SKGIF_COPIED_ICON;
+    btn.classList.add('copied');
+    clearTimeout(btn.skgifTimer);
+    btn.skgifTimer = setTimeout(() => { btn.innerHTML = SKGIF_COPY_ICON; btn.classList.remove('copied'); }, 1500);
+  });
+});
+
+// Riga degli identificativi ("doi:... • omid:br/..."); asBadges = come badge; copy = icona per copiare (schede).
+function _skgifIdList(identifiers, omid, asBadges = false, copy = false) {
   const ids = _skgifArray(identifiers)
     .filter(i => i && i.scheme && i.value)
     .map(i => ({ scheme: String(i.scheme).toLowerCase(), value: i.value }));
@@ -3760,7 +3912,7 @@ function _skgifIdList(identifiers, omid, asBadges = false) {
   return ids
     .map((id, i) => ({ id, i }))
     .sort((a, b) => _skgifIdRank(a.id.scheme) - _skgifIdRank(b.id.scheme) || a.i - b.i)
-    .map(x => _skgifIdLink(x.id.scheme, x.id.value))
+    .map(x => copy ? `<span class="text-nowrap">${_skgifIdLink(x.id.scheme, x.id.value)}${_skgifCopyButton(x.id.value)}</span>` : _skgifIdLink(x.id.scheme, x.id.value)) // icona sempre sulla riga del suo ID
     .map(link => asBadges ? `<span class="badge ra-id-badge">${link}</span>` : link)
     .join(asBadges ? ' ' : ' • ');
 }
@@ -3786,8 +3938,7 @@ function _skgifAgentPlainName(by) {
 // Link alla scheda di una persona/organizzazione: browser.html?value=ra/<id>.
 const _skgifAgentUrl = agentOmid => `browser.html?value=${agentOmid}`;
 
-// Nomi con un certo ruolo, separati da " • ", con link alla loro scheda
-// (e ORCID tra parentesi se withOrcid). "" se non ce ne sono.
+// Nomi con un certo ruolo, con link alla loro scheda (e ORCID se withOrcid); "" se nessuno.
 function _skgifAgents(contributions, role, agentUrl = _skgifAgentUrl, withOrcid = true) {
   return _skgifContributors(contributions, role)
     .map(by => {
@@ -3809,16 +3960,8 @@ function _skgifPageRange(biblio, dash) {
   return pages.first && pages.last && pages.first !== pages.last ? `${pages.first}${dash}${pages.last}` : (pages.first || pages.last || '');
 }
 
-// Autori di un prodotto; se non ce ne sono, gli editor ("Editors"); altrimenti "Unknown".
-function _skgifAuthorsOrEditors(contributions) {
-  const authors = _skgifAgents(contributions, 'author');
-  const editors = authors ? "" : _skgifAgents(contributions, 'editor');
-  return { label: editors ? 'Editors' : 'Authors', html: authors || editors || 'Unknown' };
-}
-
 // --- VIEW FUNCTIONS ---
-// Creano l'HTML dei segnaposto [[Lucinda:...]] dei template, a partire dalle
-// tabelle dei #postprocess. Ogni argomento è una colonna di una tabella.
+// HTML dei segnaposto [[Lucinda:...]]; ogni argomento è una colonna di un #postprocess.
 function _lvCell(arg) {
   return Lucinda_util.lucinda_unformat(arg).getData()[0]?.[0];
 }
@@ -3834,22 +3977,37 @@ Lucinda_view.prototype.skgif_head = function (...args) {
   return _skgifHeaderHtml(title || omid, line, meta);
 };
 
+// Le prime due righe dell'intestazione (Citations/References: gli ID vanno nella riga dei controlli).
+Lucinda_view.prototype.skgif_head_top = function (...args) {
+  const [title, line, omid] = args.map(_lvCell);
+  return _skgifHeaderHtml(title || omid, line, '');
+};
+
 // Titolo con link alla scheda documento.
 Lucinda_view.prototype.skgif_doc_link = function (...args) {
   const [omid, title] = args.map(_lvCell);
   return `<a href="browser.html?value=${_skgifEscape(omid)}">${_skgifEscape(title)}</a>`;
 };
 
+// Come skgif_agents, ma solo i primi 5 + "+N more".
+Lucinda_view.prototype.skgif_agents_short = function (...args) {
+  const names = _skgifArray(_lvCell(args[0])).map(agent => _skgifAgentHtml(agent));
+  return `<span>${_skgifShortNames(names, [], 'author')}</span>`;
+};
+
 // Nomi con link alla loro scheda, ORCID tra parentesi.
 Lucinda_view.prototype.skgif_agents = function (...args) {
-  return _skgifArray(_lvCell(args[0])).map(agent => {
-    let html = agent.omid
-      ? `<a href="${_skgifAgentUrl(agent.omid)}" class="text-dark text-decoration-none">${_skgifEscape(agent.name)}</a>`
-      : `<span>${_skgifEscape(agent.name)}</span>`;
-    if (agent.orcid) html += ` <span class="text-nowrap">(<a href="https://orcid.org/${_skgifEscape(agent.orcid)}" target="_blank">${_skgifEscape(agent.orcid)}</a>)</span>`;
-    return html;
-  }).join(' • ');
+  return _skgifArray(_lvCell(args[0])).map(_skgifAgentHtml).join(' • ');
 };
+
+// Un nome con link alla sua scheda e l'ORCID tra parentesi (se c'è).
+function _skgifAgentHtml(agent) {
+  let html = agent.omid
+    ? `<a href="${_skgifAgentUrl(agent.omid)}" class="text-dark text-decoration-none">${_skgifEscape(agent.name)}</a>`
+    : `<span>${_skgifEscape(agent.name)}</span>`;
+  if (agent.orcid) html += ` <span class="text-nowrap">(<a href="https://orcid.org/${_skgifEscape(agent.orcid)}" target="_blank">${_skgifEscape(agent.orcid)}</a>${_skgifCopyButton(agent.orcid)})</span>`;
+  return html;
+}
 
 // Rivista (con link) e i suoi identificativi.
 Lucinda_view.prototype.skgif_source = function (...args) {
@@ -3859,19 +4017,21 @@ Lucinda_view.prototype.skgif_source = function (...args) {
 
 // Identificativi con link, DOI per primo.
 Lucinda_view.prototype.skgif_ids = function (...args) {
-  return _skgifIdList(_lvCell(args[0]), args[1] ? _lvCell(args[1]) : undefined);
+  return _skgifIdList(_lvCell(args[0]), args[1] ? _lvCell(args[1]) : undefined, false, true);
 };
 
 // ORCID con link a orcid.org.
 Lucinda_view.prototype.skgif_orcid = function (...args) {
   const orcid = _skgifEscape(_lvCell(args[0]) ?? '');
-  return `<a href="https://orcid.org/${orcid}" target="_blank">${orcid} <sup><i class="fas fa-external-link-alt small"></i></sup></a>`;
+  return `<a href="https://orcid.org/${orcid}" target="_blank">${orcid} <sup><i class="fas fa-external-link-alt small"></i></sup></a>${_skgifCopyButton(_lvCell(args[0]) ?? '')}`;
 };
 
-// OMID completo con link.
-Lucinda_view.prototype.skgif_uri = function (...args) {
-  const uri = `https://w3id.org/oc/meta/${_skgifEscape(_lvCell(args[0]) ?? '')}`;
-  return `<a href="${uri}" target="_blank">${uri}</a>`;
+// URI permanente della citazione (w3id.org/oc/index/ci/<oci>).
+Lucinda_view.prototype.skgif_oci_uri = function (...args) {
+  const oci = pre_skgif_oci(_lvCell(args[0]));
+  if (!oci.citing) return '';
+  const uri = `https://w3id.org/oc/index/ci/${oci.citing}-${oci.cited}`;
+  return `<p class="mt-2 mb-0 small"><span class="text-muted">Full URI:</span> <a href="${uri}" target="_blank">${uri}</a>${_skgifCopyButton(uri)}</p>`;
 };
 
 // "ci/<oci>" preso dall'URL della pagina.
@@ -3894,22 +4054,16 @@ function _skgifProductRawTitle(product) {
   return (titles.none || Object.values(titles)[0] || [])[0] || '';
 }
 
-// Data di pubblicazione (solo la parte della data), protetta.
-function _skgifProductDate(product) {
-  const pubDate = _skgifProductRawDate(product);
-  return pubDate ? _skgifEscape(String(pubDate).slice(0, 10)) : 'Unknown';
-}
-
 // Data di pubblicazione come la dà l'API; undefined se manca.
 function _skgifProductRawDate(product) {
   const manifestations = _skgifArray(product.manifestations);
   return manifestations.map(m => m?.dates?.publication?.[0]).find(Boolean);
 }
 
-// Rivista del prodotto (corsivo, con link) e i suoi ID tra parentesi; "" se manca.
+// Nome della rivista del prodotto (corsivo, con link); "" se manca.
 function _skgifProductSource(product) {
   const venue = _skgifProductVenue(product);
-  return venue ? _skgifSourceHtml(venue.name, _skgifOmid(venue.local_identifier), venue.identifiers) : "";
+  return venue ? _skgifSourceHtml(venue.name, _skgifOmid(venue.local_identifier), []) : "";
 }
 
 // La rivista del prodotto, o undefined.
@@ -3923,16 +4077,14 @@ function _skgifSourceHtml(name, venueOmid, identifiers) {
   const titleHtml = venueOmid
     ? `<a href="browser.html?value=${venueOmid}" class="text-dark text-decoration-none">${venueTitle}</a>`
     : venueTitle;
-  const venueIds = _skgifIdList(identifiers);
+  const venueIds = _skgifIdList(identifiers, undefined, false, true); // solo nelle schede (le card passano [])
   return venueIds ? `${titleHtml} (${venueIds})` : titleHtml;
 }
 
 // --- Card e liste comuni a più pagine ---
 
-// Card compatta di un'opera (profilo autore, scheda organizzazione, liste del documento):
-// titolo con anno, autori (la persona del profilo in grassetto), rivista, ID, References/Citations.
-// badgeOf(ruoli) aggiunge un'etichetta col ruolo (es. "Editor").
-function _skgifWorkCard(product, badgeOf = _raEditorBadge) {
+// Card di un'opera, per tutte le liste: badge anno/ruolo, Authors, Type, Source o Publisher, IDs, Go to (airy = più spazio).
+function _skgifWorkCard(product, badgeOf = _raEditorBadge, airy = false) {
   const omid = _skgifOmid(product.local_identifier);
   if (!omid) return '';
   const year = String(_skgifProductRawDate(product) || '').slice(0, 4);
@@ -3944,14 +4096,16 @@ function _skgifWorkCard(product, badgeOf = _raEditorBadge) {
     const html = agentOmid ? `<a href="${_skgifAgentUrl(agentOmid)}">${name}</a>` : name;
     return by.local_identifier === _raPersonOmid ? `<strong>${html}</strong>` : html; // la persona del profilo in grassetto
   });
-  const namesHtml = names.length ? names.join(' • ') : 'Unknown';
+  const namesHtml = names.length ? _skgifShortNames(names, contributions, role) : 'Unknown';
   const source = _skgifProductSource(product);
-  const ids = _skgifIdList(product.identifiers, omid, true);
+  const publisher = source ? '' : _skgifAgents(contributions, 'publisher');
+  const type = _skgifArray(product.manifestations).map(m => m?.type?.labels?.en).find(Boolean) || '';
+  const ids = _skgifIdList(product.identifiers, omid); // link come nella Overview (non più badge)
   const roleBadge = badgeOf(_raPersonRoles(product));
 
   return `
     <div class="col-12 mb-2">
-      <div class="card shadow-sm ra-work">
+      <div class="card shadow-sm ra-work${airy ? ' skgif-card-airy' : ''}">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-start gap-3 mb-1">
             <h5 class="ra-work-title"><a href="browser.html?value=${omid}">${_skgifEscape(_skgifProductTitle(product))}</a></h5>
@@ -3961,7 +4115,9 @@ function _skgifWorkCard(product, badgeOf = _raEditorBadge) {
             </div>
           </div>
           <div class="ra-work-line"><span class="fw-bold">${role === 'author' || !names.length ? 'Authors' : 'Editors'}:</span> ${namesHtml}</div>
+          ${type ? `<div class="ra-work-line"><span class="fw-bold">Type:</span> ${_skgifEscape(type)}</div>` : ''}
           ${source ? `<div class="ra-work-line"><span class="fw-bold">Source:</span> ${source}</div>` : ''}
+          ${publisher ? `<div class="ra-work-line"><span class="fw-bold">Publisher:</span> ${publisher}</div>` : ''}
           ${ids ? `<div class="ra-work-line"><span class="fw-bold">IDs:</span> ${ids}</div>` : ''}
           <div class="d-flex justify-content-end gap-3 ra-work-links">
             <a href="browser.html?value=doc_ref/${omid}" class="btn btn-sm">Go to References</a>
@@ -3971,6 +4127,30 @@ function _skgifWorkCard(product, badgeOf = _raEditorBadge) {
       </div>
     </div>`;
 }
+
+// Autori nelle card: i primi SKGIF_CARD_NAMES + "+N more" (la persona del profilo resta visibile).
+const SKGIF_CARD_NAMES = 5;
+function _skgifShortNames(names, contributions, role) {
+  if (names.length <= SKGIF_CARD_NAMES + 1) return names.join(' • '); // non nasconde un solo nome
+  const personAt = _skgifContributors(contributions, role).findIndex(by => by.local_identifier === _raPersonOmid);
+  const short = names.slice(0, SKGIF_CARD_NAMES);
+  if (personAt >= SKGIF_CARD_NAMES) short.push('…', names[personAt]);
+  const hidden = names.length - SKGIF_CARD_NAMES - (personAt >= SKGIF_CARD_NAMES ? 1 : 0);
+  return `<span class="skgif-names-short">${short.join(' • ')}</span>`
+    + `<span class="skgif-names-full" hidden>${names.join(' • ')}</span> `
+    + `<button type="button" class="skgif-more-names" data-more="+${hidden} more">+${hidden} more</button>`;
+}
+
+// "+N more" / "Show less": mostra o nasconde tutti gli autori della card.
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.skgif-more-names');
+  if (!btn) return;
+  const line = btn.parentElement;
+  const open = line.querySelector('.skgif-names-full').hidden;
+  line.querySelector('.skgif-names-full').hidden = !open;
+  line.querySelector('.skgif-names-short').hidden = open;
+  btn.textContent = open ? 'Show less' : btn.dataset.more;
+});
 
 // Toglie le opere con OMID ripetuto.
 function _skgifDedupe(products) {
@@ -3984,9 +4164,9 @@ function _skgifDedupe(products) {
   });
 }
 
-// Bottone "Back to top": riporta all'inizio della lista (ricerca, filtri, Sort by),
-// visibile quando la si è superata. listId: riquadro della lista.
+// Bottone "Back to top", visibile quando si è superato l'inizio della lista listId.
 function _initAuthorListUi(listId) {
+  document.querySelectorAll('.ra-sort').forEach(_skgifSortAsDropdown); // "Sort by" come menu a tendina
   const top = document.getElementById('ra-top');
   const list = document.getElementById(listId);
   if (!top || !list) return;
@@ -3994,11 +4174,31 @@ function _initAuthorListUi(listId) {
   window.addEventListener('scroll', () => top.classList.toggle('d-none', list.getBoundingClientRect().top > -400));
 }
 
-// Riquadri dei numeri (Publications, Citations, References): clic o Invio portano alla lista
-// (data-skgif-goto); nella scheda documento aprono anche il tab giusto (data-br-goto-tab).
+// "Sort by" come menu a tendina: clicca i bottoni nascosti del template e ne copia lo stato.
+function _skgifSortAsDropdown(group) {
+  if (!group || group.dataset.skgifDd) return;
+  group.dataset.skgifDd = '1';
+  const buttons = [...group.querySelectorAll('button')];
+  const options = buttons.map(b => ({ value: b.dataset.order, text: b.textContent.trim() }))
+    .sort((a, b) => (b.value === 'default') - (a.value === 'default')); // "Default order" per primo
+  const dd = _skgifDropdown(group.getAttribute('aria-label') || 'Sort by', options,
+    value => buttons.find(b => b.dataset.order === value)?.click());
+  const sync = () => {
+    dd.enable(buttons.some(b => !b.disabled));
+    const active = buttons.find(b => b.classList.contains('active'));
+    if (active && active.dataset.order !== dd.value()) dd.select(active.dataset.order);
+  };
+  new MutationObserver(sync).observe(group, { subtree: true, attributes: true, attributeFilter: ['disabled', 'class'] });
+  group.classList.add('d-none');
+  group.after(dd.el);
+  sync();
+}
+
+// Clic/Invio sui riquadri dei numeri: va alla lista (data-skgif-goto) o a un'altra pagina (data-skgif-href).
 function _skgifGoToList(e) {
-  const box = e.target.closest('[data-skgif-goto]');
+  const box = e.target.closest('[data-skgif-goto], [data-skgif-href]');
   if (!box || (e.type === 'keydown' && e.key !== 'Enter')) return;
+  if (box.dataset.skgifHref) return void (location.href = box.dataset.skgifHref); // riquadro che apre un'altra pagina
   if (box.dataset.brGotoTab) document.querySelector(`[data-br-tab="${box.dataset.brGotoTab}"]`)?.click();
   document.getElementById(box.dataset.skgifGoto)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -4007,8 +4207,7 @@ document.addEventListener('keydown', _skgifGoToList);
 
 // --- Grafici ---
 
-// Grafico a barre con il numero di date per anno (date vuote saltate).
-// fill = altezza in px, larghezza piena; onYear(anno) = clic su una barra.
+// Grafico a barre delle date per anno; fill = altezza in px, onYear = clic su una barra.
 function _skgifYearChart(box, dates, label, emptyMessage, fill, onYear) {
   const perYear = {}; // anno -> quante date
   dates.forEach(date => {
@@ -4023,11 +4222,14 @@ function _skgifYearChart(box, dates, label, emptyMessage, fill, onYear) {
   box.innerHTML = fill
     ? `<div style="position: relative; width: 100%; max-width: ${Math.min(600, 150 + years.length * 80)}px; margin: 0 auto; height: ${fill}px;"><canvas></canvas></div>` // pochi anni = grafico più stretto
     : '<canvas style="display: block; margin: 0 auto;"></canvas>';
-  new Chart(box.querySelector('canvas'), {
+  // colonne sottili, anni obliqui, colori OC
+  const font = { family: '"Work Sans", sans-serif', size: 11 };
+  const chart = new Chart(box.querySelector('canvas'), {
     type: 'bar',
     data: {
       labels: years,
-      datasets: [{ label, backgroundColor: '#9a31fc', data: years.map(y => perYear[y]), borderWidth: 1, maxBarThickness: 60 }]
+      datasets: [{ label, backgroundColor: '#8f4ec7', hoverBackgroundColor: '#68c5f9', data: years.map(y => perYear[y]),
+        borderRadius: 2, maxBarThickness: 12, categoryPercentage: 0.6 }]
     },
     options: {
       responsive: !!fill,
@@ -4035,9 +4237,37 @@ function _skgifYearChart(box, dates, label, emptyMessage, fill, onYear) {
       plugins: { legend: { display: false } },
       onClick: onYear && ((event, bars) => { if (bars.length) onYear(years[bars[0].index]); }),
       onHover: onYear && ((event, bars) => { event.native.target.style.cursor = bars.length ? 'pointer' : ''; }),
-      scales: { y: { beginAtZero: true, ticks: { stepSize: 1, callback: v => Number.isInteger(v) ? v : '' } } }
+      scales: {
+        x: { grid: { display: false }, border: { color: '#c9bdd6' }, ticks: { font, color: '#6c727a', minRotation: 45, maxRotation: 45, autoSkip: false } }, // un anno sotto ogni colonna
+        y: { beginAtZero: true, border: { display: false, dash: [4, 4] }, grid: { color: '#e6dcef' },
+          ticks: { font, color: '#6c727a', stepSize: 1, callback: v => Number.isInteger(v) ? v : '' } }
+      }
     }
   });
+  if (!onYear) return;
+  // Sotto il grafico: come si usa e l'etichetta dell'anno scelto (✕ = toglie solo il filtro Year).
+  box.insertAdjacentHTML('beforeend', `<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
+      <span class="small text-muted">Click a bar to filter the list by that year.</span>
+      <button type="button" class="btn btn-sm skgif-year-chip d-none" aria-label="Remove the year filter"></button>
+    </div>`);
+  const chip = box.querySelector('.skgif-year-chip');
+  chip.addEventListener('click', () => box.skgifClearYears?.());
+  // Filtro Year: le barre fuori dall'intervallo from-to si sbiadiscono ('' = nessun limite).
+  box.skgifYears = (from, to) => {
+    chart.data.datasets[0].backgroundColor = years.map(y => (!from || y >= from) && (!to || y <= to) ? '#8f4ec7' : 'rgba(143, 78, 199, 0.2)');
+    chart.update();
+    const text = from && to ? (from === to ? from : `${from}–${to}`) : from ? `From ${from}` : to ? `Until ${to}` : '';
+    chip.textContent = `${text} ✕`;
+    chip.classList.toggle('d-none', !text);
+  };
+}
+
+// Mostra nel grafico `boxId` l'intervallo del filtro Year; clear toglie il filtro (✕ dell'etichetta).
+function _skgifChartYears(boxId, from, to, clear) {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  box.skgifClearYears = clear;
+  box.skgifYears?.(from, to);
 }
 
 function _skgifSetField(id, html) {
@@ -4056,8 +4286,7 @@ function _ciCount(n) {
 # 3. RICERCA AUTORI (aut_free_text)
 ################################################################################
 */
-// Ricerca autori. search_query arriva dalla home come "given=...&family=..."
-// oppure "scheme=orcid&id=..." (ricerca per ID). Il nome viene cercato così come è scritto.
+// Ricerca autori: search_query = "given=...&family=..." o "scheme=...&id=..."; nome cercato come scritto.
 function api_search_author_skgif(...args) {
   const plan = _skgifSearchPlan('persons', _skgifUrlParam(args[1], 'search_query')); // URL e titolo, come il #preprocess
   _skgifRunSearch(plan, _renderAuthorCard, plan.fields && (items => _rankAuthorsByQuery(items, plan.fields))); // match esatti in cima
@@ -4142,15 +4371,6 @@ function api_search_doc_skgif(...args) {
   _skgifRunSearch(_skgifSearchPlan('products', _skgifUrlParam(args[1], 'search_query')), _renderDocumentCard);
 }
 
-// Intestazione delle pagine documento, citazioni e riferimenti, una informazione per riga:
-//   Titolo
-//   Primi 3 autori, et al. · Anno · Rivista Vol(Numero), Pagine
-//   doi:... · br/<id>
-function _skgifHeaderLines(product, omid) {
-  const text = _skgifHeaderText(product, omid);
-  return _skgifHeaderHtml(text.title, text.line, text.meta);
-}
-
 // Le tre righe dell'intestazione come testo { title, line, meta }.
 function _skgifHeaderText(product, omid) {
   const agents = role => _skgifContributors(product.contributions, role);
@@ -4197,77 +4417,9 @@ function _skgifHeaderHtml(title, lineText, meta) {
   return line('skgif-head-title', title) + line('skgif-head-line', lineText) + line('skgif-head-meta', meta);
 }
 
-// Card di un documento nei risultati (anche nelle liste di citazioni/riferimenti).
+// Card dei risultati e delle pagine Go to: la card unica, versione ariosa, senza ruolo.
 function _renderDocumentCard(product) {
-  const omid = _skgifOmid(product.local_identifier);
-  if (!omid) return ""; // senza OMID niente card
-
-  const title = _skgifProductTitle(product);
-
-  // Autori (o editor se mancano), con link
-  const { label: agentsLabel, html: formattedAuthors } = _skgifAuthorsOrEditors(product.contributions);
-
-  // Data e rivista vengono dalla manifestation.
-  const formattedDate = _skgifProductDate(product);
-  const formattedSource = _skgifProductSource(product);
-
-  const formattedIds = _skgifIdList(product.identifiers, omid) || 'No ID';
-
-  // Tipo accanto al titolo; publisher solo se non c'è la rivista.
-  const type = _skgifArray(product.manifestations)
-    .map(m => m?.type?.labels?.en).find(Boolean) || '';
-  const publisher = formattedSource ? '' : _skgifAgents(product.contributions, 'publisher');
-
-  const ocRecordUrl = `browser.html?value=${omid}`;
-  const refUrl = `browser.html?value=doc_ref/${omid}`;
-  const citUrl = `browser.html?value=doc_cit/${omid}`;
-
-  return `
-    <div class="col-12 mb-3">
-      <div class="card shadow-sm p-2">
-        <div class="card-body p-3 d-flex flex-column">
-          <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
-            <h5 class="card-title mb-0">
-              <a href="${ocRecordUrl}">${_skgifEscape(title)}</a>
-            </h5>
-            ${type ? `<span class="badge ra-year-badge flex-shrink-0">${_skgifEscape(type)}</span>` : ''}
-          </div>
-          <hr>
-
-          <div class="mb-2">
-            <span class="metadata-label fw-bold">${agentsLabel}:</span><br>
-            <span>${formattedAuthors}</span>
-          </div>
-
-          <div class="mb-2">
-            <span class="metadata-label fw-bold">Publication Date:</span><br>
-            <span>${formattedDate}</span>
-          </div>
-
-          ${formattedSource ? `
-          <div class="mb-2">
-            <span class="metadata-label fw-bold">Source:</span><br>
-            <span>${formattedSource}</span>
-          </div>` : ''}
-
-          ${publisher ? `
-          <div class="mb-2">
-            <span class="metadata-label fw-bold">Publisher:</span><br>
-            <span>${publisher}</span>
-          </div>` : ''}
-
-          <div class="mb-2">
-            <span class="metadata-label fw-bold">Identifiers:</span><br>
-            <span>${formattedIds}</span>
-          </div>
-        </div>
-
-        <div class="d-flex justify-content-end px-3 pb-2 gap-2">
-          <a href="${refUrl}" class="btn btn-sm">Go to References</a>
-          <a href="${citUrl}" class="btn btn-sm">Go to Citations</a>
-        </div>
-      </div>
-    </div>`;
+  return _skgifWorkCard(product, () => '', true);
 }
 
 /*
@@ -4275,9 +4427,7 @@ function _renderDocumentCard(product) {
 # 5. CITAZIONI E RIFERIMENTI (doc_citations, doc_references)
 ################################################################################
 */
-// Citazioni e riferimenti di un documento:
-//   cf.cites:<omid>     -> chi cita il documento (citazioni)
-//   cf.cited_by:<omid>  -> cosa cita il documento (riferimenti)
+// Citazioni (cf.cites:<omid>) e riferimenti (cf.cited_by:<omid>) di un documento.
 function api_doc_citations_skgif(...args) {
   _skgifCitationList(args[1], 'cf.cites', 'No citations found.');
 }
@@ -4308,10 +4458,11 @@ function _skgifCitationList(lucinda_main_data, filter, emptyMessage) {
 # 6. RICERCA RIVISTE (venue_free_text)
 ################################################################################
 */
-// Ricerca riviste: una chiamata /venues?filter=cf.search.name:... (tutti i tipi di venue).
-// Publisher ed editor arrivano da una seconda chiamata (_loadVenueAgents()).
+// Ricerca riviste: /venues?filter=cf.search.name:...; publisher ed editor da _loadVenueAgents().
 function api_search_venue_skgif(...args) {
-  _skgifRunSearch(_skgifSearchPlan('venues', _skgifUrlParam(args[1], 'search_query')), _renderVenueCard);
+  const plan = _skgifSearchPlan('venues', _skgifUrlParam(args[1], 'search_query'));
+  _skgifSearchRefine('venue', plan);
+  _skgifRunSearch(plan, _renderVenueCard);
 }
 
 // Card di una rivista nei risultati; publisher ed editor vengono aggiunti dopo nel box .venue-agents.
@@ -4344,8 +4495,7 @@ function _renderVenueCard(venue) {
   return html;
 }
 
-// Publisher ed editor di una rivista: /venues non li ha, ma la stessa OMID chiesta
-// a /products restituisce la rivista con le sue contributions.
+// Publisher ed editor di una rivista: /products con la stessa OMID (/venues non li ha).
 function _loadVenueAgents(omid) {
   skgifFetch(`${SKGIF_API}/products/https://w3id.org/oc/meta/${omid}`).then(data => { // una chiamata per ogni rivista
     const contributions = (data?.['@graph'] || [])[0]?.contributions;
@@ -4366,7 +4516,7 @@ function _loadVenueAgents(omid) {
 # 7. RICERCA ORGANIZZAZIONI (org_free_text)
 ################################################################################
 */
-// Ricerca organizzazioni: una chiamata /organisations?filter=cf.search.name:... (record mostrati così come arrivano).
+// Ricerca organizzazioni: /organisations?filter=cf.search.name:...
 function api_search_org_skgif(...args) {
   _skgifRunSearch(_skgifSearchPlan('organisations', _skgifUrlParam(args[1], 'search_query')), _renderOrgCard);
 }
@@ -4399,12 +4549,9 @@ function _renderOrgCard(org) {
 # 8. RECORD DI CITAZIONE (new_ci_browser)
 ################################################################################
 */
-// Record di citazione. L'OCI è "<omid citante>-<omid citato>". Chiamate (blocchi #api del .hf, in parallelo):
-//   /products/<omid> x 2                       -> i due documenti
-//   cf.cited_by / cf.cites                     -> References / Citations di ognuno
-//   cf.cited_by:<a>,cf.cited_by:<b>            -> riferimenti in comune
-//   cf.cites:<a>,cf.cites:<b>                  -> co-citazioni
-// I grafici "Citations per year" vengono dall'Index API.
+// Record di citazione (OCI = <citante>-<citato>), blocchi #api in parallelo: i due /products, References/Citations
+// di ognuno, riferimenti in comune (cf.cited_by:a,cf.cited_by:b), co-citazioni (cf.cites:a,cf.cites:b).
+// Grafici "Citations per year" dall'Index API.
 
 // #preprocess di Lucinda: divide l'OCI in { citing, cited }; {} se non è valido.
 function pre_skgif_oci(oci) {
@@ -4416,10 +4563,11 @@ function pre_skgif_oci(oci) {
 
 // #postprocess di Lucinda per i due documenti: stato (found/missing/failed), dati e OMID citati.
 function post_skgif_ci_doc(res, id) {
-  const header = ['status', 'omid', 'title', 'agents_label', 'agents', 'date', 'ids', 'cites'];
+  const header = ['status', 'omid', 'title', 'agents_label', 'agents', 'date', 'ids', 'cites', 'source', 'type'];
   const omid = `br/${id}`;
   const doc = res.ok ? ((res.json?.['@graph'] || [])[0] || {}) : res.status === 404 ? {} : null;
-  if (!doc?.local_identifier) return [header, [doc ? 'missing' : 'failed', omid, '', 'Authors', [], '', [], []]];
+  if (!doc?.local_identifier) return [header, [doc ? 'missing' : 'failed', omid, '', 'Authors', [], '', [], [], '', '']];
+  const venue = _skgifProductVenue(doc); // rivista con i suoi ID (come nella scheda documento)
   const agents = role => _skgifContributors(doc.contributions, role).map(by => ({
     name: _skgifAgentPlainName(by),
     omid: _skgifOmid(by.local_identifier),
@@ -4431,14 +4579,16 @@ function post_skgif_ci_doc(res, id) {
     authors.length ? authors : editors,
     String(_skgifProductRawDate(doc) || '').slice(0, 10),
     _skgifArray(doc.identifiers).map(i => ({ scheme: i.scheme, value: i.value })),
-    _skgifArray(doc.related_products?.cites)]];
+    _skgifArray(doc.related_products?.cites),
+    venue ? { name: venue.name, omid: _skgifOmid(venue.local_identifier), identifiers: _skgifArray(venue.identifiers) } : '',
+    _skgifArray(doc.manifestations).map(m => m?.type?.labels?.en).find(Boolean) || '']];
 }
 
 // Errore del record (OCI non valido, documento mancante, citazione inesistente): { text, type } o null.
 function _skgifCiProblem(oci, citingStatus, citedStatus, cites) {
   const ids = pre_skgif_oci(oci);
   if (!ids.citing) return { text: 'This is not a valid OCI.', type: 'danger' };
-  if (citingStatus === 'failed' || citedStatus === 'failed') return { text: SKGIF_FAILED_MESSAGE, type: 'danger' };
+  if (citingStatus === 'failed' || citedStatus === 'failed') return { unavailable: true };
   const missing = [[citingStatus, ids.citing], [citedStatus, ids.cited]].filter(([status]) => status !== 'found').map(([, id]) => `br/${id}`);
   if (missing.length) return { text: `No document with OMID ${missing.join(' or ')} available.`, type: 'danger' };
   if (!_skgifArray(cites).includes(`https://w3id.org/oc/meta/br/${ids.cited}`)) return { text: 'This citation is not available.', type: 'warning' };
@@ -4448,8 +4598,75 @@ function _skgifCiProblem(oci, citingStatus, citedStatus, cites) {
 // View function: il messaggio sopra il record ("" se non c'è).
 Lucinda_view.prototype.skgif_ci_message = function (...args) {
   const problem = _skgifCiProblem(...args.map(_lvCell));
+  if (problem?.unavailable) return _skgifUnavailableHtml();
   return problem ? `<div class="alert alert-${problem.type} mb-4">${_skgifEscape(problem.text)}</div>` : '';
 };
+
+// Liste di "Citation overlap" (riferimenti in comune, co-citazioni), create al primo clic.
+let _ciOverlapIds = null;
+const _ciOverlapLists = {};
+const CI_OVERLAP = {
+  shared: { filter: 'cf.cited_by', noun: 'shared reference' },
+  cocit: { filter: 'cf.cites', noun: 'co-citation' }
+};
+function _ciOverlapToggle(e) {
+  if (e.type === 'click' && e.target.closest('.ci-overlap-hide')) { // "Hide": chiude la lista e torna ai riquadri
+    _ciOverlapShow(null);
+    document.getElementById('ci-overlap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  const box = e.target.closest('[data-ci-overlap]');
+  if (!box || !_ciOverlapIds || (e.type === 'keydown' && e.key !== 'Enter')) return;
+  const kind = box.dataset.ciOverlap;
+  const open = document.getElementById(`ci-${kind}-pane`).classList.contains('d-none');
+  _skgifKeepScroll();
+  _ciOverlapShow(open ? box : null);
+  if (!open || _ciOverlapLists[kind]) return;
+  const { filter, noun } = CI_OVERLAP[kind];
+  const omid = id => encodeURIComponent(`https://w3id.org/oc/meta/br/${id}`);
+  const source = `${SKGIF_API}/products?filter=${filter}:${omid(_ciOverlapIds.citing)},${filter}:${omid(_ciOverlapIds.cited)}`;
+  const prefix = `ci-${kind}`;
+  _skgifSetField(`${prefix}-list`, SKGIF_LOADING_HTML);
+  _ciOverlapLists[kind] = skgifFirstPage(source, SKGIF_LIST_PAGE_SIZE).then(first => {
+    const list = _skgifPagedList({
+      prefix, source, first, noun, showTotal: false,
+      emptyMessage: `No ${noun}s found.`,
+      statusText: n => _skgifPlural(n, noun),
+      scrollId: 'ci-overlap',
+      renderCard: _skgifWorkCard
+    });
+    _skgifInitPerPage(prefix, list);
+    return list;
+  });
+}
+// Apre la lista del riquadro `box` (null = tutte chiuse) e gira i triangolini.
+function _ciOverlapShow(box) {
+  document.querySelectorAll('[data-ci-overlap]').forEach(b => {
+    const on = b === box;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-expanded', String(on));
+    const chevron = b.querySelector('.ci-overlap-chevron');
+    if (chevron) chevron.innerHTML = on ? '&#9652;' : '&#9662;';
+    document.getElementById(`ci-${b.dataset.ciOverlap}-pane`)?.classList.toggle('d-none', !on);
+  });
+}
+document.addEventListener('click', _ciOverlapToggle);
+document.addEventListener('keydown', _ciOverlapToggle);
+
+// Rende cliccabile il riquadro di `numberId` quando il numero è > 0 (anche se arriva dopo).
+function _ciClickableCount(numberId, setup) {
+  const number = document.getElementById(numberId);
+  const box = number?.closest('.card');
+  if (!box) return;
+  const update = () => {
+    if (box.classList.contains('skgif-count-link') || !Number(number.textContent.replace(/\D/g, ''))) return;
+    box.classList.add('skgif-count-link');
+    box.tabIndex = 0;
+    setup(box);
+  };
+  update();
+  new MutationObserver(update).observe(number, { childList: true, subtree: true, characterData: true });
+}
 
 // #callfun: mostra il record e disegna i due grafici.
 function api_citation_record_skgif(...args) {
@@ -4457,6 +4674,17 @@ function api_citation_record_skgif(...args) {
   if (_skgifCiProblem(oci, _lucindaValue('citing_meta', 'status'), _lucindaValue('cited_meta', 'status'), _lucindaValue('citing_meta', 'cites'))) return;
   const { citing, cited } = pre_skgif_oci(oci);
   document.getElementById('ci-record')?.classList.remove('d-none');
+  // References/Citations -> pagine Go to; Shared references/Co-citations -> lista sotto.
+  [['citing', citing], ['cited', cited]].forEach(([who, id]) => [['refs', 'doc_ref'], ['cits', 'doc_cit']].forEach(([kind, page]) =>
+    _ciClickableCount(`${who}-${kind}`, box => { box.setAttribute('role', 'link'); box.dataset.skgifHref = `browser.html?value=${page}/br/${id}`; })));
+  [['ci-cited-by-both', 'shared'], ['ci-citing-both', 'cocit']].forEach(([numberId, kind]) =>
+    _ciClickableCount(numberId, box => {
+      box.setAttribute('role', 'button');
+      box.setAttribute('aria-expanded', 'false');
+      box.dataset.ciOverlap = kind;
+      box.querySelector('.card-body p')?.insertAdjacentHTML('beforeend', ' <span class="ci-overlap-chevron" aria-hidden="true">&#9662;</span>'); // ▾ chiusa, ▴ aperta
+    }));
+  _ciOverlapIds = { citing, cited };
   _ciAlignTitles();
   _skgifCitationsPerYearChart('ci-citing-chart', citing); // grafici per anno dall'Index
   _skgifCitationsPerYearChart('ci-cited-chart', cited);
@@ -4475,8 +4703,7 @@ function _ciAlignTitles() {
   window.addEventListener('resize', align);
 }
 
-// Grafico "Citations per year" di un documento, dall'Index API (una sola chiamata,
-// che dà tutte le citazioni con la data). Le citazioni senza data sono saltate.
+// Grafico "Citations per year" dall'Index API (una chiamata; citazioni senza data saltate).
 const OC_INDEX_API = "https://api.opencitations.net/index/v2";
 
 function _skgifCitationsPerYearChart(boxId, id) {
@@ -4485,7 +4712,7 @@ function _skgifCitationsPerYearChart(boxId, id) {
   box.innerHTML = '<em>Loading...</em>';
   skgifFetch(`${OC_INDEX_API}/citations/omid:br/${id}`).then(data => {
     if (!Array.isArray(data)) {
-      box.innerHTML = '<em>Chart not available (the OpenCitations Index did not return the citations).</em>';
+      box.innerHTML = '<em>Chart not available: the citation data of this work is too large to be retrieved.</em>'; // l'Index taglia le risposte enormi (es. br/0630685531)
       return;
     }
     _skgifYearChart(box, data.map(c => c.creation), '# Citations', 'No citations found.', 200);
@@ -4498,10 +4725,8 @@ function _skgifCitationsPerYearChart(boxId, id) {
 # 9. PROFILO AUTORE (new_ra_browser)
 ################################################################################
 */
-// Profilo autore:
-//   /persons/<omid>                                        -> nome, ORCID, identificativi
-//   /products?filter=contributions.by.local_identifier:<omid> -> tutte le opere (tutti i ruoli)
-// Nome, ID e conteggio li mette Lucinda; il JS scarica tutte le opere (lista, Sort by, filtri, grafico).
+// Profilo autore: /persons/<omid> (Lucinda) e tutte le opere via contributions.by.local_identifier
+// (JS: lista, Sort by, filtri, grafico).
 
 // #postprocess di Lucinda per author_meta: dati della persona (l'HTML lo fanno le view functions).
 function post_skgif_person(res, id) {
@@ -4509,7 +4734,7 @@ function post_skgif_person(res, id) {
   const omid = `ra/${id}`;
   const person = res.ok ? ((res.json?.['@graph'] || [])[0] || {}) : res.status === 404 ? {} : null; // {} = nessuna persona, null = chiamata fallita
   if (!person?.local_identifier) {
-    const message = person ? `No author or organisation with OMID ${omid} available.` : `Resource ${omid} could not be loaded. Try again later.`;
+    const message = person ? `No author or organisation with OMID ${omid} available.` : SKGIF_UNAVAILABLE_MESSAGE;
     return [header, ['', message, omid, omid, '', '', []]];
   }
   const identifiers = _skgifArray(person.identifiers);
@@ -4535,10 +4760,7 @@ function api_author_record_skgif(...args) {
 // Quante pagine di opere chiedere in parallelo.
 const SKGIF_AUTHOR_PARALLEL_PAGES = 6;
 
-// Scarica tutte le opere dell'autore e le mostra man mano, in ordine, con la barra di avanzamento,
-// a pagine lato client (Per page, come References/Citations).
-// Quando sono arrivate tutte attiva Sort by, filtri (Type, Year, Role) e disegna il grafico.
-// personOmid: OMID completo della persona, per trovare il suo ruolo in ogni opera.
+// Scarica tutte le opere e le mostra man mano; a lista completa attiva Sort by, filtri e grafico.
 let _raPersonOmid = '';
 
 function _loadAuthorWorks(works, firstPage, personOmid) {
@@ -4551,6 +4773,7 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
   let show = () => {};
   let downloaded = false;
   const filters = _skgifListFilters(document.getElementById('ra-filters'), ['type', 'year', 'role'], newKeep => { keep = newKeep; show(); });
+  filters.onYears((from, to) => _skgifChartYears('ra-pubs-chart', from, to, filters.clearYears));
 
   const hideTools = () => { // nessuna opera: niente filtri, Sort by e ricerca
     document.getElementById('ra-filters')?.parentElement.classList.add('d-none');
@@ -4559,7 +4782,7 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
   if (!firstPage || !firstPage.total) hideTools();
   if (!firstPage) {
     _skgifFallbackCount('search-total-count', '–');
-    if (container) container.innerHTML = '<div class="col-12"><p>The publications could not be loaded (the API did not answer).</p></div>';
+    if (container) container.innerHTML = _skgifUnavailableHtml();
     setChart('<em>Chart not available.</em>');
     return _setAuthorListStatus('', null);
   }
@@ -4583,11 +4806,15 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
   let current = 1; // pagina mostrata
   let view = () => {}; // mostra la pagina `current` della lista attuale
   let shown = ''; // pagina già sullo schermo, per non ridisegnarla a ogni arrivo
+  let info = null, fraction = null; // riga di stato (_skgifRangeStatus) e barra di avanzamento
+  const showStatus = () => { if (info) _setAuthorListStatus(_skgifRangeStatus(current, pageSize(), info), fraction); };
+  const setStatus = (newInfo, newFraction = null) => { info = newInfo; fraction = newFraction; showStatus(); };
   // Pagina `current` di list; count = quante opere avrà la lista (anche non ancora arrivate).
   const showPage = (list, count, render) => {
     const size = pageSize();
     const pageTotal = Math.max(1, Math.ceil(count / size));
     current = Math.min(current, pageTotal);
+    showStatus();
     const items = list.slice((current - 1) * size, current * size);
     const key = `${current}/${size}/${items.length}/${count}`;
     if (key === shown) return;
@@ -4618,7 +4845,7 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
     if (term) return;
     view = () => showPage(arrived(), total, cards);
     view();
-    _setAuthorListStatus(_skgifPlural(total, 'publication'), loaded / total);
+    setStatus({ count: total, single: _skgifPlural(total, 'publication') }, loaded / total);
   };
   if (container) container.innerHTML = '';
   showArrived();
@@ -4629,6 +4856,7 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
     current = 1;
     shown = '';
     if (!term) return showArrived();
+    info = null;
     _setAuthorListStatus('Searching…', null);
     if (container) container.innerHTML = SKGIF_LOADING_HTML;
     const source = `${works},cf.search.title:${encodeURIComponent(term)}`;
@@ -4637,15 +4865,16 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
       if (term !== value || downloaded) return;
       if (!first) {
         if (container) container.innerHTML = '';
-        return _setAuthorListStatus('The search could not be made (the API did not answer).', null);
+        info = null;
+        return _setAuthorListStatus('Service unavailable. Please try again later.', null);
       }
       const foundPages = [first.items];
       skgifFetchAllPages(source, first.total, SKGIF_DEFAULT_PAGE_SIZE, SKGIF_AUTHOR_PARALLEL_PAGES, (n, items) => { foundPages[n - 1] = items; }, { 1: first.items }).then(() => {
         if (term !== value || downloaded) return;
         const results = _skgifDedupe(foundPages.flat());
+        setStatus({ count: results.length, single: found(first.total) });
         view = () => showPage(results, results.length, cards);
         view();
-        _setAuthorListStatus(found(first.total), null);
       });
     });
   };
@@ -4674,11 +4903,18 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
       let works = keep ? all.filter(keep) : order === 'default' && !term ? inOrder : all;
       if (term) works = works.filter(w => _raTitleHas(w, term));
       works = _sortAuthorWorks(works, order); // ordinate tutte, poi divise in pagine
+      const found = n => `${plural(n)} with “${term}” in the title`;
+      const count = works.length;
+      if (term && keep) {
+        const withTerm = all.filter(w => _raTitleHas(w, term)).length;
+        info = { count, single: `${count} of ${found(withTerm)}`, phrase: found(count), from: withTerm };
+      } else if (term) info = { count, single: found(count) };
+      else if (keep) info = { count, single: `${count} of ${plural(all.length)}`, phrase: plural(count), from: all.length };
+      else info = { count, single: plural(all.length) + missingNote };
+      fraction = null;
       view = () => showPage(works, works.length, items => _renderAuthorWorks(items, order, _renderAuthorWorkOrMissing)); // per data: intestazione per anno
       view();
-      const found = n => `${plural(n)} with “${term}” in the title`;
-      _setAuthorListStatus(term && keep ? `${works.length} of ${found(all.filter(w => _raTitleHas(w, term)).length)}`
-        : term ? found(works.length) : !keep ? plural(all.length) + missingNote : `${works.length} of ${plural(all.length)}`, null);
+      showStatus();
     };
     filters.fill(all); // Role solo se è autore di alcune opere ed editor di altre
     _onAuthorSearch = value => {
@@ -4723,6 +4959,7 @@ function _initAuthorSearch(onSearch) {
   form.addEventListener('submit', event => {
     event.preventDefault();
     _skgifKeepCursor(input);
+    _skgifKeepScroll();
     search(_skgifSafeTerm(input.value));
   });
 }
@@ -4782,11 +5019,7 @@ function _sortAuthorWorks(works, order) {
 # 10. SCHEDA DOCUMENTO (new_br_any_browser)
 ################################################################################
 */
-// Scheda documento:
-//   /products/<omid>                    -> tutti i dati del documento
-//   cf.cited_by:<omid> / cf.cites:<omid> -> References / Citations, a pagine da 50
-// Dati e conteggi li mette Lucinda; il JS fa le due liste (tab), i loro strumenti e il grafico.
-// Fino a SKGIF_DOC_AUTO_LOAD le citazioni si scaricano da sole, sopra serve il bottone.
+// Scheda documento: /products/<omid> (Lucinda) e References/Citations a pagine da 50 (JS: tab, strumenti, grafico).
 
 // #callfun: Lucinda ha già messo dati e conteggi; qui si mostrano il record, le liste e il grafico.
 function api_document_record_skgif(...args) {
@@ -4803,7 +5036,7 @@ function api_document_record_skgif(...args) {
   _skgifSetField('br-cits-chart', '<em>Loading...</em>');
   document.getElementById('br-record')?.classList.remove('d-none');
 
-  // Prima pagina = quella di Lucinda. Gli scaricamenti automatici partono uno dopo l'altro, prima le citazioni.
+  // Prima pagina da Lucinda; scaricamenti automatici in fila, prima le citazioni.
   const tools = (kind, list, source) => _skgifListTools({
     prefix: `br-${kind}`, list, source, autoLoad: SKGIF_DOC_AUTO_LOAD, maxLoad: SKGIF_DOC_MAX_LOAD, noun: kind === 'refs' ? 'reference' : 'citation',
     search: { noun: kind === 'refs' ? 'reference' : 'citation', statusNoun: kind === 'refs' ? 'reference' : 'citation', scrollId: 'br-lists', renderCard: _skgifWorkCard }
@@ -4818,6 +5051,7 @@ function api_document_record_skgif(...args) {
         document.querySelector('[data-br-tab="cits"]')?.click();
         if (filters.select('year', year)) document.getElementById('br-lists')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } });
+    filters.onYears((from, to) => _skgifChartYears('br-cits-chart', from, to, filters.clearYears));
     if (!cits.failed && cits.total && cits.total <= SKGIF_DOC_AUTO_LOAD) return new Promise(done => cits.onLoaded(done));
   });
   skgifFirstPage(refsSource, SKGIF_DEFAULT_PAGE_SIZE).then(refsPage => {
@@ -4828,25 +5062,28 @@ function api_document_record_skgif(...args) {
 }
 
 // Soglie della scheda documento: scaricamento automatico fino ad AUTO_LOAD, con il bottone fino a MAX_LOAD.
-const SKGIF_DOC_AUTO_LOAD = 250;
+const SKGIF_DOC_AUTO_LOAD = 250; // 250 citazioni + 250 riferimenti = carico di SKGIF_CHART_AUTO_LOAD
 const SKGIF_DOC_MAX_LOAD = 1500;
 
-// #postprocess di Lucinda per doc_meta: una riga con i dati del documento (niente HTML).
-// "" = nessun valore (la riga del template viene nascosta).
+// #postprocess di doc_meta: una riga di dati ("" = campo nascosto).
 function post_skgif_document(res, id) {
   const header = ['found', 'message', 'omid', 'title', 'head_line', 'head_meta', 'authors', 'editors', 'publisher',
     'date', 'type', 'volume', 'issue', 'pages', 'source', 'ids'];
   const omid = `br/${id}`;
   const doc = res.ok ? ((res.json?.['@graph'] || [])[0] || {}) : res.status === 404 ? {} : null; // {} = nessun documento, null = chiamata fallita
   if (!doc?.local_identifier) {
-    const message = doc ? `No document or venue with OMID ${omid} available.` : `Resource ${omid} could not be loaded. Try again later.`;
+    const message = doc ? `No document or venue with OMID ${omid} available.` : SKGIF_UNAVAILABLE_MESSAGE;
     return [header, ['', message, omid, '', '', '', [], [], [], '', '', '', '', '', '', []]];
   }
   const manifestation = _skgifArray(doc.manifestations)[0] || {};
   const biblio = manifestation.biblio || {};
   const venue = _skgifProductVenue(doc);
   const head = _skgifHeaderText(doc, omid);
-  const agents = role => _skgifContributors(doc.contributions, role).map(by => ({ name: _skgifAgentPlainName(by), omid: _skgifOmid(by.local_identifier) }));
+  const agents = role => _skgifContributors(doc.contributions, role).map(by => ({
+    name: _skgifAgentPlainName(by),
+    omid: _skgifOmid(by.local_identifier),
+    orcid: _skgifArray(by.identifiers).find(i => i.scheme === 'orcid')?.value || '' // ID nelle schede (non nelle card)
+  }));
   return [header, [
     '1',
     '',
@@ -4873,6 +5110,7 @@ function post_skgif_document(res, id) {
 function _initBrTabs() {
   const tabs = document.querySelectorAll('[data-br-tab]');
   tabs.forEach(tab => tab.addEventListener('click', () => {
+    _skgifKeepScroll(); // una tab più corta (es. 0 citazioni) non fa risalire la pagina
     tabs.forEach(t => {
       const active = t === tab;
       t.classList.toggle('active', active);
@@ -4899,14 +5137,11 @@ function _brList(kind, source, first) {
 # 11. SCHEDA ORGANIZZAZIONE (new_org_browser)
 ################################################################################
 */
-// Scheda organizzazione: si apre per un ra/ che non è in /persons.
-//   /organisations/<omid>                                    -> nome, identificativi
-//   /products?filter=contributions.by.local_identifier:<omid> -> le sue pubblicazioni
-// Lista sfogliabile come nella scheda documento; grafico, filtri e Sort by solo
-// fino a SKGIF_ORG_CHART_MAX pubblicazioni.
+// Scheda organizzazione (ra/ non in /persons): /organisations/<omid> e le pubblicazioni;
+// grafico, filtri e Sort by fino a SKGIF_ORG_CHART_MAX.
 
 // Oltre questo numero di pubblicazioni niente grafico, filtri e ordinamento.
-const SKGIF_ORG_CHART_MAX = 2000;
+const SKGIF_ORG_CHART_MAX = 1500; // come la scheda documento
 
 // #postprocess di Lucinda per org_meta: dati dell'organizzazione (l'HTML lo fanno le view functions).
 function post_skgif_org(res, id) {
@@ -4914,7 +5149,7 @@ function post_skgif_org(res, id) {
   const omid = `ra/${id}`;
   const org = res.ok ? ((res.json?.['@graph'] || [])[0] || {}) : res.status === 404 ? {} : null; // {} = nessuna organizzazione, null = chiamata fallita
   if (!org?.local_identifier) {
-    const message = org ? `No author or organisation with OMID ${omid} available.` : `Resource ${omid} could not be loaded. Try again later.`;
+    const message = org ? `No author or organisation with OMID ${omid} available.` : SKGIF_UNAVAILABLE_MESSAGE;
     return [header, ['', message, omid, omid, '', [], []]];
   }
   const ids = _skgifArray(org.identifiers).map(i => ({ scheme: i.scheme, value: i.value }));
@@ -4946,6 +5181,7 @@ function api_org_record_skgif(...args) {
       onYear: year => { // clic su un anno: le pubblicazioni di quell'anno
         if (filters.select('year', year)) document.getElementById('org-pubs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } });
+    filters.onYears((from, to) => _skgifChartYears('org-chart', from, to, filters.clearYears));
   });
 }
 
@@ -4976,10 +5212,8 @@ function _orgRoleBadge(roles) {
 # 12. SCHEDA RIVISTA (new_venue_browser)
 ################################################################################
 */
-// Scheda rivista: si apre per un br/ che è in /venues (journal, book, conference...).
-//   /venues/<omid>    -> nome, tipo, identificativi (stesso URL del controllo nel main)
-//   /products/<omid>  -> publisher ed editor
-// Lista, conteggio e grafico delle pubblicazioni in stand-by: SKG-IF non ha un filtro per rivista.
+// Scheda rivista (br/ in /venues): nome/tipo/ID da /venues, publisher/editor da /products;
+// pubblicazioni non disponibili (nessun filtro per rivista).
 
 // #postprocess di Lucinda per venue_meta: dati della rivista (l'HTML lo fanno le view functions).
 function post_skgif_venue(res, id) {
@@ -4987,7 +5221,7 @@ function post_skgif_venue(res, id) {
   const omid = `br/${id}`;
   const venue = res.ok ? ((res.json?.['@graph'] || [])[0] || {}) : res.status === 404 ? {} : null; // {} = nessuna rivista, null = chiamata fallita
   if (!venue?.local_identifier) {
-    const message = venue ? `No venue with OMID ${omid} available.` : `Resource ${omid} could not be loaded. Try again later.`;
+    const message = venue ? `No venue with OMID ${omid} available.` : SKGIF_UNAVAILABLE_MESSAGE;
     return [header, ['', message, omid, omid, '', []]];
   }
   const ids = _skgifArray(venue.identifiers).map(i => ({ scheme: i.scheme, value: i.value }));

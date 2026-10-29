@@ -245,6 +245,8 @@ function skgifInitSearchFields(searchForm, searchInput, categorySelect) {
   const idFields = searchForm.querySelectorAll(".id-field");
   const textInputs = [searchInput, givenInput, familyInput];
   const schemeDropdown = skgifDropdown(schemeSelect);
+  const refines = searchForm.querySelectorAll(".oc-refine"); // filtro facoltativo della ricerca per nome (Type delle riviste)
+  skgifDropdown(document.getElementById("venueType"));
 
   // una scheda per ogni opzione del select
   tabs.innerHTML = [...categorySelect.options].map(o => {
@@ -272,6 +274,7 @@ function skgifInitSearchFields(searchForm, searchInput, categorySelect) {
     const isAuthor = category === "author";
     textFields.forEach(el => el.classList.toggle("d-none", isAuthor));
     authorFields.forEach(el => el.classList.toggle("d-none", !isAuthor));
+    searchForm.querySelector(".venue-filter").classList.toggle("d-none", category !== "venue");
     textLabel.textContent = c.label || "Search";
     textLabel.htmlFor = isAuthor ? "givenName" : "searchQuery";
     searchInput.placeholder = c.placeholder || "";
@@ -298,11 +301,13 @@ function skgifInitSearchFields(searchForm, searchInput, categorySelect) {
     const hasText = textInputs.some(el => !el.closest(".d-none") && el.value.trim());
     const hasId = !idSide.classList.contains("oc-hidden") && !!idInput.value.trim();
     textSide.classList.toggle("oc-inactive", side === "id" && hasText);
+    refines.forEach(el => el.classList.toggle("oc-inactive", side === "id" && hasText)); // valgono solo per la ricerca per testo
     idSide.classList.toggle("oc-inactive", side === "text" && hasId);
   }
 
   const setSide = side => () => { searchForm.dataset.side = side; updateFields(); };
   textSide.addEventListener("focusin", setSide("text"));
+  refines.forEach(el => el.addEventListener("focusin", setSide("text")));
   idSide.addEventListener("focusin", setSide("id"));
   [...textInputs, idInput].forEach(el => el.addEventListener("input", () => { skgifShowHint(""); updateFields(); }));
   categorySelect.addEventListener("change", toggleFields);
@@ -409,6 +414,7 @@ function skgifDropdown(select) {
 //   scheme=doi&id=10.1/...   pannello ID
 //   given=...&family=...     nome e cognome dell'autore
 //   <testo>                  testo libero delle altre categorie
+//   text=...&type=...        riviste con il filtro Type
 function skgifSearch(category, searchInput) {
   const form = document.getElementById("searchForm");
   const scheme = document.getElementById("idScheme").value;
@@ -435,7 +441,8 @@ function skgifSearch(category, searchInput) {
     if (family) params.set("family", family);
     query = params.toString();
   } else {
-    query = text;
+    const type = category === "venue" ? document.getElementById("venueType").value : "";
+    query = type ? new URLSearchParams({ text, type }).toString() : text;
   }
   window.location.href = `http://127.0.0.1:5500/example/oc/html_template/browser.html?value=${category}/${encodeURIComponent(query)}`;
 }

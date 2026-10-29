@@ -1,3 +1,6 @@
+/* SILVIA: font del sito opencitations.net (Work Sans per titoli/menu/bottoni, PT Serif per i testi) */
+@import url("https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap");
+
 /* container */
 .search-bar form {
   display: flex;
@@ -38,51 +41,60 @@
 .search-bar .btn i { font-size: 16px; }
 
 /* ==========================================================================
-   SILVIA: pannello di ricerca di home.html e home2.html
+   SILVIA - pannello di ricerca di home.html e home2.html, stile opencitations.net
+   (selettori più specifici dello <style> di home2.html)
    ========================================================================== */
+html body {
+  background: #f0def7 linear-gradient(to bottom, #d3c0e2 0%, rgba(240, 222, 247, 0) 300px) no-repeat;
+  font-family: "PT Serif", serif;
+}
 .oc-search {
-  --oc-purple: #8A2BE2;
-  --oc-purple-dark: #7a26c9;
-  --oc-purple-soft: rgba(138, 43, 226, 0.08);
-  --oc-text: #2d2640;
-  --oc-muted: #6b6480;
-  --oc-border: #dcd6e8;
+  --oc-purple: #8f4ec7;
+  --oc-blue: #68c5f9;
+  --oc-text: #2c3847;
+  --oc-muted: #6c727a;
+  --oc-border: #e6dcef;
   --bs-border-radius: 10px;
   width: 100%;
   position: relative;
-  z-index: 5; /* /* il menu si apre sopra le card di home2 */ */
+  z-index: 5;               /* il menu si apre sopra le card di home2 */
 }
-
+.oc-search, .oc-search button, .oc-label, .oc-or {
+  font-family: "Work Sans", sans-serif;
+}
 .oc-search-card { padding: 0; }
 
-/* schede delle risorse */
+/* schede delle risorse: voce attiva viola con riga sotto, come il menu del sito OC */
 .oc-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 4px;
+  gap: 0;
+  padding: 0;
   margin-bottom: 20px;
-  background: #f4f0fa;
-  border-radius: 12px;
+  background: transparent;
+  border-radius: 0;
+  border-bottom: 1px solid rgba(143, 78, 199, 0.18);
 }
 .oc-tab {
   flex: 1 1 0;
   border: 0;
   background: transparent;
-  color: var(--oc-muted);
+  color: var(--oc-text);
   font-weight: 500;
-  padding: 8px 12px;
-  border-radius: 9px;
+  padding: 10px 12px;
+  border-radius: 0;
+  border-bottom: 3px solid transparent;
   white-space: nowrap;
-  transition: background-color .15s ease, color .15s ease;
+  transition: color .3s ease;
 }
 .oc-tab i { margin-right: 6px; }
-.oc-tab:hover { background: var(--oc-purple-soft); color: var(--oc-text); }
+.oc-tab:hover { background: transparent; color: var(--oc-purple); }
 .oc-tab.active {
-  background: #fff;
+  background: transparent;
+  box-shadow: none;
   color: var(--oc-purple);
-  font-weight: 600;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  font-weight: 500;
+  border-bottom-color: var(--oc-purple);
 }
 .oc-tab:focus-visible { outline: 2px solid var(--oc-purple); outline-offset: 1px; }
 
@@ -95,24 +107,29 @@
 .oc-field { flex: 1 1 0; min-width: 0; }
 .oc-label {
   display: block;
-  font-size: .78rem;
+  font-size: .72rem;
   font-weight: 600;
-  letter-spacing: .04em;
+  letter-spacing: 1px;
   text-transform: uppercase;
   color: var(--oc-muted);
   margin-bottom: 6px;
 }
+
+/* campi bianchi, viola al clic */
 .oc-search form .form-control,
 .oc-search form .form-select {
   height: 46px;
   border: 1px solid var(--oc-border);
+  border-radius: 8px;
   color: var(--oc-text);
+  font-family: "PT Serif", serif;
 }
+.oc-search form .input-group .form-control { border-radius: 0 8px 8px 0; }
 .oc-search form .form-control::placeholder { color: #a9a3b8; }
 .oc-search form .form-control:focus,
 .oc-search form .form-select:focus {
   border-color: var(--oc-purple);
-  box-shadow: 0 0 0 .2rem rgba(138, 43, 226, 0.18);
+  box-shadow: none;
 }
 .oc-search form .form-control:disabled,
 .oc-search form .form-select:disabled {
@@ -139,6 +156,8 @@
   text-transform: uppercase;
   color: #a9a3b8;
 }
+
+/* bottone Search: maiuscolo spaziato, hover azzurro */
 .oc-btn {
   height: 46px;
   padding: 0 22px;
@@ -146,15 +165,27 @@
   border-radius: 10px;
   background: var(--oc-purple);
   color: #fff;
-  font-weight: 600;
+  font-weight: 500;
+  font-size: .85rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
   white-space: nowrap;
+  transition: background-color .3s ease;
 }
-.oc-btn:hover, .oc-btn:focus { background: var(--oc-purple-dark); color: #fff; }
+.oc-btn:hover, .oc-btn:focus { background: var(--oc-blue); color: #fff; }
 
 /* pannello ID nascosto (Citation) e lato non cercato sbiadito */
 .oc-hidden { display: none; }
 .oc-inactive { opacity: .35; filter: grayscale(1); transition: opacity .15s ease; }
 .oc-inactive:hover { opacity: .7; }
+
+/* filtro facoltativo accanto al campo del nome (Type delle riviste), stessa riga */
+.oc-search-row .oc-refine {
+  flex: 0 0 210px;
+  transition: opacity .15s ease;
+}
+.oc-refine .oc-dd { width: 100%; flex: none; }
+.oc-refine .oc-dd-btn { border-radius: 8px; }
 
 /* messaggio sotto la barra, altezza fissa */
 .oc-hint {
@@ -164,7 +195,7 @@
   color: #b42318;
 }
 
-/* menu degli schemi di ID */
+/* menu degli schemi di ID: pannello bianco, angoli vivi, ombra ampia, dissolvenza */
 .oc-dd {
   position: relative;
   flex: 0 0 140px;
@@ -178,9 +209,9 @@
   justify-content: space-between;
   gap: 8px;
   padding: 0 12px 0 14px;
-  background: #faf8fd;
+  background: #fff;
   border: 1px solid var(--oc-border);
-  border-radius: 10px 0 0 10px;
+  border-radius: 8px 0 0 8px;
   color: var(--oc-text);
   font-weight: 500;
   text-align: left;
@@ -188,17 +219,21 @@
 }
 .oc-dd-btn i { font-size: .7rem; color: var(--oc-muted); transition: transform .15s ease; }
 .oc-dd.open .oc-dd-btn i { transform: rotate(180deg); }
-.oc-dd-btn:hover { background: #f4f0fa; }
+.oc-dd-btn:hover { background: #fff; border-color: var(--oc-purple); }
 .oc-dd-btn:focus-visible,
 .oc-dd.open .oc-dd-btn {
   outline: none;
   position: relative;
   z-index: 3;
   border-color: var(--oc-purple);
-  box-shadow: 0 0 0 .2rem rgba(138, 43, 226, 0.18);
+  box-shadow: none;
 }
 .oc-dd-menu {
-  display: none;
+  display: block;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity .3s ease, transform .3s ease, visibility .3s;
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
@@ -206,22 +241,22 @@
   max-height: 320px;
   overflow-y: auto;
   margin: 0;
-  padding: 6px;
+  padding: 10px 0;
   list-style: none;
   background: #fff;
-  border: 1px solid #ece6f5;
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(60, 20, 100, 0.16);
+  border: none;
+  border-radius: 0;
+  box-shadow: 2px 5px 43px rgba(138, 164, 181, 0.28);
   z-index: 1000;
 }
-.oc-dd.open .oc-dd-menu { display: block; }
+.oc-dd.open .oc-dd-menu { visibility: visible; opacity: 1; transform: none; }
 .oc-dd-group {
-  padding: 8px 10px 4px;
+  padding: 8px 20px 4px;
   font-size: .7rem;
   font-weight: 700;
-  letter-spacing: .05em;
+  letter-spacing: 1px;
   text-transform: uppercase;
-  color: #a9a3b8;
+  color: var(--oc-muted);
 }
 .oc-dd-group:not(:first-child) { margin-top: 4px; padding-top: 10px; border-top: 1px solid #f0ecf6; }
 .oc-dd-item {
@@ -229,19 +264,46 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  padding: 8px 20px;
+  border-radius: 0;
   color: var(--oc-text);
   cursor: pointer;
+  transition: color .3s ease;
 }
 .oc-dd-item i { visibility: hidden; font-size: .75rem; color: var(--oc-purple); }
-.oc-dd-item.active { background: var(--oc-purple-soft); }
-.oc-dd-item.selected { color: var(--oc-purple); font-weight: 600; }
+.oc-dd-item.active { background: transparent; color: var(--oc-purple); }
+.oc-dd-item.selected { color: var(--oc-purple); font-weight: 500; }
 .oc-dd-item.selected i { visibility: visible; }
+
+/* card delle risorse (home2.html): bianche con ombra morbida, in hover salgono e diventano azzurre */
+.card.resource-card {
+  background: #fff;
+  backdrop-filter: none;
+  border-radius: 6px;
+  box-shadow: 2px 5px 43px rgba(138, 164, 181, 0.28);
+}
+.card.resource-card:hover {
+  background: #fff;
+  transform: translateY(-4px);
+  box-shadow: 2px 5px 43px rgba(138, 164, 181, 0.28);
+}
+.resource-card .icon-box { color: #8f4ec7; transition: color .3s ease; }
+.resource-card h5 {
+  font-family: "Work Sans", sans-serif;
+  font-weight: 500 !important;
+  color: #2c3847;
+  transition: color .3s ease;
+}
+.resource-card:hover .icon-box,
+.resource-card:hover h5 { color: #68c5f9; }
+.resource-card p { font-family: "PT Serif", serif; }
 
 @media (max-width: 767.98px) {
   .oc-tab { flex: 1 1 30%; padding: 8px 6px; font-size: .9rem; }
   .oc-search-row { flex-direction: column; align-items: stretch; }
   .oc-or { height: auto; justify-content: center; }
+  .oc-search-row .oc-refine { flex: none; }
+  /* spazio del filtro tenuto anche quando la risorsa non ne ha uno: il pannello non cambia altezza */
+  .oc-search-row:not(:has(.oc-refine:not(.d-none))) .venue-filter { display: block !important; visibility: hidden; }
   .oc-hidden { display: block; visibility: hidden; }
 }

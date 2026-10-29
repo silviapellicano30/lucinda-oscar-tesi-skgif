@@ -1,3 +1,6 @@
+/* SILVIA: font del sito opencitations.net (Work Sans per titoli/menu/bottoni, PT Serif per i testi) */
+@import url("https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap");
+
 :root{
   --cits-color: #4985f3;
   --refs-color: #fa790d;
@@ -136,407 +139,8 @@ a:hover {
   background-image: linear-gradient(0deg, rgba(154, 49, 252, 0.2) 0%, transparent 100%)!important;
 }
 
-/* SILVIA: link dei titoli inline, così la sottolineatura viola è sotto ogni riga */
-h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
-  display: inline!important;
-  -webkit-box-decoration-break: clone;
-  box-decoration-break: clone;
-}
-
-/* SILVIA: profilo autore - barra della lista, card delle opere, intestazioni per anno, "Back to top" */
-.ra-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  background: #fff;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid #e3e3e3;
-}
-.ra-sort .btn {
-  border: 1px solid #c9c9c9;
-  background: #fff;
-  color: #212529;
-}
-.ra-sort .btn.active {
-  background: #9a31fc;
-  border-color: #9a31fc;
-  color: #fff;
-}
-.ra-sort .btn:disabled {
-  opacity: 0.45;
-}
-#ra-progress .progress-bar,
-.br-chart-progress .progress-bar {
-  background: #9a31fc;
-}
-.ra-work .card-body {
-  padding: 0.9rem 1rem 0.4rem;
-}
-.ra-work-title {
-  font-size: 1.12rem;
-  margin: 0 0 0.5rem;
-}
-/* titolo in evidenza */
-.ra-work-title,
-.ra-work-title a {
-  font-weight: 600;
-}
-.ra-work-line {
-  font-size: 0.9rem;
-  margin-bottom: 0.45rem;
-}
-/* link References / Citations */
-.ra-work-links .btn {
-  padding: 0 0.1rem;
-  font-size: 0.85rem;
-}
-.ra-year-badge,
-.ra-id-badge {
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
-  color: #212529;
-  font-weight: normal;
-}
-.ra-year-badge {
-  font-size: 0.85rem;
-}
-/* la persona del profilo in grassetto */
-.ra-work-line strong {
-  font-weight: 700;
-}
-/* badge "Editor" */
-.ra-role-badge {
-  font-size: 0.85rem;
-  font-weight: normal;
-  background: rgba(154, 49, 252, 0.12);
-  border: 1px solid rgba(154, 49, 252, 0.5);
-  color: #5a1aa8;
-}
-.ra-year-heading {
-  font-weight: 700;
-  margin: 1rem 0 0.5rem;
-  padding-bottom: 0.25rem;
-  border-bottom: 2px solid rgba(154, 49, 252, 0.4);
-}
-/* contatore Publications */
-.ra-count-box {
-  max-width: 14rem;
-}
-/* grafico per anno, centrato */
-#ra-pubs-chart > div,
-#org-chart > div {
-  max-width: 600px;
-  margin: 0 auto;
-}
-.ra-top {
-  position: fixed;
-  right: 1.5rem;
-  bottom: 1.5rem;
-  width: auto;
-  padding: 0.35rem 0.9rem;
-  z-index: 10;
-  background: #9a31fc;
-  color: #fff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-}
-
-/* SILVIA: scheda documento - campi in griglia, tab References/Citations, bottone "Load chart" */
-.br-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 1rem 1.5rem;
-}
-.br-wide {
-  grid-column: 1 / -1;
-}
-.br-label {
-  display: block;
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #5f6368;
-  margin-bottom: 0.15rem;
-}
-.br-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  background: #fff;
-  padding: 0 1rem;
-}
-.br-tab {
-  border: none;
-  background: none;
-  padding: 0.85rem 1rem;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #5f6368;
-  border-bottom: 3px solid transparent;
-}
-.br-tab.active {
-  color: #5a1aa8;
-  border-bottom-color: #9a31fc;
-}
-.br-load-chart {
-  background: #9a31fc;
-  color: #fff;
-  padding: 0.4rem 1.2rem;
-  align-self: center;
-}
-.br-load-chart:hover {
-  background: #5a1aa8;
-  color: #fff;
-}
-
-/* SILVIA: intestazione di documento/citazioni/riferimenti: una riga per informazione, "..." se troppo lunga */
-.skgif-head > div,
-.skgif-head > .lucinda-skgif_head > div {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.skgif-head-title {
-  font-size: 1.35rem;
-  font-weight: 600;
-}
-.skgif-head-line {
-  margin-top: 0.15rem;
-}
-.skgif-head-meta {
-  font-size: 0.85rem;
-  color: #6c757d;
-  margin-top: 0.15rem;
-}
-
-/* SILVIA: gli <span> che Lucinda mette attorno alle view functions non devono rompere la griglia */
-.skgif-lv .lucinda-ifcond,
-.skgif-lv .lucinda-concat {
-  display: contents;
-}
-
-/* SILVIA: scheda organizzazione - "Search in titles" */
-.skgif-search-input {
-  width: 16rem;
-  border-color: #9a31fc;
-}
-.skgif-search-input:focus {
-  border-color: #9a31fc;
-  box-shadow: 0 0 0 0.2rem rgba(154, 49, 252, 0.25);
-}
-.skgif-search-reset {
-  border: 1px solid #c9c9c9;
-  background: #fff;
-}
-
-/* SILVIA: bottone "Clear filters" */
-.skgif-clear-filters {
-  border: 1px solid #9a31fc;
-  background: #f4f0fa;
-  color: #5a1aa8;
-  font-weight: 600;
-}
-.skgif-clear-filters:hover {
-  background: #9a31fc;
-  border-color: #9a31fc;
-  color: #fff;
-}
-
-/* SILVIA: seconda riga della barra delle liste (filtri, Sort by, Per page) */
-.skgif-toolbar-row:has(> :not(.d-none)) {
-  margin-top: 0.5rem;
-}
-
-/* SILVIA: menu a tendina delle liste (_skgifDropdown()) */
-.skgif-dd {
-  position: relative;
-}
-.skgif-dd-btn {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  max-width: 17rem;
-  height: calc(1.5em + 0.5rem + 2px);
-  padding: 0.25rem 0.85rem;
-  font-size: 0.875rem;
-  background: #fff;
-  border: 1px solid #c9c9c9;
-  border-radius: 0.25rem;
-  color: #212529;
-  white-space: nowrap;
-}
-.skgif-dd-value {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.skgif-dd-btn::after { /* /* freccia */ */
-  content: "";
-  flex: none;
-  width: 0.4rem;
-  height: 0.4rem;
-  border-right: 2px solid #6c757d;
-  border-bottom: 2px solid #6c757d;
-  transform: translateY(-2px) rotate(45deg);
-  transition: transform 0.15s ease;
-}
-.skgif-dd.open .skgif-dd-btn::after {
-  transform: translateY(1px) rotate(-135deg);
-}
-.skgif-dd-btn:hover:not(:disabled) {
-  background: #f4f0fa;
-}
-.skgif-dd-btn:focus-visible,
-.skgif-dd.open .skgif-dd-btn {
-  outline: none;
-  border-color: #9a31fc;
-  box-shadow: 0 0 0 0.2rem rgba(154, 49, 252, 0.25);
-}
-.skgif-dd-btn:disabled {
-  opacity: 0.45;
-}
-.skgif-dd-menu {
-  display: none;
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  min-width: 100%;
-  max-height: 300px;
-  overflow-y: auto;
-  margin: 0;
-  padding: 6px;
-  list-style: none;
-  background: #fff;
-  border: 1px solid #ece6f5;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(60, 20, 100, 0.16);
-  z-index: 1000;
-}
-.skgif-dd.open .skgif-dd-menu {
-  display: block;
-}
-.skgif-dd-item {
-  padding: 0.5rem 0.85rem;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.skgif-dd-item.active {
-  background: rgba(154, 49, 252, 0.08);
-}
-.skgif-dd-item.selected {
-  color: #9a31fc;
-  font-weight: 600;
-}
-.skgif-dd-item.selected::after {
-  content: " \2713"; /* /* spunta */ */
-}
-
 a.anyid-doi{
   
-}
-
-/* SILVIA: margini uguali a destra e sinistra per tutte le .row della pagina */
-#__lucinda__ > .row,
-#__lucinda__ > div:not(.row) > .row {
-  margin-left: 0.20rem;
-  margin-right: 0.20rem;
-}
-
-/* SILVIA: barra di paginazione (Previous/Next) */
-/* 3 colonne uguali: "Page X of Y" resta al centro */
-.skgif-pagination {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 1em;
-  margin-top: 1em;
-  margin-bottom: 1.5em;
-  padding: 0.75em 1.25em;
-}
-
-.skgif-pagination .skgif-page-btn {
-  border-radius: 0.375rem !important;
-  padding: 0.4em 1.3em;
-  font-weight: bold;
-  border-color: #9a31fc !important;
-  color: #9a31fc !important;
-  background-color: transparent;
-  transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-.skgif-pagination .skgif-page-btn:not(:disabled):hover {
-  background-color: #9a31fc;
-  color: white !important;
-}
-
-.skgif-pagination > :first-child {
-  justify-self: start;
-}
-
-.skgif-pagination > :last-child {
-  justify-self: end;
-}
-
-.skgif-pagination .skgif-page-info {
-  font-weight: bold;
-  color: black;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4em;
-  white-space: nowrap;
-}
-
-.skgif-pagination .skgif-page-group {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0.5em;
-}
-
-/* "Loading" mentre si cambia pagina, come il banner di Lucinda */
-#__lucinda__ .skgif-page-loading {
-  text-align: center;
-  font-size: 1.2em;
-  color: var(--link-text-color);
-  font-weight: bold;
-  padding: 1.5em 0;
-}
-
-#__lucinda__ .skgif-page-loading .loading-dots {
-  font-size: 2em;
-}
-
-/* il titolo riceve il focus cambiando pagina: niente bordo */
-#__lucinda__ .card[tabindex="-1"]:focus {
-  outline: none;
-}
-
-/* "Page [n] of N": numero + Invio */
-.skgif-pagination .skgif-page-input {
-  width: 6em;
-  text-align: center;
-  font-weight: bold;
-  border-color: #9a31fc;
-}
-
-.skgif-pagination .skgif-page-input:focus {
-  border-color: #9a31fc;
-  box-shadow: 0 0 0 0.2rem rgba(154, 49, 252, 0.25);
-}
-
-/* telefono: bottoni uno sotto l'altro */
-@media (max-width: 576px) {
-  .skgif-pagination {
-    grid-template-columns: 1fr;
-    justify-items: center;
-    padding: 0.75em 0;
-  }
-
-  .skgif-pagination > :first-child,
-  .skgif-pagination > :last-child {
-    justify-self: center;
-  }
 }
 
 @media (max-width: 768px) {
@@ -555,71 +159,826 @@ a.anyid-doi{
     flex-direction: column;
   }
 }
-/* SILVIA: tutte le schede - numeri in viola, titoli dei riquadri uguali, badge sopra il titolo su telefono */
-.skgif-count-number {
-  color: #9a31fc;
+
+/* ==========================================================================
+   SILVIA - MIGRAZIONE SKG-IF
+   Stile ripreso da opencitations.net (colori, font, bottoni, menu).
+   ========================================================================== */
+:root {
+  --oc-purple: #8f4ec7;      /* viola del sito OC */
+  --oc-blue: #68c5f9;        /* hover dei bottoni, "Loading" */
+  --oc-title: #2c3847;       /* titoli e menu */
+  --oc-grey: #6c727a;        /* etichette, testo secondario */
+  --oc-line: #e6dcef;        /* linee sottili */
+  --oc-shadow: 2px 5px 43px rgba(138, 164, 181, 0.28);
+  --oc-sans: "Work Sans", sans-serif;
+  --oc-serif: "PT Serif", serif;
 }
-/* SILVIA: "Loading citations… N/M" delle liste, ben visibile */
+
+/* --- Pagina --- */
+
+/* lilla con sfumatura in alto, PT Serif; footer sempre in fondo */
+body {
+  background: #f0def7 linear-gradient(to bottom, #d3c0e2 0%, rgba(240, 222, 247, 0) 300px) no-repeat;
+  font-family: var(--oc-serif);
+  color: #000;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+body > footer {
+  margin-top: auto !important;
+}
+/* footer nascosto durante il "Loading" */
+body:has(#lucinda_pendinghtml_main_loading) > footer,
+body:has(.skgif-page-loading) > footer,
+html.skgif-id-pending body > footer {
+  display: none;
+}
+#__lucinda__ {
+  font-family: var(--oc-serif);      /* lucinda.css mette sans-serif */
+  color: #000;
+}
+#__lucinda__ h1, #__lucinda__ h2, #__lucinda__ h3, #__lucinda__ h4, #__lucinda__ h5, #__lucinda__ h6,
+#__lucinda__ .btn, #__lucinda__ .badge, #__lucinda__ .card-header, #__lucinda__ label {
+  font-family: var(--oc-sans);
+}
+/* margini uguali a destra e sinistra per le .row */
+#__lucinda__ > .row,
+#__lucinda__ > div:not(.row) > .row {
+  margin-left: 0.20rem;
+  margin-right: 0.20rem;
+}
+/* logo verso la home, senza sottolineatura */
+header .logo a,
+header .logo a:hover {
+  background-image: none!important;
+}
+
+/* --- Link --- */
+
+/* titoli: sottolineatura sotto ogni riga */
+h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
+  display: inline!important;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+/* link nel testo delle card: sottolineatura più sottile e chiara */
+#__lucinda__ .ra-work-line a,
+#__lucinda__ .br-field a,
+#__lucinda__ .card-body > .mb-2 a {
+  background-image: linear-gradient(180deg, rgba(154, 49, 252, 0.22) 0%, transparent 100%) !important;
+  background-size: 100% 0.18em !important;
+}
+#__lucinda__ .ra-work-line a:hover,
+#__lucinda__ .br-field a:hover,
+#__lucinda__ .card-body > .mb-2 a:hover {
+  background-size: 0% 0% !important;
+}
+
+/* --- Card e riquadri --- */
+
+/* card bianche con ombra morbida */
+#__lucinda__ .card {
+  border: none;
+  border-radius: 6px;
+  box-shadow: var(--oc-shadow) !important;
+}
+/* riquadri dentro le card (contatori) */
+#__lucinda__ .card .card {
+  border: 1px solid var(--oc-line);
+  box-shadow: none !important;
+}
+#__lucinda__ .card-header {
+  background: #fff;
+  border-bottom: 1px solid var(--oc-line);
+  color: var(--oc-title);
+}
+#__lucinda__ .card:not(.card .card) > .card-header.text-center {
+  text-align: left !important;
+  padding: 0.9rem 1.4rem;
+}
+.skgif-box-title {
+  font-size: 1.1rem;
+  font-weight: 500 !important;
+  color: var(--oc-title);
+  letter-spacing: -0.2px;
+}
+/* numeri dei riquadri */
+.skgif-count-number,
+#__lucinda__ .card .card h3 {
+  font-family: var(--oc-sans);
+  font-weight: 500;
+  color: var(--oc-purple);
+}
+#__lucinda__ .card .card .card-header {
+  border-bottom: none;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--oc-grey);
+}
+#__lucinda__ .card .card .card-header .fw-bold {
+  font-weight: 600 !important;
+}
+/* riquadri cliccabili: si alzano con il bordo viola */
+.skgif-count-link {
+  cursor: pointer;
+}
+#__lucinda__ .card .skgif-count-link {
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+#__lucinda__ .card .skgif-count-link:hover,
+#__lucinda__ .card .skgif-count-link:focus-visible {
+  border-color: var(--oc-purple);
+  box-shadow: 0 4px 12px rgba(154, 49, 252, 0.2) !important;
+  transform: translateY(-2px);
+  outline: none;
+}
+#__lucinda__ .card .skgif-count-link.active {
+  border-color: var(--oc-purple);
+}
+/* il titolo riceve il focus cambiando pagina: niente bordo */
+#__lucinda__ .card[tabindex="-1"]:focus {
+  outline: none;
+}
+/* valore mancante (No ORCID found...) */
+.skgif-none {
+  font-style: italic;
+  color: #6c757d;
+}
+
+/* --- Intestazione delle schede: tipo grigio, titolo con riga viola sotto --- */
+#__lucinda__ .card.p-3 {
+  padding: 0.5rem 0.75rem !important;
+}
+#__lucinda__ .card.p-3 > .card-header {
+  border-bottom: none;
+  padding: 1rem 1rem 1.1rem !important;
+}
+#__lucinda__ .card.p-3 > .card-header > p.small.text-muted {
+  font-family: var(--oc-sans);
+  font-size: 0.75rem !important;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--oc-grey) !important;
+}
+#__lucinda__ .card.p-3 > .card-header > h3,
+.skgif-head-title {
+  font-family: var(--oc-sans);
+  font-weight: 500 !important;
+  font-size: 1.65rem;
+  letter-spacing: -0.5px;
+  color: var(--oc-title);
+  padding-bottom: 0.8rem;
+  margin-bottom: 0.7rem !important;
+  border-bottom: 4px solid var(--oc-purple);
+}
+/* documento/citazioni/riferimenti: una riga per informazione, "..." se troppo lunga */
+.skgif-head > div,
+.skgif-head > .lucinda-skgif_head > div {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.skgif-head-line {
+  margin-top: 0.15rem;
+  font-family: var(--oc-serif);
+}
+.skgif-head-meta {
+  font-size: 0.85rem;
+  color: var(--oc-grey);
+  margin-top: 0.15rem;
+  font-family: var(--oc-serif);
+}
+
+/* icona per copiare un identificativo; "Copied" in un fumetto, senza spostare il testo */
+.skgif-copy {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin: -2px 0 0 4px;
+  padding: 2px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--oc-grey);
+  line-height: 1;
+  cursor: pointer;
+}
+.skgif-copy:hover,
+.skgif-copy:focus-visible {
+  color: var(--oc-purple);
+  background: #f6eefc;
+  outline: none;
+}
+.skgif-copy.copied {
+  color: var(--oc-purple);
+}
+.skgif-copy.copied::after {
+  content: "Copied";
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--oc-title);
+  color: #fff;
+  font-family: var(--oc-sans);
+  font-size: 0.7rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* --- Campi delle schede --- */
+.br-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem 1.5rem;
+}
+.br-wide {
+  grid-column: 1 / -1;
+}
+/* etichette (AUTHORS, SOURCE...) */
+.br-label {
+  display: block;
+  font-family: var(--oc-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--oc-grey);
+  margin-bottom: 0.15rem;
+}
+/* gli <span> di Lucinda attorno alle view functions non rompono la griglia */
+.skgif-lv .lucinda-ifcond,
+.skgif-lv .lucinda-concat {
+  display: contents;
+}
+
+/* --- Bottoni: maiuscolo spaziato, angoli 10px, hover azzurro --- */
+.br-load-chart,
+.skgif-clear-filters,
+.skgif-search-reset,
+.skgif-page-btn,
+.ra-top {
+  font-family: var(--oc-sans);
+  font-weight: 500 !important;
+  font-size: 0.78rem !important;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border-radius: 10px !important;
+  transition: all 0.3s ease !important;
+}
+.br-load-chart,
+.ra-top {
+  background: var(--oc-purple) !important;
+  border: 2px solid var(--oc-purple) !important;
+  color: #fff !important;
+  padding: 0.45rem 1.1rem !important;
+}
+.br-load-chart {
+  align-self: center;
+}
+.br-load-chart:hover:not(:disabled),
+.ra-top:hover {
+  background: var(--oc-blue) !important;
+  border-color: var(--oc-blue) !important;
+}
+/* "Back to top" */
+.ra-top {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  width: auto;
+  z-index: 10;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+/* "Clear filters": pieno, si nota quando ci sono filtri attivi */
+.skgif-clear-filters {
+  background: var(--oc-purple) !important;
+  border: 2px solid var(--oc-purple) !important;
+  color: #fff !important;
+  padding: 0.35rem 0.9rem !important;
+  box-shadow: 0 2px 8px rgba(154, 49, 252, 0.35);
+}
+.skgif-clear-filters:hover {
+  background: var(--oc-blue) !important;
+  border-color: var(--oc-blue) !important;
+  color: #fff !important;
+}
+/* "Clear search", "Hide" */
+.skgif-search-reset {
+  background: transparent !important;
+  border: 2px solid var(--oc-purple) !important;
+  color: var(--oc-purple) !important;
+  padding: 0.35rem 0.9rem !important;
+}
+.skgif-search-reset:hover {
+  background: transparent !important;
+  border-color: var(--oc-blue) !important;
+  color: var(--oc-blue) !important;
+}
+/* "Search in titles" */
+.skgif-search-input {
+  width: 16rem;
+  font-family: var(--oc-serif);
+  border: 1px solid var(--oc-line);
+  border-radius: 8px;
+  box-shadow: none;
+}
+.skgif-search-input:focus {
+  font-family: var(--oc-serif);
+  border: 1px solid var(--oc-purple);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+/* --- Barra delle liste: stato, ricerca, filtri, Sort by, Show --- */
+.ra-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #fff;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--oc-line);
+  font-family: var(--oc-sans);
+}
+.ra-toolbar .fw-bold {
+  font-weight: 500 !important;
+  color: var(--oc-title);
+}
+.ra-toolbar .small.fw-bold {
+  color: var(--oc-grey);
+}
+/* seconda riga (filtri, Sort by, Show) */
+.skgif-toolbar-row:has(> :not(.d-none)) {
+  margin-top: 0.5rem;
+}
+
+/* menu a tendina (_skgifDropdown): pannello bianco, ombra ampia, dissolvenza */
+.skgif-dd {
+  position: relative;
+}
+.skgif-dd-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  max-width: 17rem;
+  height: calc(1.5em + 0.5rem + 2px);
+  padding: 0.25rem 0.85rem;
+  font-family: var(--oc-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: #fff;
+  border: 1px solid var(--oc-line);
+  border-radius: 8px;
+  color: var(--oc-title);
+  white-space: nowrap;
+}
+.skgif-dd-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.skgif-dd-btn:hover:not(:disabled) {
+  background: #fff;
+  border-color: var(--oc-purple);
+}
+.skgif-dd-btn:focus-visible,
+.skgif-dd.open .skgif-dd-btn {
+  outline: none;
+  border-color: var(--oc-purple);
+  box-shadow: none;
+}
+.skgif-dd-btn:disabled {
+  opacity: 0.45;
+}
+.skgif-dd-menu {
+  display: block;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 10px 0;
+  list-style: none;
+  background: #fff;
+  border: none;
+  border-radius: 0;
+  box-shadow: var(--oc-shadow);
+  z-index: 1000;
+}
+.skgif-dd.open .skgif-dd-menu {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+}
+.skgif-dd-item {
+  padding: 0.5rem 1.4rem;
+  border-radius: 0;
+  font-family: var(--oc-sans);
+  font-size: 0.9rem;
+  color: var(--oc-title);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+.skgif-dd-item.active {
+  background: transparent;
+  color: var(--oc-purple);
+}
+.skgif-dd-item.selected {
+  color: var(--oc-purple);
+  font-weight: 500;
+}
+/* spunta */
+.skgif-dd-item.selected::after {
+  content: " \2713";
+}
+
+/* --- Card delle opere (_skgifWorkCard): righe di un'unica card --- */
+#__lucinda__ .col-12.mb-2:has(> .ra-work) {
+  margin-bottom: 0 !important;
+}
+#__lucinda__ .card .card.ra-work {
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--oc-line);
+  box-shadow: none !important;
+  transition: background-color 0.3s ease;
+}
+#__lucinda__ .card .card.ra-work:hover {
+  background: #fcf9fe;
+}
+.ra-work .card-body {
+  padding: 0.9rem 1rem 0.4rem;
+}
+.ra-work-title {
+  font-size: 1.12rem;
+  margin: 0 0 0.5rem;
+}
+.ra-work-title,
+.ra-work-title a {
+  font-family: var(--oc-sans);
+  font-weight: 500;
+}
+.ra-work-line {
+  font-size: 0.9rem;
+  margin-bottom: 0.45rem;
+}
+.ra-work-line .fw-bold {
+  font-family: var(--oc-sans);
+  font-weight: 500 !important;
+  color: var(--oc-title);
+}
+/* la persona del profilo in grassetto */
+.ra-work-line strong {
+  font-weight: 700;
+}
+/* Go to References / Citations */
+.ra-work-links .btn {
+  padding: 0 0.1rem;
+  font-size: 0.85rem;
+}
+/* badge anno e ruolo */
+.ra-year-badge,
+.ra-id-badge,
+.ra-role-badge {
+  font-family: var(--oc-sans);
+  font-size: 0.85rem;
+  font-weight: normal;
+  background: transparent;
+  border: 1px solid var(--oc-line);
+  border-radius: 12px;
+  color: var(--oc-grey);
+}
+/* "+N more" / "Show less" degli autori */
+#__lucinda__ .skgif-more-names {
+  border: none;
+  background: none;
+  padding: 0 0.2rem;
+  font-family: var(--oc-sans);
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--oc-purple);
+  white-space: nowrap;
+}
+#__lucinda__ .skgif-more-names:hover {
+  color: var(--oc-blue);
+  text-decoration: underline;
+}
+/* versione ariosa (ricerche e pagine Go to) */
+#search-results-container > .col-12.mb-2:has(> .ra-work) {
+  padding: 0;
+}
+#__lucinda__ .skgif-card-airy {
+  border: none;
+}
+#__lucinda__ .skgif-card-airy .card-body {
+  padding: 1.3rem 1.6rem 0.6rem;
+}
+#__lucinda__ .skgif-card-airy .ra-work-title {
+  font-size: 1.25rem;
+  margin-bottom: 0.7rem;
+}
+#__lucinda__ .skgif-card-airy .ra-work-line {
+  font-size: 0.98rem;
+  margin-bottom: 0.5rem;
+}
+#__lucinda__ .skgif-card-airy .ra-work-links {
+  margin-top: 0.4rem;
+}
+/* intestazioni per anno (Sort by Newest/Oldest) */
+.ra-year-heading {
+  font-weight: 700;
+  margin: 1rem 0 0.5rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 2px solid rgba(154, 49, 252, 0.4);
+}
+
+/* --- Risultati delle ricerche: un'unica card bianca, etichette a sinistra e valori a destra --- */
+#search-results-container:has(> .col-12 > .card) {
+  background: #fff;
+  box-shadow: var(--oc-shadow);
+  border-radius: 6px;
+  margin: 0 0.95rem 1.5rem !important;
+  padding: 0.25rem 0 0;
+}
+/* stesso id per le opere del profilo autore, che è già dentro una card */
+.card #search-results-container {
+  background: transparent !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.card #search-results-container > .col-12 {
+  padding: 0;
+}
+#search-results-container > .col-12.mb-3 {
+  margin-bottom: 0 !important;
+  padding: 0;
+}
+#search-results-container > .col-12 > .card {
+  border-radius: 0;
+  border-bottom: 1px solid var(--oc-line);
+  box-shadow: none !important;
+  transition: background-color 0.3s ease;
+}
+#search-results-container > .col-12 > .card:hover {
+  background: #fcf9fe;
+}
+#search-results-container .card-title,
+#search-results-container .card-title a {
+  font-family: var(--oc-sans);
+  font-weight: 500;
+}
+#search-results-container .card-body > hr {
+  display: none;
+}
+#search-results-container .mb-2:has(> .metadata-label) {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 12px;
+  margin-bottom: 0.25rem !important;
+}
+#search-results-container .mb-2 > .metadata-label + br {
+  display: none;
+}
+#search-results-container .metadata-label {
+  font-family: var(--oc-sans);
+  font-weight: 600 !important;
+  font-size: 0.72rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--oc-grey);
+  padding-top: 0.2rem;
+}
+
+/* filtri e "Show [N] entries" sotto il titolo delle ricerche; nascosti se vuoti */
+.skgif-search-tools {
+  font-family: var(--oc-sans);
+  padding: 0 1rem 0.75rem;
+}
+/* intestazione con la riga dei controlli sotto: niente spazio in più tra le due */
+#__lucinda__ .card.p-3 > .card-header:has(+ .skgif-search-tools) {
+  padding-bottom: 0 !important;
+}
+.skgif-search-tools .skgif-head-meta {
+  margin-top: 0;
+}
+.skgif-search-tools:not(:has(> :not(.d-none):not(:empty))) {
+  display: none !important;
+}
+.skgif-search-tools .small.fw-bold {
+  font-weight: 500 !important;
+  color: var(--oc-grey);
+}
+
+/* --- Paginazione a cerchi (numero corrente con bordo viola) --- */
+.skgif-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem 2rem;
+  margin-top: 1em;
+  margin-bottom: 1.5em;
+  padding: 0.75em 1.25em;
+}
+.skgif-pagination .skgif-page-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+}
+.skgif-pagination .skgif-page-btn {
+  border: 2px solid #ece3f3 !important;
+  color: var(--oc-grey) !important;
+  background: transparent !important;
+}
+.skgif-pagination .skgif-page-btn:not(:disabled):hover,
+.skgif-pagination .skgif-page-btn.current {
+  border-color: var(--oc-purple) !important;
+  color: var(--oc-title) !important;
+  background: transparent !important;
+}
+.skgif-pagination .skgif-page-btn.current:disabled {
+  opacity: 1;
+}
+/* cerchio; con 5+ cifre (skgif-page-long) diventa una pillola */
+.skgif-pagination .skgif-page-num {
+  min-width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 21px !important;
+  font-size: 0.95rem !important;
+  letter-spacing: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.skgif-pagination .skgif-page-num.skgif-page-long {
+  padding: 0 0.6rem;
+}
+/* "…": cerchio tratteggiato che diventa il campo "vai a pagina" */
+.skgif-pagination .skgif-page-dots,
+.skgif-pagination .skgif-page-input {
+  height: 42px;
+  padding: 0;
+  font-family: var(--oc-sans);
+  font-size: 0.95rem;
+  color: var(--oc-grey);
+  text-align: center;
+}
+.skgif-pagination .skgif-page-dots {
+  width: 42px;
+  border-radius: 50% !important;
+  border: 2px dashed transparent !important;
+  background: transparent;
+  letter-spacing: 0;
+}
+.skgif-pagination .skgif-page-dots:hover {
+  border-color: var(--oc-purple) !important;
+  color: var(--oc-title);
+}
+.skgif-pagination .skgif-page-input,
+.skgif-pagination .skgif-page-input:focus {
+  width: 56px;
+  border-radius: 21px !important;
+  border: 2px solid var(--oc-purple);
+  box-shadow: none;
+  font-weight: 500;
+  -moz-appearance: textfield;
+}
+.skgif-pagination .skgif-page-input::-webkit-outer-spin-button,
+.skgif-pagination .skgif-page-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.skgif-pagination .skgif-page-input[hidden],
+.skgif-pagination .skgif-page-dots[hidden] {
+  display: none;
+}
+
+/* --- "Loading" e barre di avanzamento --- */
+/* banner di Lucinda, cambio pagina, "Loading citations… N/M": celeste come l'hover dei bottoni */
+#__lucinda__ #lucinda_pendinghtml_main_loading,
+#__lucinda__ .skgif-id-loading,
+#__lucinda__ .skgif-page-loading,
 #__lucinda__ .skgif-loading-note {
-  color: #9a31fc;
+  color: var(--oc-blue);
+}
+/* ricerca per ID: stesso banner di Lucinda al posto dei risultati, finché non si sa se aprire la scheda */
+#__lucinda__ .skgif-id-loading {
+  display: none;
+  text-align: center;
+  font-size: 1.2em;
+  font-weight: bold;
+}
+#__lucinda__ .skgif-id-loading .loading-dots {
+  font-size: 2em;
+}
+html.skgif-id-pending #__lucinda__ > :not(.skgif-id-loading):not(#lucinda_pendinghtml_main_loading) {
+  display: none !important;
+}
+html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
+  display: block;
+}
+#__lucinda__ .skgif-page-loading {
+  text-align: center;
+  font-size: 1.2em;
+  font-weight: bold;
+  padding: 1.5em 0;
+}
+#__lucinda__ .skgif-page-loading .loading-dots {
+  font-size: 2em;
+}
+#__lucinda__ .skgif-loading-note {
   font-weight: 700;
   font-size: 1rem;
 }
 #__lucinda__ .skgif-loading-note .loading-dots span {
   margin: 0 1px;
 }
-/* SILVIA: riquadri dei numeri cliccabili (portano alla lista) */
-.skgif-count-link {
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.skgif-count-link:hover,
-.skgif-count-link:focus-visible {
-  border-color: #9a31fc;
-  box-shadow: 0 0 0 2px rgba(154, 49, 252, 0.25) !important;
-  outline: none;
-}
-.skgif-box-title {
-  font-size: 1.1rem;
-}
-@media (max-width: 575.98px) {
-  .ra-work .card-body > .d-flex:first-child {
-    flex-direction: column-reverse;
-    gap: 0.25rem !important;
-  }
+#ra-progress .progress-bar,
+.br-chart-progress .progress-bar {
+  background: var(--oc-purple);
 }
 
-/* SILVIA: schermi stretti - la barra della lista non resta fissa in alto */
-@media (max-width: 767.98px) {
-  .ra-toolbar {
-    position: static;
-  }
+/* --- Scheda documento: tab References / Citations --- */
+.br-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  background: #fff;
+  padding: 0 1rem;
+}
+.br-tab {
+  border: none;
+  background: none;
+  padding: 0.85rem 1rem;
+  font-family: var(--oc-sans);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--oc-title);
+  border-bottom: 3px solid transparent;
+  transition: color 0.3s ease;
+}
+.br-tab:hover {
+  color: var(--oc-purple);
+}
+.br-tab.active {
+  color: var(--oc-purple);
+  border-bottom-color: var(--oc-purple);
 }
 
-/* SILVIA: telefono - bottoni "Sort by" più piccoli e su più righe */
-@media (max-width: 575.98px) {
-  .ra-sort {
-    flex-wrap: wrap;
-  }
-  .ra-sort .btn {
-    padding: 0.25rem 0.4rem;
-    font-size: 0.78rem;
-    white-space: nowrap;
-  }
+/* --- Profilo autore e organizzazione: contatore e grafico --- */
+.ra-count-box {
+  max-width: 14rem;
+}
+#ra-pubs-chart > div,
+#org-chart > div {
+  max-width: 600px;
+  margin: 0 auto;
 }
 
-/* SILVIA: valore mancante (No ORCID found...) in corsivo grigio */
-.skgif-none {
-  font-style: italic;
-  color: #6c757d;
+/* etichetta dell'anno scelto sotto i grafici ("2015–2018 ✕") */
+.skgif-year-chip {
+  font-family: var(--oc-sans);
+  font-size: 0.8rem !important;
+  padding: 0.15rem 0.7rem !important;
+  border: 1px solid var(--oc-purple) !important;
+  border-radius: 12px !important;
+  color: var(--oc-purple) !important;
+  background: transparent;
+}
+.skgif-year-chip:hover {
+  border-color: var(--oc-blue) !important;
+  color: var(--oc-blue) !important;
 }
 
-/* SILVIA: record di citazione - freccia "cites" viola, riquadri dei grafici alti uguali */
+/* --- Record di citazione --- */
+/* freccia "cites" */
 .ci-arrow {
-  color: #9a31fc;
+  color: var(--oc-purple);
   font-size: 2rem;
   line-height: 1;
 }
+.ci-arrow-label {
+  color: var(--oc-purple);
+  font-family: var(--oc-sans);
+}
+/* riquadri dei grafici alti uguali */
 #ci-citing-chart,
 #ci-cited-chart {
   min-height: 232px;
@@ -627,18 +986,33 @@ a.anyid-doi{
   flex-direction: column;
   justify-content: center;
 }
-.ci-arrow-label {
-  color: #5a1aa8;
+/* triangolino ▾/▴ di "Citation overlap" e di "Hide" */
+.ci-overlap-chevron {
+  color: var(--oc-purple);
+  font-size: 1.35em;
+  line-height: 1;
+  vertical-align: -0.1em;
 }
 
-/* SILVIA: il logo porta alla home, senza sottolineatura */
-header .logo a,
-header .logo a:hover {
-  background-image: none!important;
+/* --- Schermi stretti --- */
+@media (max-width: 767.98px) {
+  .ra-toolbar {
+    position: static;     /* la barra della lista non resta fissa in alto */
+  }
 }
-
-/* SILVIA: banner "Loading" in viola */
-#__lucinda__ #lucinda_pendinghtml_main_loading,
-#__lucinda__ .skgif-page-loading {
-  color: #9a31fc;
+@media (max-width: 576px) {
+  .skgif-pagination {
+    padding: 0.75em 0;
+  }
+}
+@media (max-width: 575.98px) {
+  /* badge sopra il titolo */
+  .ra-work .card-body > .d-flex:first-child {
+    flex-direction: column-reverse;
+    gap: 0.25rem !important;
+  }
+  #search-results-container .mb-2:has(> .metadata-label) {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }
