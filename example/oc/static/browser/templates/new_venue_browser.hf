@@ -1,13 +1,13 @@
 #id main
 #url value=br/{id}
-#api https://api.opencitations.net/skg-if/v1/venues/https://w3id.org/oc/meta/br/[[id]]
+#api [[skgif_api]]/venues/[[id_base]]br/[[id]]
 
 #id venue_meta
-#api https://api.opencitations.net/skg-if/v1/venues/https://w3id.org/oc/meta/br/[[id]]
+#api [[skgif_api]]/venues/[[id_base]]br/[[id]]
 #postprocess post_skgif_venue(id)
 
 #id venue_agents
-#api https://api.opencitations.net/skg-if/v1/products/https://w3id.org/oc/meta/br/[[id]]
+#api [[skgif_api]]/products/[[id_base]]br/[[id]]
 #postprocess post_skgif_venue_agents()
 
 #id venue_record

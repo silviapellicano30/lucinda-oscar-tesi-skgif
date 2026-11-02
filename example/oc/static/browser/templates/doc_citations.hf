@@ -2,15 +2,15 @@
 #url value=doc_cit/br/{id}
 
 #id doc_meta
-#api https://api.opencitations.net/skg-if/v1/products/https://w3id.org/oc/meta/br/[[id]]
+#api [[skgif_api]]/products/[[id_base]]br/[[id]]
 #postprocess post_skgif_document(id)
 
 #id list_count
-#api https://api.opencitations.net/skg-if/v1/products?filter=cf.cites:https%3A%2F%2Fw3id.org%2Foc%2Fmeta%2Fbr%2F[[id]]&page=1&page_size=1
+#api [[skgif_api]]/products?filter=cf.cites:[[id_base_enc]]br%2F[[id]]&page=1&page_size=1
 #postprocess post_skgif_total()
 
 #id list_page
-#api https://api.opencitations.net/skg-if/v1/products?filter=cf.cites:https%3A%2F%2Fw3id.org%2Foc%2Fmeta%2Fbr%2F[[id]]&page=1&page_size=10
+#api [[skgif_api]]/products?filter=cf.cites:[[id_base_enc]]br%2F[[id]]&page=1&page_size=10
 
 #id citations_list
 #callfun api_doc_citations_skgif()

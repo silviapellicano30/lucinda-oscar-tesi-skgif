@@ -44,7 +44,22 @@
     <script src="../static/vendor/bootstrap-5.3.5-dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="text/javascript" src="../static/js/lucinda.js"></script>
-    <script type="text/javascript" src="../static/browser/localbrowser.js"></script>
+    <!-- SILVIA (SKG-IF): codice diviso per compito, in quest'ordine (config, base, componenti, pagine).
+         Il codice di Pietro (SPARQL) è in ../static/browser/legacy/localbrowser_pietro.js, non caricato:
+         nessun template attivo lo usa; riaggiungerlo qui se si riattivano i template di old_templates. -->
+    <script type="text/javascript" src="../static/browser/skgif/config.js"></script>
+    <script type="text/javascript" src="../static/browser/skgif/core.js"></script>
+    <script type="text/javascript" src="../static/browser/skgif/ui.js"></script>
+    <script type="text/javascript" src="../static/browser/skgif/lists.js"></script>
+    <script type="text/javascript" src="../static/browser/skgif/cards.js"></script>
+    <script type="text/javascript" src="../static/browser/skgif/views.js"></script>
+    <script type="text/javascript" src="../static/browser/skgif/pages/search.js"></script>
+    <script type="text/javascript" src="../static/browser/skgif/pages/doc-lists.js"></script>
+    <script type="text/javascript" src="../static/browser/skgif/pages/document.js"></script>
+    <script type="text/javascript" src="../static/browser/skgif/pages/author.js"></script>
+    <script type="text/javascript" src="../static/browser/skgif/pages/org.js"></script>
+    <script type="text/javascript" src="../static/browser/skgif/pages/venue.js"></script>
+    <script type="text/javascript" src="../static/browser/skgif/pages/citation.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
       Lucinda.init({

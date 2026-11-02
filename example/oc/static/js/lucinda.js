@@ -863,6 +863,8 @@ class Lucinda {
       verbose: true,
       // SILVIA: tempo massimo di attesa di una chiamata #api (ms; null = nessun limite)
       api_timeout: 180000,
+      // SILVIA (SKG-IF): valori fissi per i segnaposto degli URL #api (es. [[skgif_api]]), oltre a quelli della risorsa
+      api_vars: {},
 
       endpoint: [
           {
@@ -1016,7 +1018,7 @@ class Lucinda {
           // risponde 200 (o se #postprocess restituisce true), altrimenti si prova il successivo
           if (("api" in main_block) && !("sparql" in main_block)) {
             const param = Lucinda.preprocess( main_block, pa.param );
-            const api_call = Lucinda_util.replace_placeholders(main_block.api, param);
+            const api_call = Lucinda_util.replace_placeholders(main_block.api, { ...Lucinda.conf.api_vars, ...param }); // SILVIA (SKG-IF): + api_vars
             if(Lucinda.conf.verbose){console.log("API check call:",api_call);}
             Lucinda.fetch_api(api_call).then(res => {
               const found = ("postprocess" in main_block) ? Lucinda.postprocess_api(res, main_block, param) : res.ok;
@@ -1177,7 +1179,7 @@ class Lucinda {
     // restituita da #postprocess (o il JSON così com'è se manca #postprocess)
     static query_api( cr_block ) {
       const param = Lucinda.preprocess( cr_block, Lucinda.current_resource.param );
-      const api_call = Lucinda_util.replace_placeholders(cr_block.api, param);
+      const api_call = Lucinda_util.replace_placeholders(cr_block.api, { ...Lucinda.conf.api_vars, ...param }); // SILVIA (SKG-IF): + api_vars
       if(Lucinda.conf.verbose){console.log("API call:",api_call);}
       Lucinda.fetch_api(api_call).then(res => {
         Lucinda.data[cr_block.id] = ("postprocess" in cr_block) ? Lucinda.postprocess_api(res, cr_block, param) : res.json;
