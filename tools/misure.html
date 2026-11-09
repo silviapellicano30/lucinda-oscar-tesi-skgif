@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<!-- Load-time measurement (test tool, not part of the site).
+     Open it through the local server: python -m http.server 5500 from the repository root, then
+     http://127.0.0.1:5500/tools/misure.html -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Load-time measurements - LUCINDA SKG-IF</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 24px; color: #222; max-width: 1200px; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  h2 { font-size: 1.1rem; margin-top: 28px; }
+  p.note { color: #555; margin-top: 4px; }
+  fieldset { border: 1px solid #ccc; padding: 10px 14px; margin: 12px 0; }
+  label { display: block; margin: 3px 0; }
+  input[type=number] { width: 60px; }
+  button { padding: 6px 14px; margin: 4px 6px 4px 0; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+  th { background: #f2f2f2; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.median { font-weight: bold; }
+  #status { margin: 10px 0; padding: 8px 12px; background: #f6f2fb; border-left: 4px solid #9931fc; min-height: 1.2em; }
+  #frame { width: 100%; height: 520px; border: 1px solid #ccc; margin-top: 8px; }
+  .case-group { font-weight: bold; margin-top: 8px; }
+  td.warn { color: #b45309; }
+  .warning { background: #fff7e6; border-left: 4px solid #f59e0b; padding: 8px 12px; }
+</style>
+</head>
+<body>
+<h1>Load-time measurements</h1>
+<p class="note">Each case is opened below and repeated several times; the times are recorded automatically.
+The results stay saved even if you close the page (until you press "Clear results").</p>
+<p class="warning"><b>Keep this tab in the foreground while measuring</b> (do not switch tabs or minimise Chrome):
+Chrome slows down hidden tabs and the times would not be reliable. Runs made with the tab hidden are marked with ⚠.</p>
+
+<fieldset>
+  <legend>Settings</legend>
+  <label><input type="checkbox" id="opt-preview" checked> Bypass the server cache (<code>preview=true</code>) - real time, as for the first visitor</label>
+  <label><input type="checkbox" id="opt-click" checked> Above the thresholds, press the "Load all" buttons automatically (time measured from the click)</label>
+  <label>Runs per case: <input type="number" id="opt-runs" value="3" min="1" max="10"></label>
+  <label>Time limit for each run (minutes): <input type="number" id="opt-timeout" value="10" min="1" max="60"></label>
+</fieldset>
+
+<fieldset>
+  <legend>Cases to measure</legend>
+  <div id="cases"></div>
+  <button id="all">Select all</button><button id="none">Deselect all</button>
+</fieldset>
+
+<button id="start">Start</button>
+<button id="stop" disabled>Stop</button>
+<button id="csv">Download summary (CSV)</button>
+<button id="csv-runs">Download all runs with date and time (CSV)</button>
+<button id="clear">Clear results</button>
+<button id="manual">Measure manually in this tab</button>
+<div id="status">Ready.</div>
+
+<h2>Results</h2>
+<p class="note">Times in seconds. "Median" = the median of the runs without problems. For lists above the threshold the time is measured from the click on "Load all".
+⚠ = run with problems (server unavailable, items not downloaded, hidden tab: hover over the number for details), excluded from the median.
+Hovering over a time also shows the date and time of the run.</p>
+<table>
+  <thead><tr><th>Case</th><th>Measure</th><th>Items</th><th>Server cache</th><th id="run-heads">Runs</th><th>Median</th><th>API calls</th></tr></thead>
+  <tbody id="results"></tbody>
+</table>
+
+<h2>Current page</h2>
+<iframe id="frame" title="Measured page"></iframe>
+
+<script>
+const BROWSER = '/example/oc/html_template/browser.html?value=';
+// Cases: id, group, name, URL value, expected measurements.
+const CASES = [
+  // Document page: threshold 250 (below it everything loads automatically, above it with the button)
+  { id: 'doc-24', group: 'Document page', name: 'Document, 24 citations / 60 references', value: 'br/06702496683', wait: ['page', 'citations', 'references'] },
+  { id: 'doc-136', group: 'Document page', name: 'Document, 136 citations / 13 references', value: 'br/062501777134', wait: ['page', 'citations', 'references'] },
+  { id: 'doc-266', group: 'Document page', name: 'Document, 266 citations (button) / 55 references', value: 'br/061301512373', wait: ['page', 'citations', 'references'] },
+  { id: 'doc-1041', group: 'Document page', name: 'Document, 1,041 citations (button) / 25 references', value: 'br/062501777136', wait: ['page', 'citations', 'references'] },
+  { id: 'doc-1058', group: 'Document page', name: 'Document, 1,058 citations (button) / 334 references (button)', value: 'br/06250648328', wait: ['page', 'citations', 'references'] },
+  { id: 'doc-3865', group: 'Document page', name: 'Document, 3,865 citations (button) / 20 references', value: 'br/061402112342', wait: ['page', 'citations', 'references'] },
+  // Author profile: always downloads everything
+  { id: 'aut-6', group: 'Author profile', name: 'Author, 6 works', value: 'ra/06036206707', wait: ['page', 'works'] },
+  { id: 'aut-115', group: 'Author profile', name: 'Author, 115 works (Silvio Peroni)', value: 'ra/0614010840729', wait: ['page', 'works'] },
+  // Organisation page: threshold 500
+  { id: 'org-61', group: 'Organisation page', name: 'Organisation, 61 publications', value: 'ra/0670114898', wait: ['page', 'publications'] },
+  { id: 'org-302', group: 'Organisation page', name: 'Organisation, 302 publications', value: 'ra/061303831403', wait: ['page', 'publications'] },
+  { id: 'org-849', group: 'Organisation page', name: 'Organisation, 849 publications (button, Ubiquity Press)', value: 'ra/06011045248', wait: ['page', 'publications'] },
+  { id: 'org-3661', group: 'Organisation page', name: 'Organisation, 3,661 publications (button, The Open Journal)', value: 'ra/0640115183', wait: ['page', 'publications'] },
+  // Searches: first page of results
+  { id: 'search-doc', group: 'Searches', name: 'Document search: "open citations"', value: 'document/' + encodeURIComponent('open citations'), wait: ['results'] },
+  { id: 'search-aut', group: 'Searches', name: 'Author search: Silvio Peroni', value: 'author/' + encodeURIComponent('given=Silvio&family=Peroni'), wait: ['results'] },
+  { id: 'search-venue', group: 'Searches', name: 'Venue search: "scientometrics"', value: 'venue/' + encodeURIComponent('scientometrics'), wait: ['results'] },
+  { id: 'search-org', group: 'Searches', name: 'Organisation search: "ubiquity press"', value: 'organisation/' + encodeURIComponent('ubiquity press'), wait: ['results'] },
+];
+const LABELS = {
+  page: 'page shown', results: 'first page of results', citations: 'all citations',
+  references: 'all references', publications: 'all publications', works: 'all works'
+};
+const STORE = 'skgifTimingResults';
+const $ = id => document.getElementById(id);
+
+// Saved results: { "<case>|<measure>|<cache>": { case, event, cache, total, fromClick, runs: [{ s, calls, problems }, ...] } }
+let results = JSON.parse(localStorage.getItem(STORE) || '{}');
+Object.keys(results).forEach(k => { if (results[k].runs.some(run => typeof run !== 'object')) delete results[k]; }); // discards results saved in an older format
+const okRuns = r => r.runs.filter(run => !run.problems.length);
+const save = () => localStorage.setItem(STORE, JSON.stringify(results));
+
+// List of the cases with their checkboxes.
+let lastGroup = '';
+CASES.forEach(c => {
+  if (c.group !== lastGroup) {
+    $('cases').insertAdjacentHTML('beforeend', `<div class="case-group">${c.group}</div>`);
+    lastGroup = c.group;
+  }
+  $('cases').insertAdjacentHTML('beforeend', `<label><input type="checkbox" class="case" value="${c.id}" checked> ${c.name} <small>(<a href="${BROWSER}${c.value}" target="_blank">${c.value}</a>)</small></label>`);
+});
+$('all').onclick = () => document.querySelectorAll('.case').forEach(b => { b.checked = true; });
+$('none').onclick = () => document.querySelectorAll('.case').forEach(b => { b.checked = false; });
+
+const median = list => {
+  const s = [...list].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+const fmt = n => n == null ? '–' : n.toLocaleString('en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+function render() {
+  const rows = Object.values(results);
+  const maxRuns = Math.max(1, ...rows.map(r => r.runs.length));
+  $('run-heads').colSpan = maxRuns;
+  $('run-heads').textContent = 'Runs';
+  const order = Object.keys(LABELS);
+  rows.sort((a, b) => CASES.findIndex(c => c.id === a.case) - CASES.findIndex(c => c.id === b.case)
+    || order.indexOf(a.event) - order.indexOf(b.event) || a.cache.localeCompare(b.cache));
+  $('results').innerHTML = rows.map(r => {
+    const c = CASES.find(x => x.id === r.case);
+    const runs = Array.from({ length: maxRuns }, (_, i) => {
+      const run = r.runs[i];
+      if (!run) return '<td class="num"></td>';
+      const when = run.at ? new Date(run.at).toLocaleString('en-GB') : '';
+      if (!run.problems.length) return `<td class="num" title="${when}">${fmt(run.s)}</td>`;
+      return `<td class="num warn" title="${when} - ${run.problems.join('; ').replace(/"/g, '&quot;')}">⚠ ${fmt(run.s)}</td>`;
+    }).join('');
+    const ok = okRuns(r);
+    return `<tr><td>${c ? c.name : r.case}</td><td>${LABELS[r.event] || r.event}${r.fromClick ? ' (from the click)' : ''}</td>
+      <td class="num">${r.total ?? '–'}</td><td>${r.cache}</td>${runs}<td class="num median">${ok.length ? fmt(median(ok.map(x => x.s))) : '–'}</td>
+      <td class="num">${ok.length ? Math.round(median(ok.map(x => x.calls))) : '–'}</td></tr>`;
+  }).join('');
+}
+render();
+
+function record(caseId, entry, cache, extraProblems = []) {
+  const key = `${caseId}|${entry.event}|${cache}`;
+  const row = results[key] || (results[key] = { case: caseId, event: entry.event, cache, total: null, runs: [], fromClick: false });
+  const fromClick = entry.fromClickMs != null;
+  row.runs.push({ s: Math.round((fromClick ? entry.fromClickMs : entry.ms) / 100) / 10, calls: entry.calls, problems: [...(entry.problems || []), ...extraProblems], at: new Date().toISOString() });
+  row.fromClick = row.fromClick || fromClick;
+  if (entry.total != null) row.total = entry.total;
+  save();
+  render();
+}
+
+// One run: opens the page in the iframe and waits for the expected measurements (or the time limit).
+let stopped = false;
+let current = null; // { case, events, resolve }
+window.addEventListener('message', e => {
+  const entry = e.data && e.data.skgifTiming;
+  if (!entry || !current) return;
+  if (entry.event === 'start') return void (current.started = true);
+  if (!current.case.wait.includes(entry.event) || current.events[entry.event]) return;
+  current.events[entry.event] = entry;
+  current.onEvent();
+});
+
+function runOnce(c, timeoutMin) {
+  return new Promise(resolve => {
+    const startedAt = Date.now();
+    current = { case: c, events: {}, started: false, onEvent: null };
+    const finish = reason => {
+      clearInterval(tick);
+      const got = current.events;
+      current = null;
+      $('frame').src = 'about:blank';
+      resolve({ got, reason });
+    };
+    current.onEvent = () => { if (c.wait.every(ev => current.events[ev])) finish('ok'); };
+    const tick = setInterval(() => {
+      const elapsed = (Date.now() - startedAt) / 1000;
+      const have = c.wait.filter(ev => current && current.events[ev]).map(ev => LABELS[ev]);
+      setStatus(`${statusPrefix} - ${Math.round(elapsed)} s${have.length ? ' - arrived: ' + have.join(', ') : ''}`);
+      if (stopped) finish('stopped');
+      else if (elapsed > timeoutMin * 60) finish('timeout');
+      else if (elapsed > 20 && current && !current.started) finish('no-timing'); // timing.js not active
+    }, 1000);
+    $('frame').src = BROWSER + c.value;
+  });
+}
+
+let statusPrefix = '';
+const setStatus = text => { $('status').textContent = text; };
+
+$('start').onclick = async () => {
+  const chosen = CASES.filter(c => document.querySelector(`.case[value="${c.id}"]`).checked);
+  if (!chosen.length) return setStatus('No case selected.');
+  const runs = Math.max(1, Number($('opt-runs').value) || 3);
+  const timeoutMin = Math.max(1, Number($('opt-timeout').value) || 10);
+  const preview = $('opt-preview').checked;
+  const cache = preview ? 'bypassed' : 'used';
+  sessionStorage.setItem('skgifTiming', JSON.stringify({ preview, autoClick: $('opt-click').checked }));
+  stopped = false;
+  $('start').disabled = true;
+  $('stop').disabled = false;
+  const problems = [];
+  for (const c of chosen) {
+    for (let r = 1; r <= runs && !stopped; r++) {
+      statusPrefix = `${c.name} - run ${r} of ${runs}`;
+      const { got, reason } = await runOnce(c, timeoutMin);
+      Object.values(got).forEach(entry => record(c.id, entry, cache));
+      if (reason === 'no-timing') { problems.push('timing.js does not answer: check its line in browser.html'); stopped = true; }
+      else if (reason === 'timeout') problems.push(`${c.name}, run ${r}: time limit exceeded (missing: ${c.wait.filter(ev => !got[ev]).map(ev => LABELS[ev]).join(', ')})`);
+      await new Promise(res => setTimeout(res, 1500)); // short pause between runs
+    }
+    if (stopped) break;
+  }
+  $('start').disabled = false;
+  $('stop').disabled = true;
+  setStatus((stopped ? 'Stopped.' : 'Finished.') + (problems.length ? ' Problems: ' + problems.join('; ') : ''));
+};
+$('stop').onclick = () => { stopped = true; };
+
+$('clear').onclick = () => {
+  if (!confirm('Delete all saved results?')) return;
+  results = {};
+  save();
+  render();
+};
+
+$('csv').onclick = () => {
+  const rows = Object.values(results);
+  const maxRuns = Math.max(1, ...rows.map(r => r.runs.length));
+  const head = ['Case', 'URL', 'Measure', 'From the click', 'Items', 'Server cache', ...Array.from({ length: maxRuns }, (_, i) => `Run ${i + 1} (s)`),
+    'Median (s, runs without problems)', 'API calls', 'Problems'];
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const num = n => n == null ? '' : String(n).replace('.', ',');
+  const lines = [head.map(q).join(';')].concat(rows.map(r => {
+    const c = CASES.find(x => x.id === r.case) || {};
+    const ok = okRuns(r);
+    const problems = r.runs.map((run, i) => run.problems.length ? `run ${i + 1}: ${run.problems.join(', ')}` : '').filter(Boolean).join(' | ');
+    return [c.name || r.case, c.value || '', LABELS[r.event] || r.event, r.fromClick ? 'yes' : 'no', r.total ?? '', r.cache,
+      ...Array.from({ length: maxRuns }, (_, i) => r.runs[i] ? (r.runs[i].problems.length ? '⚠ ' : '') + num(r.runs[i].s) : ''),
+      num(ok.length ? median(ok.map(x => x.s)) : null), ok.length ? Math.round(median(ok.map(x => x.calls))) : '', problems].map(q).join(';');
+  }));
+  downloadCsv(lines, 'summary');
+};
+
+// One row per run, with date and time: to compare different days and hours (e.g. pivot table in Excel).
+$('csv-runs').onclick = () => {
+  const order = Object.keys(LABELS);
+  const rows = Object.values(results).sort((a, b) => CASES.findIndex(c => c.id === a.case) - CASES.findIndex(c => c.id === b.case)
+    || order.indexOf(a.event) - order.indexOf(b.event));
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const head = ['Case', 'URL', 'Measure', 'From the click', 'Items', 'Server cache', 'Date', 'Time', 'Seconds', 'API calls', 'Problems'];
+  const lines = [head.map(q).join(';')];
+  rows.forEach(r => {
+    const c = CASES.find(x => x.id === r.case) || {};
+    r.runs.forEach(run => {
+      const d = run.at ? new Date(run.at) : null;
+      lines.push([c.name || r.case, c.value || '', LABELS[r.event] || r.event, r.fromClick ? 'yes' : 'no', r.total ?? '', r.cache,
+        d ? d.toLocaleDateString('en-GB') : '', d ? d.toLocaleTimeString('en-GB') : '', String(run.s).replace('.', ','), run.calls,
+        run.problems.join(', ')].map(q).join(';'));
+    });
+  });
+  downloadCsv(lines, 'runs');
+};
+
+// CSV with ';' separators and decimal commas, so that Excel with European settings opens it directly.
+function downloadCsv(lines, kind) {
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }); // BOM: Excel reads accented letters
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `skgif-timing-${kind}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+}
+
+// Manual measurement: switches the tool on in this tab and opens the home page; the times are in F12 -> Console.
+$('manual').onclick = () => {
+  sessionStorage.setItem('skgifTiming', JSON.stringify({ preview: $('opt-preview').checked, autoClick: false }));
+  location.href = '/example/oc/html_template/home.html';
+};
+</script>
+</body>
+</html>

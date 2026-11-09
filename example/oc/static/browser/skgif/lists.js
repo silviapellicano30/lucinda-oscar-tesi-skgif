@@ -1,12 +1,23 @@
-// SILVIA - MIGRAZIONE SKG-IF
-// Liste a pagine: ricerche, Citations/References, liste delle schede (Show N, stato "1–10 of N", Search in titles, Sort by).
+// Paged lists: searches, Citations/References, lists of the record pages
+// (Show N entries, "1–10 of N" status, Search in titles, Sort by).
 
-// Riporta la pagina all'inizio della lista, se l'utente l'aveva superata.
+// Scrolls back to the top of the list, if the user has scrolled past it:
+// (1) the page keeps its height (_skgifKeepScroll), so a short result does not make it jump up;
+// (2) it scrolls only if the top of the list is hidden (above the screen or under the sticky filter bar):
+// when the filter bar is on screen nothing moves.
 function _skgifScrollToList(el) {
-  if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (!el) return;
+  _skgifKeepScroll();
+  const visible = sel => [...el.querySelectorAll(sel)].find(e => e.offsetParent); // hidden tabs excluded (document page)
+  const bar = visible('.ra-toolbar');
+  const list = visible('[id$="-list"], #search-results-container');
+  const hidden = bar && list
+    ? list.getBoundingClientRect().top < Math.max(0, bar.getBoundingClientRect().bottom) - 1
+    : el.getBoundingClientRect().top < 0;
+  if (hidden) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// Nota sotto la barra della lista ('' = nascosta); loading = viola con i puntini animati.
+// Note under the list bar ('' = hidden); loading = purple with animated dots.
 function _skgifSetNote(id, text, loading = false) {
   const note = document.getElementById(id);
   if (!note) return;
@@ -18,12 +29,12 @@ function _skgifSetNote(id, text, loading = false) {
   note.classList.toggle('d-none', !text);
 }
 
-// Mantiene l'altezza della lista mentre carica, così la pagina non salta.
+// Keeps the height of the list while it loads, so the page does not jump.
 function _skgifHoldHeight(container) {
   if (container && !container.style.minHeight) container.style.minHeight = `${container.offsetHeight}px`;
 }
 
-// Testo di stato di una lista e la sua barra di avanzamento (null = nascosta).
+// Status text of a list and its progress bar (null = hidden).
 function _skgifListStatus(statusId, barId, text, fraction) {
   _skgifSetField(statusId, _skgifEscape(text));
   const bar = document.getElementById(barId);
@@ -33,38 +44,38 @@ function _skgifListStatus(statusId, barId, text, fraction) {
   if (inner && fraction !== null) inner.style.width = `${Math.round(fraction * 100)}%`;
 }
 
-// Riga di stato con l'intervallo mostrato ("11–20 of 240 citations") quando la lista ha più pagine.
-// single = testo con una sola pagina; phrase = testo per `count` risultati; from = totale prima dei filtri.
+// Status row with the range shown ("11–20 of 240 citations") when the list has more than one page.
+// single = text for a single page; phrase = text for `count` results; from = total before filtering.
 function _skgifRangeStatus(page, size, { count, single, phrase = single, from = null }) {
   if (count <= size) return single;
-  const range = `${(page - 1) * size + 1}–${Math.min(page * size, count)}`;
-  return `${range} of ${phrase}${from === null ? '' : ` (filtered from ${from})`}`;
+  const range = `${_skgifNum((page - 1) * size + 1)}–${_skgifNum(Math.min(page * size, count))}`;
+  return `${range} of ${phrase}${from === null ? '' : ` (filtered from ${_skgifNum(from)})`}`;
 }
 
-// Liste sfogliabili: dimensione delle pagine chieste all'API e quante chiamate in parallelo.
+// Paged lists: size of the pages requested to the API and number of parallel calls.
 const SKGIF_LIST_PAGE_SIZE = 50;
 const SKGIF_LIST_PARALLEL = 4;
-// Fino a questo numero di risultati il grafico si carica da solo; sopra serve il bottone.
+// Up to this number of results the chart loads automatically; above it a button is needed.
 const SKGIF_CHART_AUTO_LOAD = 500;
-// Risultati per pagina scelti con "Per page", per ogni lista.
+// Results per page chosen with "Show [N] entries", for each list.
 const _skgifPageSizes = {};
 
-// Lista sfogliabile: scarica pagine da 50 e ne mostra 10/20/50/100; loadAll() scarica tutto (grafico, filtri, Sort by).
+// Paged list: downloads pages of 50 and shows 10/20/50/100; loadAll() downloads everything (chart, filters, Sort by).
 function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText, scrollId, renderCard, showTotal = true }) {
   const containerId = `${prefix}-list`;
   const total = first ? first.total : 0;
   const blockCount = Math.ceil(total / SKGIF_LIST_PAGE_SIZE);
-  const blocks = {}; // pagina da 50 -> promessa dei risultati
-  const arrived = {}; // pagina da 50 -> risultati arrivati
+  const blocks = {}; // page of 50 -> promise of its results
+  const arrived = {}; // page of 50 -> results received
   const firstFull = first && first.items.length >= Math.min(SKGIF_LIST_PAGE_SIZE, total);
   if (firstFull) blocks[1] = Promise.resolve(first.items);
   const block = n => blocks[n] || (blocks[n] = skgifFetchRange(source, (n - 1) * SKGIF_LIST_PAGE_SIZE,
     Math.min(SKGIF_LIST_PAGE_SIZE, total - (n - 1) * SKGIF_LIST_PAGE_SIZE), SKGIF_LIST_PAGE_SIZE));
-  const progressListeners = []; // chi segue lo scaricamento (grafico)
-  const loadedListeners = []; // chi aspetta che sia tutto scaricato
-  let ordered = null; // risultati ordinati/filtrati, null = ordine dell'API
-  let inOrder = null; // tutti i risultati nell'ordine dell'API
-  let all = null; // solo i risultati arrivati
+  const progressListeners = []; // download progress listeners (chart)
+  const loadedListeners = []; // listeners waiting for the whole list
+  let ordered = null; // sorted/filtered results, null = API order
+  let inOrder = null; // all results in API order
+  let all = null; // only the results received so far
   let loading = null;
   let page = 1;
   const pageSize = () => _skgifPageSizes[containerId] || SKGIF_DEFAULT_PAGE_SIZE;
@@ -76,16 +87,16 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
     lastStatus = [text, fraction];
     if (active()) _skgifListStatus(`${prefix}-status`, `${prefix}-progress`, text, fraction);
   };
-  let info = null; // riga di stato: { count, single, phrase, from } (_skgifRangeStatus)
+  let info = null; // status row: { count, single, phrase, from } (_skgifRangeStatus)
   const showStatus = () => status(info ? _skgifRangeStatus(page, pageSize(), info) : '');
   const setStatus = newInfo => { info = newInfo; showStatus(); };
   _skgifPaginators[containerId] = paginator;
-  if (showTotal) _skgifSetField(`${prefix}-total`, _ciCount(first ? total : null)); // nella ricerca nei titoli il totale resta quello della lista completa
+  if (showTotal) _skgifSetField(`${prefix}-total`, _skgifNum(_skgifCount(first ? total : null))); // during a title search the total stays the one of the whole list
   setStatus(first ? { count: total, single: statusText(total) } : null);
 
   const renderItems = items => items.map(item => item._skgifMissing ? _skgifMissingCard(noun) : renderCard(item)).join('');
 
-  // I risultati della pagina p.
+  // Results of page p.
   function itemsOfPage(p) {
     const size = pageSize();
     const list = ordered || inOrder;
@@ -107,30 +118,33 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
     page = p;
     const container = document.getElementById(containerId);
     if (!container) return;
-    if (!active()) return; // nello stesso posto è mostrata un'altra lista
+    if (!active()) return; // another list is shown in the same place
     showStatus();
     _skgifTogglePerPage(prefix, first ? (ordered || inOrder || { length: total }).length : 0);
     if (!first || !total) container.style.minHeight = '';
     if (!first) return void (container.innerHTML = _skgifUnavailableHtml());
-    if (!total) return void (container.innerHTML = emptyMessage ? `<div class="col-12"><p>${_skgifEscape(emptyMessage)}</p></div>` : '');
+    if (!total) return void (container.innerHTML = emptyMessage ? `<div class="col-12"><p class="fst-italic text-muted">${_skgifEscape(emptyMessage)}</p></div>` : '');
     if (scroll) _skgifScrollToList(document.getElementById(scrollId));
     const render = items => {
       container.style.minHeight = '';
       const pageCount = Math.max(1, Math.ceil((ordered || inOrder || { length: total }).length / pageSize()));
-      const cards = order === 'newest' || order === 'oldest' ? _renderAuthorWorks(items, order, renderCard) : renderItems(items); // per data: intestazione per anno
+      const cards = order === 'newest' || order === 'oldest' ? _skgifRenderWorks(items, order, renderCard) : renderItems(items); // by date: one heading per year
       container.innerHTML = items.length ? cards + _skgifPaginationBar(containerId, p, pageCount) : '';
     };
     const inMemory = ordered || inOrder;
-    if (inMemory) return render(inMemory.slice((p - 1) * pageSize(), p * pageSize())); // lista già scaricata: mostrata subito
+    const pageItems = inMemory && inMemory.slice((p - 1) * pageSize(), p * pageSize());
+    if (inMemory && _skgifFirstCountsReady(pageItems)) return render(pageItems); // list already downloaded: shown immediately
     _skgifHoldHeight(container);
     container.innerHTML = SKGIF_LOADING_HTML;
-    itemsOfPage(p).then(items => {
-      if (page !== p || !active()) return; // nel frattempo è stata chiesta un'altra pagina
+    // the first cards already include their citation count (_skgifWithFirstCounts, cards.js)
+    (inMemory ? Promise.resolve(pageItems) : itemsOfPage(p))
+      .then(items => _skgifWithFirstCounts({ items }).then(() => items)).then(items => {
+      if (page !== p || !active()) return; // another page was requested in the meantime
       render(items);
     });
   }
 
-  // Scarica tutte le pagine da 50; false se la lista non si legge.
+  // Downloads all pages of 50; false if the list cannot be read.
   function loadAll() {
     if (loading) return loading;
     if (!first) return loading = Promise.resolve(false);
@@ -147,7 +161,7 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
       inOrder = _skgifDedupe(Object.keys(arrived).sort((a, b) => a - b).flatMap(n => arrived[n]));
       all = inOrder.filter(item => !item._skgifMissing);
       const missing = inOrder.length - all.length;
-      fullStatus = statusText(all.length) + (missing ? ` (${missing} could not be loaded)` : '');
+      fullStatus = statusText(all.length) + (missing ? ` (${_skgifNum(missing)} could not be loaded)` : '');
       setStatus({ count: inOrder.length, single: fullStatus });
       loadedListeners.forEach(listener => listener());
       return true;
@@ -155,23 +169,23 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
     return loading;
   }
 
-  // Applica ordinamento, filtri e ricerca nel titolo (solo dopo loadAll()).
+  // Applies sorting, filters and title search (only after loadAll()).
   let order = 'default';
-  let keep = null; // filtro: funzione sul prodotto, null = nessuno
-  let term = ''; // parole cercate nel titolo
+  let keep = null; // filter: function on the product, null = none
+  let term = ''; // words searched in the titles
   let fullStatus = '';
   function arrange() {
     if (!inOrder) return 0;
-    const base = keep || term ? all.filter(p => (!keep || keep(p)) && (!term || _raTitleHas(p, term)))
+    const base = keep || term ? all.filter(p => (!keep || keep(p)) && (!term || _skgifTitleHas(p, term)))
       : order === 'default' ? null : all;
-    ordered = base && _sortAuthorWorks(base, order);
+    ordered = base && _skgifSortWorks(base, order);
     const found = n => `${statusText(n)} with “${term}” in the title`;
     const count = (ordered || inOrder).length;
     if (term && keep) {
-      const withTerm = all.filter(p => _raTitleHas(p, term)).length;
-      info = { count, single: `${count} of ${found(withTerm)}`, phrase: found(count), from: withTerm };
+      const withTerm = all.filter(p => _skgifTitleHas(p, term)).length;
+      info = { count, single: `${_skgifNum(count)} of ${found(withTerm)}`, phrase: found(count), from: withTerm };
     } else if (term) info = { count, single: found(count) };
-    else if (keep) info = { count, single: `${count} of ${fullStatus}`, phrase: statusText(count), from: all.length };
+    else if (keep) info = { count, single: `${_skgifNum(count)} of ${fullStatus}`, phrase: statusText(count), from: all.length };
     else info = { count, single: fullStatus };
     show(1, true);
     return (ordered || inOrder).length;
@@ -184,6 +198,7 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
     failed: !first,
     loadAll,
     items: () => all,
+    shown: () => ordered || inOrder || [], // the list as currently shown (filters, search, order), used by Export
     missing: () => inOrder ? inOrder.length - all.length : 0,
     onProgress: listener => progressListeners.push(listener),
     onLoaded: listener => loadedListeners.push(listener),
@@ -199,7 +214,7 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
       term = newTerm;
       return arrange();
     },
-    activate: () => { // rimostra questa lista
+    activate: () => { // shows this list again
       _skgifPaginators[containerId] = paginator;
       status(...lastStatus);
       show(1, true);
@@ -207,8 +222,8 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
   };
 }
 
-// Grafico per anno di una lista: da solo fino ad autoLoad, col bottone fino a maxLoad; onYear = clic su una barra.
-function _skgifListChart(list, { boxId, noun, owner, label, maxLoad = Infinity, autoLoad = SKGIF_CHART_AUTO_LOAD,
+// Per-year chart of a list: automatic up to autoLoad, above it with a button; onYear = click on a bar.
+function _skgifListChart(list, { boxId, noun, owner, label, autoLoad = SKGIF_CHART_AUTO_LOAD,
   after = Promise.resolve(), buttonText = 'Load chart', buttonNote = '', onYear }) {
   const box = document.getElementById(boxId);
   if (!box) return;
@@ -221,33 +236,33 @@ function _skgifListChart(list, { boxId, noun, owner, label, maxLoad = Infinity, 
     drawing = true;
     box.innerHTML = `<div class="mb-2">Loading ${noun}s…</div>`;
     list.onProgress((loaded, total) => {
-      box.innerHTML = `<div class="mb-2 skgif-loading-note">Loading ${noun}s<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span> ${loaded}/${total}</div>
+      box.innerHTML = `<div class="mb-2 skgif-loading-note">Loading ${noun}s<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span> ${_skgifNum(loaded)}/${_skgifNum(total)}</div>
         <div class="progress br-chart-progress" style="height: 6px; width: 100%;"><div class="progress-bar" style="width: ${Math.round(loaded / total * 100)}%"></div></div>`;
     });
     list.loadAll().then(() => {
       _skgifYearChart(box, list.items().map(_skgifProductRawDate), label, `No ${noun}s found.`, 200, onYear);
       const missing = list.missing();
-      if (missing) box.insertAdjacentHTML('beforeend', `<div class="mt-2">${_skgifPlural(missing, noun)} could not be loaded</div>`);
+      if (missing) box.insertAdjacentHTML('beforeend', `<div class="mt-2">${_skgifPlural(missing, noun)} could not be loaded.</div>`);
     });
   };
   if (list.total <= autoLoad) return void after.then(draw);
-  if (list.total > maxLoad) return void (box.innerHTML = '<em>Chart not available.</em>');
-  box.innerHTML = `<p class="mb-3">This ${owner} has ${list.total} ${noun}s.${buttonNote ? ' ' + buttonNote : ''}</p>
+  box.innerHTML = `<p class="mb-3">This ${owner} has ${_skgifNum(list.total)} ${noun}s.${buttonNote ? ' ' + buttonNote : ''}</p>
     <button type="button" class="btn btn-sm br-load-chart">${buttonText}</button>`;
   box.querySelector('button').addEventListener('click', draw);
-  list.onProgress(draw); // segue lo scaricamento partito da un altro bottone
+  list.onProgress(draw); // follows a download started by another button
 }
 
-// Menu "Show [N] entries" (10, 20, 50, 100), nascosto se basta una pagina.
+// "Show [N] entries" menu (10, 20, 50, 100), hidden when one page is enough.
 const SKGIF_PER_PAGE = [10, 20, 50, 100];
-// Ricerche e pagine Go to: una pagina = una chiamata, e l'API dà al massimo 50 risultati.
+// Searches and Go to pages: one page = one call, and the API returns at most 50 results.
 const SKGIF_SEARCH_PER_PAGE = [10, 20, 50];
+// Creates the "Show [N] entries" menu of a list (only when it has more than one page).
 function _skgifInitPerPage(prefix, list, containerId = `${prefix}-list`, sizes = SKGIF_PER_PAGE) {
   const box = document.getElementById(`${prefix}-perpage`);
   if (!box || box.querySelector('.skgif-dd') || list.failed || list.total <= SKGIF_DEFAULT_PAGE_SIZE) return;
   const dropdown = _skgifDropdown('Results per page', sizes.map(n => ({ value: String(n), text: String(n) })), value => {
     _skgifPageSizes[containerId] = Number(value);
-    _skgifPaginators[containerId]?.refresh?.(); // torna alla pagina 1
+    _skgifPaginators[containerId]?.refresh?.(); // back to page 1
   });
   box.appendChild(dropdown.el);
   box.insertAdjacentHTML('beforeend', '<span class="small fw-bold">entries</span>'); // "Show [10] entries"
@@ -255,30 +270,32 @@ function _skgifInitPerPage(prefix, list, containerId = `${prefix}-list`, sizes =
   box.classList.remove('d-none');
 }
 
-// Mostra "Per page" solo se c'è più di una pagina.
+// Shows "Show [N] entries" only when there is more than one page.
 function _skgifTogglePerPage(prefix, count) {
   const box = document.getElementById(`${prefix}-perpage`);
   if (box?.querySelector('.skgif-dd')) box.classList.toggle('d-none', count <= SKGIF_DEFAULT_PAGE_SIZE);
 }
 
-// Strumenti di una lista: filtri, Sort by, Show, Search in titles, "Load all" (filtri e Sort by a lista completa).
-function _skgifListTools({ prefix, list, source, autoLoad, maxLoad, noun, search }) {
+// Tools of a list: filters, Sort by, Show, Search in titles, "Load all" (filters and Sort by once the list is complete).
+function _skgifListTools({ prefix, list, source, autoLoad, noun, search }) {
   const tools = document.getElementById(`${prefix}-tools`);
   const load = document.getElementById(`${prefix}-load`);
   const bar = document.getElementById(`${prefix}-progress`);
-  const loadable = !list.failed && list.total >= 1 && list.total <= maxLoad;
-  const state = { started: list.total <= autoLoad, loaded: false, searching: false, arrived: 0 }; // scaricamento partito
+  const loadable = !list.failed && list.total >= 1;
+  const state = { started: list.total <= autoLoad, loaded: false, searching: false, arrived: 0 }; // download started
   const update = () => {
     const loading = loadable && state.started && !state.loaded && !state.searching;
     tools?.classList.toggle('d-none', !loadable || !state.started || state.searching);
     load?.classList.toggle('d-none', !loadable || state.started || state.searching);
     bar?.classList.toggle('d-none', !loading);
-    const text = state.searching ? '' : loading ? `Loading ${noun}s… ${state.arrived}/${list.total}`
-      : loadable && !state.started ? 'Load them all to filter and sort the list.'
-      : !list.failed && list.total > maxLoad ? 'Filters and sorting are not available.' : '';
-    _skgifSetNote(`${prefix}-note`, text, loading && !!text);
+    const text = state.searching ? '' : loading ? `Loading ${noun}s… ${_skgifNum(state.arrived)}/${_skgifNum(list.total)}`
+      : loadable && !state.started ? 'Load them all to filter and sort the list.' : '';
+    // empty list = "No … found." in the filter row, as tall as the filters of the other tab (no height jump)
+    const empty = !list.failed && list.total === 0;
+    _skgifSetNote(`${prefix}-note`, empty ? `No ${noun}s found.` : text, loading && !!text);
+    document.getElementById(`${prefix}-note`)?.classList.toggle('skgif-empty-note', empty);
   };
-  const filters = _skgifListFilters(tools?.querySelector('.skgif-filters'), ['type', 'year'], keep => list.filter(keep));
+  const filters = _skgifListFilters(tools?.querySelector('.skgif-filters'), ['type', 'year', 'source'], keep => list.filter(keep));
   const sortButtons = tools ? [...tools.querySelectorAll('.ra-sort button')] : [];
   sortButtons.forEach(button => button.addEventListener('click', () => {
     sortButtons.forEach(b => b.classList.toggle('active', b === button));
@@ -296,9 +313,13 @@ function _skgifListTools({ prefix, list, source, autoLoad, maxLoad, noun, search
     state.loaded = true;
     update();
     filters.fill(list.items());
-    sortButtons.forEach(button => { button.disabled = false; });
+    sortButtons.forEach(button => { button.disabled = list.items().length < 2; }); // Sort by enabled from 2 items
   });
   _skgifInitPerPage(prefix, list);
+  // Export next to filters and Sort by (shown once the list is complete)
+  const exportControl = _skgifExportControl(() => list.shown(), `${noun}s`, false);
+  tools?.appendChild(exportControl);
+  if (loadable) list.onLoaded(() => exportControl.querySelectorAll('button').forEach(b => { b.disabled = false; }));
   _skgifListSearch(prefix, source, list, search, filters, searching => {
     state.searching = searching;
     update();
@@ -306,16 +327,18 @@ function _skgifListTools({ prefix, list, source, autoLoad, maxLoad, noun, search
   return filters;
 }
 
-// "Search in titles": locale se la lista è tutta scaricata, altrimenti cf.search.title.
+// "Search in titles": local when the whole list is downloaded, otherwise cf.search.title.
 function _skgifListSearch(prefix, source, list, { noun, statusNoun, scrollId, renderCard }, filters, onSearching) {
   const form = document.getElementById(`${prefix}-search`);
   const input = document.getElementById(`${prefix}-search-input`);
   const reset = document.getElementById(`${prefix}-search-reset`);
   if (!form || !input || !reset) return;
-  if (list.failed || list.total < 2) return void form.classList.add('d-none'); // con 0-1 risultati non c'è niente da cercare
-  // attivato solo quando la lista è pronta
+  // with 0-1 results there is nothing to search: hidden, but it keeps its space so that the bars of the
+  // two tabs (References / Citations) have the same height
+  if (list.failed || list.total < 2) return void form.classList.add('invisible');
+  // enabled only when the list is ready
   form.querySelectorAll('input, button').forEach(el => { el.disabled = false; });
-  let current = ''; // ignora le risposte di ricerche vecchie
+  let current = ''; // ignores responses of older searches
   let local = false;
   const showAll = () => {
     current = '';
@@ -328,7 +351,7 @@ function _skgifListSearch(prefix, source, list, { noun, statusNoun, scrollId, re
     local = false;
   };
   reset.addEventListener('click', showAll);
-  input.addEventListener('input', () => { // testo cancellato: torna la lista di prima
+  input.addEventListener('input', () => { // text cleared: back to the previous list
     if (!input.value.trim() && !reset.classList.contains('d-none')) showAll();
   });
   form.addEventListener('submit', event => {
@@ -339,11 +362,11 @@ function _skgifListSearch(prefix, source, list, { noun, statusNoun, scrollId, re
     if (!term) return showAll();
     current = term;
     reset.classList.remove('d-none');
-    if (list.items()) { // lista tutta scaricata: ricerca locale
+    if (list.items()) { // whole list downloaded: local search
       if (!local) list.activate();
       local = true;
       onSearching(false);
-      filters.setMatch(product => _raTitleHas(product, term));
+      filters.setMatch(product => _skgifTitleHas(product, term));
       list.search(term);
       return;
     }
@@ -362,7 +385,7 @@ function _skgifListSearch(prefix, source, list, { noun, statusNoun, scrollId, re
       if (current !== term) return;
       _skgifPagedList({
         prefix, source: searchSource, first, noun, scrollId, renderCard,
-        showTotal: false, // il totale resta quello della lista completa
+        showTotal: false, // the total stays the one of the whole list
         emptyMessage: '',
         statusText: n => `${_skgifPlural(n, statusNoun)} with “${term}” in the title`
       });
@@ -370,63 +393,63 @@ function _skgifListSearch(prefix, source, list, { noun, statusNoun, scrollId, re
   });
 }
 
-// Dopo una ricerca il cursore resta nel campo, dopo l'ultima lettera.
+// After a search the cursor stays in the field, after the last letter.
 function _skgifKeepCursor(input) {
   input.focus({ preventScroll: true });
   input.setSelectionRange(input.value.length, input.value.length);
 }
 
-// Tiene la pagina alta almeno fino allo scroll attuale: con pochi risultati non risale.
+// Keeps the page at least as tall as the current scroll position: short results do not make it jump up.
 function _skgifKeepScroll() {
   document.body.style.minHeight = `${window.scrollY + window.innerHeight}px`;
 }
 
-// Card al posto di un risultato che l'API non ha restituito.
+// Card shown instead of a result the API did not return.
 function _skgifMissingCard(noun) {
-  return `<div class="col-12 mb-2"><div class="card shadow-sm"><div class="card-body text-muted">1 ${noun} could not be loaded</div></div></div>`;
+  return `<div class="col-12 mb-2"><div class="card shadow-sm"><div class="card-body text-muted">1 ${noun} could not be loaded.</div></div></div>`;
 }
 
 const _skgifPaginators = {};
 
 /*
-Opzioni di createSkgifPaginatedSearch():
-  sources        - URL di ricerca SKG-IF senza page/page_size; più fonti vengono
-                   mostrate come un'unica lista, una dopo l'altra
-  renderItem     - funzione che crea l'HTML di una card
-  rankItems      - (facoltativa) riordina i risultati di una pagina
-  emptyMessage   - (facoltativo) testo se non ci sono risultati
-  pageSize       - (facoltativo) risultati per pagina (poi "Show [N] entries")
-  containerId    - (facoltativo) dove mettere le card
-  totalCountId   - (facoltativo) dove scrivere il totale
-  dedupeKey      - (facoltativa) chiave per togliere i doppioni
-  missingNoun    - (facoltativo) se c'è, le pagine che non arrivano vengono
-                   richieste in pezzi più piccoli (liste di citazioni/riferimenti)
+Options of skgifPaginatedSearch():
+  sources        - SKG-IF search URLs without page/page_size; several sources are
+                   shown as a single list, one after the other
+  renderItem     - function building the HTML of a card
+  rankItems      - (optional) reorders the results of a page
+  emptyMessage   - (optional) text shown when there are no results
+  pageSize       - (optional) results per page (then "Show [N] entries")
+  containerId    - (optional) where to put the cards
+  totalCountId   - (optional) where to write the total
+  dedupeKey      - (optional) key used to remove duplicates
+  missingNoun    - (optional) if set, pages that do not arrive are requested
+                   again in smaller pieces (citation/reference lists)
 */
-function createSkgifPaginatedSearch(config) { // Gestisce la paginazione
+function skgifPaginatedSearch(config) {
   const containerId = config.containerId || 'search-results-container';
   const totalCountId = config.totalCountId || 'search-total-count';
   const dedupeKey = config.dedupeKey || (item => item.local_identifier || JSON.stringify(item));
-  let pageSize = _skgifPageSizes[containerId] || config.pageSize || SKGIF_DEFAULT_PAGE_SIZE; // cambia con "Show [N] entries"
+  let pageSize = _skgifPageSizes[containerId] || config.pageSize || SKGIF_DEFAULT_PAGE_SIZE; // changes with "Show [N] entries"
   const sources = config.sources || [];
-  let sourceTotals = null; // totale di ogni fonte
-  let listedTotal = 0; // somma dei totali delle fonti
-  let firstItems = []; // prima pagina di ogni fonte
+  let sourceTotals = null; // total of each source
+  let listedTotal = 0; // sum of the totals of the sources
+  let firstItems = []; // first page of each source
 
-  const pageUrl = (src, apiPage) => `${src}&page=${apiPage}&page_size=${pageSize}`; // URL di una pagina
+  const pageUrl = (src, apiPage) => `${src}&page=${apiPage}&page_size=${pageSize}`; // URL of a page
 
-  // Scarica più pagine; se una fallisce dà errore (così non sembra una pagina vuota).
+  // Downloads several pages; fails if one fails (so it does not look like an empty page).
   const fetchAll = urls => Promise.all(urls.map(skgifFetch)).then(responses => {
     if (responses.some(r => !r)) throw new Error('The API did not answer.');
     return responses;
   });
 
-  // Scrive il totale nel titolo e mostra la pagina.
+  // Writes the total in the title and shows the page.
   function showCount() {
     _skgifFallbackCount(totalCountId, listedTotal);
-    releaseSkgifPage();
+    skgifReleasePage();
   }
 
-  // Legge il totale di ogni fonte dalla sua prima pagina.
+  // Reads the total of each source from its first page.
   function loadTotals() {
     if (sourceTotals) return Promise.resolve();
     if (config.missingNoun) {
@@ -443,7 +466,7 @@ function createSkgifPaginatedSearch(config) { // Gestisce la paginazione
     });
   }
 
-  // Calcola quali risultati mostrare nella pagina, anche a cavallo tra due fonti.
+  // Computes which results to show in the page, even across two sources.
   function itemsForPage(page) {
     const start = (page - 1) * pageSize;
     const end = start + pageSize;
@@ -476,7 +499,7 @@ function createSkgifPaginatedSearch(config) { // Gestisce la paginazione
   function fetchPage(page) {
     const container = document.getElementById(containerId);
     if (container) {
-      _skgifHoldHeight(container); // la lista tiene la sua altezza durante il "Loading": la pagina non sobbalza
+      _skgifHoldHeight(container); // the list keeps its height during "Loading": the page does not jump
       container.innerHTML = SKGIF_LOADING_HTML;
     }
 
@@ -485,29 +508,32 @@ function createSkgifPaginatedSearch(config) { // Gestisce la paginazione
       .then(pageItems => {
         const seen = new Set();
         const items = pageItems.filter(item => {
-          if (item._skgifMissing) return true; // risultato mancante: non è un doppione
-          const key = dedupeKey(item); // toglie i doppioni della pagina
+          if (item._skgifMissing) return true; // missing result: not a duplicate
+          const key = dedupeKey(item); // removes the duplicates of the page
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
         });
         const ranked = config.rankItems ? config.rankItems(items) : items;
+        return _skgifWithFirstCounts({ items: ranked }).then(() => ranked); // first cards with their citation count
+      })
+      .then(ranked => {
         if (container) container.style.minHeight = '';
         _render(container, ranked, page, listedTotal);
         showCount();
         if (page === 1) _skgifInitPerPage('search', { failed: false, total: listedTotal }, containerId, SKGIF_SEARCH_PER_PAGE);
-        // Precarica la pagina successiva, così Next è più veloce.
+        // Preloads the next page, so Next is faster.
         if (page * pageSize < listedTotal) itemsForPage(page + 1).catch(() => {});
       })
       .catch(error => {
         console.error("SKG-IF search failed:", error);
         if (container) container.style.minHeight = '';
-        if (container) container.innerHTML = _skgifUnavailableHtml(!config.missingNoun); // ricerche: consiglio sulle query lunghe
-        releaseSkgifPage(); // la ricerca non è riuscita
+        if (container) container.innerHTML = _skgifUnavailableHtml(!config.missingNoun); // searches: hint about long queries
+        skgifReleasePage(); // the search failed
       });
   }
 
-  function _render(container, items, page, totalItems) { // numero di pagine
+  function _render(container, items, page, totalItems) { // number of pages
     if (!container) return;
 
     if (items.length === 0) {
@@ -515,17 +541,17 @@ function createSkgifPaginatedSearch(config) { // Gestisce la paginazione
       return;
     }
 
-    // Il contenitore è già una .row: le card vanno messe direttamente.
+    // The container is already a .row: the cards go directly inside.
     let html = items.map(item => item._skgifMissing ? _skgifMissingCard(config.missingNoun) : config.renderItem(item)).join('');
 
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
     html += _skgifPaginationBar(containerId, page, totalPages);
 
-    container.innerHTML = html; // card + barra di paginazione
+    container.innerHTML = html; // cards + pagination bar
 
   }
 
-  // Cambiando pagina si torna all'inizio dei risultati.
+  // Changing page scrolls back to the top of the results.
   function goToPage(page) {
     const countEl = document.getElementById(totalCountId);
     const target = (countEl && countEl.closest('.card')) || document.getElementById(containerId);
@@ -537,32 +563,33 @@ function createSkgifPaginatedSearch(config) { // Gestisce la paginazione
     fetchPage(page);
   }
 
-  // "Show [N] entries": nuova dimensione delle pagine, pagina 1, senza far scorrere la pagina.
+  // "Show [N] entries": new page size, page 1, without scrolling the page.
   const refresh = () => {
     pageSize = _skgifPageSizes[containerId] || SKGIF_DEFAULT_PAGE_SIZE;
-    if (config.missingNoun) sourceTotals = null; // la prima pagina di ogni fonte va richiesta con la nuova dimensione
+    if (config.missingNoun) sourceTotals = null; // the first page of each source must be requested again with the new size
     _skgifKeepScroll();
     fetchPage(1);
   };
   _skgifPaginators[containerId] = { goToPage, refresh };
-  // La ricerca tiene il banner "Loading" finché non arrivano totale e primi risultati.
+  // The search keeps the "Loading" banner until the total and the first results arrive.
   return {
     search: () => {
-      holdSkgifPage();
+      skgifHoldPage();
       fetchPage(1);
     }
   };
 }
 
-// Paginazione a cerchi (prima, ultima e vicine); i "…" diventano un campo per scrivere la pagina.
+// Circular pagination (first, last and neighbouring pages); the "…" become a field to type a page number.
 function _skgifPaginationBar(containerId, page, totalPages) {
+  if (totalPages <= 1) return ''; // a single page: no lonely "1"
   const btn = (target, label, cls = '') =>
     `<button type="button" class="btn skgif-page-btn ${cls}" data-skgif-page="${target}" data-skgif-container="${containerId}"${target === page ? ' disabled aria-current="page"' : ''}>${label}</button>`;
   const shown = [...new Set([1, page - 1, page, page + 1, totalPages])].filter(n => n >= 1 && n <= totalPages).sort((a, b) => a - b);
-  const dots = `<button type="button" class="btn skgif-page-dots" title="Go to page (1-${totalPages})" aria-label="Go to page">…</button>`
+  const dots = `<button type="button" class="btn skgif-page-dots" title="Go to page (1-${_skgifNum(totalPages)})" aria-label="Go to page">…</button>`
     + `<input type="number" class="form-control skgif-page-input" min="1" max="${totalPages}" placeholder="#" aria-label="Go to page (1-${totalPages})" data-skgif-container="${containerId}" hidden>`;
   const numbers = shown.map((n, i) => (i && n - shown[i - 1] > 1 ? dots : '')
-    + btn(n, n, `skgif-page-num${n === page ? ' current' : ''}${String(n).length > 4 ? ' skgif-page-long' : ''}`)).join('');
+    + btn(n, _skgifNum(n), `skgif-page-num${n === page ? ' current' : ''}${String(n).length > 4 ? ' skgif-page-long' : ''}`)).join('');
   return `
     <div class="col-12">
       <nav class="skgif-pagination" aria-label="Search results pages">
@@ -573,7 +600,7 @@ function _skgifPaginationBar(containerId, page, totalPages) {
     </div>`;
 }
 
-// Clic sui "…": compare il campo; uscendo senza Invio tornano i "…".
+// Click on "…": the field appears; leaving it without Enter brings the "…" back.
 document.addEventListener('click', function (e) {
   const dots = e.target.closest('.skgif-page-dots');
   if (!dots) return;
@@ -591,7 +618,7 @@ document.addEventListener('focusout', function (e) {
   input.previousElementSibling.hidden = false;
 });
 
-// Gestori dei clic e dell'Invio della barra di paginazione, comuni a tutte le liste.
+// Click and Enter handlers of the pagination bar, shared by all lists.
 document.addEventListener('click', function (e) {
   const btn = e.target.closest('.skgif-page-btn');
   if (!btn || btn.disabled) return;
@@ -611,7 +638,7 @@ document.addEventListener('keydown', function (e) {
   paginator.goToPage(Math.min(Math.max(page, 1), max));
 });
 
-// Toglie le opere con OMID ripetuto.
+// Removes works with a repeated OMID.
 function _skgifDedupe(products) {
   const seen = new Set();
   return products.filter(p => {
@@ -623,9 +650,9 @@ function _skgifDedupe(products) {
   });
 }
 
-// Bottone "Back to top", visibile quando si è superato l'inizio della lista listId.
-function _initAuthorListUi(listId) {
-  document.querySelectorAll('.ra-sort').forEach(_skgifSortAsDropdown); // "Sort by" come menu a tendina
+// "Back to top" button, visible when the user has scrolled past the top of the list listId.
+function _skgifInitListUi(listId) {
+  document.querySelectorAll('.ra-sort').forEach(_skgifSortAsDropdown); // "Sort by" as a dropdown menu
   const top = document.getElementById('ra-top');
   const list = document.getElementById(listId);
   if (!top || !list) return;
@@ -633,17 +660,20 @@ function _initAuthorListUi(listId) {
   window.addEventListener('scroll', () => top.classList.toggle('d-none', list.getBoundingClientRect().top > -400));
 }
 
-// "Sort by" come menu a tendina: clicca i bottoni nascosti del template e ne copia lo stato.
+// "Sort by" as a dropdown menu: clicks the hidden buttons of the template and copies their state.
 function _skgifSortAsDropdown(group) {
   if (!group || group.dataset.skgifDd) return;
   group.dataset.skgifDd = '1';
   const buttons = [...group.querySelectorAll('button')];
   const options = buttons.map(b => ({ value: b.dataset.order, text: b.textContent.trim() }))
-    .sort((a, b) => (b.value === 'default') - (a.value === 'default')); // "Default order" per primo
+    .sort((a, b) => (b.value === 'default') - (a.value === 'default')); // "Default order" first
   const dd = _skgifDropdown(group.getAttribute('aria-label') || 'Sort by', options,
     value => buttons.find(b => b.dataset.order === value)?.click());
   const sync = () => {
-    dd.enable(buttons.some(b => !b.disabled));
+    const on = buttons.some(b => !b.disabled);
+    // only enabled entries in the menu (e.g. "Most cited" in the author profile arrives later)
+    if (on) dd.set(options.filter(o => !buttons.find(b => b.dataset.order === o.value).disabled), dd.value());
+    dd.enable(on);
     const active = buttons.find(b => b.classList.contains('active'));
     if (active && active.dataset.order !== dd.value()) dd.select(active.dataset.order);
   };
@@ -651,4 +681,37 @@ function _skgifSortAsDropdown(group) {
   group.classList.add('d-none');
   group.after(dd.el);
   sync();
+}
+
+// --- Work lists: order and title search (author profile, document and organisation pages) ---
+
+// HTML of the list in the chosen order (by date with one heading per year).
+function _skgifRenderWorks(works, order, renderCard = _skgifWorkCard) {
+  const sorted = _skgifSortWorks(works, order);
+  if (order !== 'newest' && order !== 'oldest') return sorted.map(work => renderCard(work)).join('');
+  let lastYear = null;
+  return sorted.map(work => {
+    const year = String(_skgifProductRawDate(work) || '').slice(0, 4) || 'Date not available';
+    const heading = year !== lastYear ? `<div class="col-12"><h6 class="ra-year-heading">${_skgifEscape(year)}</h6></div>` : '';
+    lastYear = year;
+    return heading + renderCard(work);
+  }).join('');
+}
+
+// The works in the chosen order: API, date (works without a date last), title or citations.
+function _skgifSortWorks(works, order) {
+  const date = p => _skgifProductRawDate(p) || '';
+  const title = p => _skgifProductTitle(p);
+  const cites = p => _skgifCitedBy[_skgifOmid(p.local_identifier)] ?? -1; // works not counted go last
+  const byDate = dir => (a, b) => (!date(a) - !date(b)) || dir * date(a).localeCompare(date(b));
+  const byTitle = dir => (a, b) => dir * title(a).localeCompare(title(b), undefined, { sensitivity: 'base' });
+  const compare = { newest: byDate(-1), oldest: byDate(1), 'title-asc': byTitle(1), 'title-desc': byTitle(-1),
+    cited: (a, b) => cites(b) - cites(a) }[order];
+  return compare ? [...works].sort(compare) : works;
+}
+
+// True if every searched word is the start of a word of the title (like the API's cf.search.title).
+function _skgifTitleHas(product, term) {
+  const words = _skgifProductRawTitle(product).toLowerCase().split(/[^\p{L}\p{N}]+/u);
+  return term.toLowerCase().split(' ').filter(Boolean).every(part => words.some(word => word.startsWith(part)));
 }

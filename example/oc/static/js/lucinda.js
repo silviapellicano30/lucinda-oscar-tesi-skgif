@@ -581,7 +581,7 @@ class Lucinda_view {
       if (variable && operator && value) {
         let var_value = lv_instance.get_nested_value(variable);
         var_value = this.getVal(var_value);
-        // SILVIA: un valore vuoto vale come null ("x != null" = "x ha un valore")
+        // SILVIA: an empty value counts as null ("x != null" = "x has a value")
         if (var_value === "") var_value = null;
         const eval_opr = ___evaluate_opr(var_value, operator, value);
         return eval_opr;
@@ -595,7 +595,7 @@ class Lucinda_view {
       if (value == "null") {
         val = null;
       }else {
-        // SILVIA: tolto "let", altrimenti val restava undefined
+        // SILVIA: assigns the outer val (a local "let" left it undefined)
         val = isNaN(parseFloat(value)) ? String(value) : parseFloat(value);
       }
       switch (operator) {
@@ -861,9 +861,9 @@ class Lucinda {
       html_error_template: null,
       local_test: false,
       verbose: true,
-      // SILVIA: tempo massimo di attesa di una chiamata #api (ms; null = nessun limite)
+      // SILVIA: maximum wait for an #api call (ms; null = no limit)
       api_timeout: 180000,
-      // SILVIA (SKG-IF): valori fissi per i segnaposto degli URL #api (es. [[skgif_api]]), oltre a quelli della risorsa
+      // SILVIA: fixed values for the placeholders of the #api URLs (e.g. [[skgif_api]]), in addition to those of the resource
       api_vars: {},
 
       endpoint: [
@@ -992,7 +992,7 @@ class Lucinda {
 
             potential_templates = potential_templates.sort((a, b) => {
                 // Check if both or neither have the "query" key
-                // SILVIA: un #api nel blocco main conta come una query (come l'ASK)
+                // SILVIA: an #api in the main block counts as a query (like the ASK)
                 const hasQueryA = 'sparql' in a.hfconf[0] || 'api' in a.hfconf[0];
                 const hasQueryB = 'sparql' in b.hfconf[0] || 'api' in b.hfconf[0];
                 if (hasQueryA && !hasQueryB) return -1;
@@ -1014,11 +1014,11 @@ class Lucinda {
           const pa = potential_templates[c];
           const main_block = pa.hfconf[0];
 
-          // SILVIA: #api nel blocco main al posto dell'ASK: il template va bene se l'API
-          // risponde 200 (o se #postprocess restituisce true), altrimenti si prova il successivo
+          // SILVIA: #api in the main block instead of the ASK: the template is suitable if the API
+          // answers 200 (or if #postprocess returns true), otherwise the next template is tried
           if (("api" in main_block) && !("sparql" in main_block)) {
             const param = Lucinda.preprocess( main_block, pa.param );
-            const api_call = Lucinda_util.replace_placeholders(main_block.api, { ...Lucinda.conf.api_vars, ...param }); // SILVIA (SKG-IF): + api_vars
+            const api_call = Lucinda_util.replace_placeholders(main_block.api, { ...Lucinda.conf.api_vars, ...param }); // SILVIA: also fills the api_vars placeholders
             if(Lucinda.conf.verbose){console.log("API check call:",api_call);}
             Lucinda.fetch_api(api_call).then(res => {
               const found = ("postprocess" in main_block) ? Lucinda.postprocess_api(res, main_block, param) : res.ok;
@@ -1081,7 +1081,7 @@ class Lucinda {
         const current_resource_hfconf = Lucinda.current_resource["hfconf"];
         if (current_resource_hfconf.length <= 1) {
           if(Lucinda.conf.verbose){console.log("Warning: no queries are specified");}
-          // SILVIA: costruisce comunque la pagina (prima restava su "Loading")
+          // SILVIA: builds the page anyway
           Lucinda.build_success_html_page();
           return null;
         }
@@ -1096,19 +1096,19 @@ class Lucinda {
         }
 
         // do sparql queries
-        // SILVIA: salta il blocco main, il suo #sparql è l'ASK, non dati
+        // SILVIA: skips the main block (its #sparql is the ASK, not data)
         const l_callsparql = Lucinda_util.get_hf_callsparql(current_resource_hfconf.slice(1));
 
-        // SILVIA: blocchi #api con dati (quello del main serve solo a scegliere il template)
+        // SILVIA: #api blocks with data (the one in the main block only selects the template)
         const l_callapi = current_resource_hfconf.slice(1).filter(block => "api" in block);
 
-        // SILVIA: niente #sparql né #api -> pagina subito, poi partono i #callfun
+        // SILVIA: no #sparql and no #api -> page built immediately, then the #callfun blocks run
         if (l_callsparql.length === 0 && l_callapi.length === 0) {
           Lucinda.build_success_html_page();
           return null;
         }
 
-        // SILVIA: lancia le chiamate #api
+        // SILVIA: runs the #api calls
         for (let i = 0; i < l_callapi.length; i++) {
           Lucinda.query_api( l_callapi[i] );
         }
@@ -1175,15 +1175,15 @@ class Lucinda {
           });
     }
 
-    // SILVIA: esegue un blocco #api: chiama l'URL e salva in Lucinda.data la tabella
-    // restituita da #postprocess (o il JSON così com'è se manca #postprocess)
+    // SILVIA: runs an #api block: calls the URL and stores in Lucinda.data the table
+    // returned by #postprocess (or the JSON as it is when there is no #postprocess)
     static query_api( cr_block ) {
       const param = Lucinda.preprocess( cr_block, Lucinda.current_resource.param );
-      const api_call = Lucinda_util.replace_placeholders(cr_block.api, { ...Lucinda.conf.api_vars, ...param }); // SILVIA (SKG-IF): + api_vars
+      const api_call = Lucinda_util.replace_placeholders(cr_block.api, { ...Lucinda.conf.api_vars, ...param }); // SILVIA: also fills the api_vars placeholders
       if(Lucinda.conf.verbose){console.log("API call:",api_call);}
       Lucinda.fetch_api(api_call).then(res => {
         Lucinda.data[cr_block.id] = ("postprocess" in cr_block) ? Lucinda.postprocess_api(res, cr_block, param) : res.json;
-        // quando tutte le chiamate sono finite costruisce la pagina
+        // when all the calls are finished, builds the page
         const excluded = Lucinda_util.get_hf_callfun(Lucinda.current_resource["hfconf"]).map(item => item.id);
         if (
           Object.entries(Lucinda.data)
@@ -1195,11 +1195,11 @@ class Lucinda {
       });
     }
 
-    // SILVIA: GET di un URL -> {status, ok, json}, senza mai dare errore (errore = status 0).
-    // Ogni URL viene chiesto una sola volta: le risposte restano in api_responses
+    // SILVIA: GET of a URL -> {status, ok, json}, never throws (error = status 0).
+    // Each URL is requested only once: the responses are kept in api_responses
     static api_responses = {};
     static fetch_api( api_call ) {
-      // URL vuoto o con [[param]] non sostituiti: nessuna chiamata, status 0
+      // empty URL or with unreplaced [[param]]: no call, status 0
       if (!api_call || /\[\[[^\]]*\]\]/.test(api_call)) {
         return Promise.resolve({ status: 0, ok: false, json: null });
       }
@@ -1209,7 +1209,7 @@ class Lucinda {
         Lucinda.api_responses[api_call] = fetch(api_call, { headers: { "Accept": "application/json" }, signal: controller.signal })
           .then(response => response.json()
             .then(json => ({ status: response.status, ok: response.ok, json: json }))
-            // risposta non JSON o troncata = fallita
+            // non-JSON or truncated response = failed
             .catch(() => ({ status: response.ok ? 0 : response.status, ok: false, json: null })))
           .catch(error => {
             if(Lucinda.conf.verbose){console.error("Error during API call:", error);}
@@ -1220,7 +1220,7 @@ class Lucinda {
       return Lucinda.api_responses[api_call];
     }
 
-    // SILVIA: chiama la funzione di #postprocess f(a, b) come f(risposta, param.a, param.b)
+    // SILVIA: calls the #postprocess function f(a, b) as f(response, param.a, param.b)
     static postprocess_api( res, conf_block, param ) {
       const match = conf_block["postprocess"].match(/^(\w+)\((.*?)\)$/);
       if (!match) {
