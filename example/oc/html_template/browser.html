@@ -1,7 +1,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <!-- SILVIA: OpenCitations favicon (browser tab icon) -->
+    <!-- OpenCitations favicon (browser tab icon) -->
     <link rel="icon" type="image/png" href="../static/img/favicon-oc.png">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -20,7 +20,7 @@
 
     <header>
       <div class="logo">
-        <!-- SILVIA: the logo links to the home page -->
+        <!-- The logo links to the home page -->
         <a href="home2.html"><img src="../static/img/oc-medium.png" alt="OC Logo" style="padding: 10%;"></a>
       </div>
     </header>
@@ -35,9 +35,9 @@
     </footer>
 
     <script src="../static/vendor/bootstrap-5.3.5-dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.6.1"></script><!-- SILVIA: fixed Chart.js version (per-year charts) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.6.1"></script><!-- Fixed Chart.js version (per-year charts) -->
     <script type="text/javascript" src="../static/js/lucinda.js"></script>
-    <!-- SILVIA: SKG-IF code, split by task and loaded in this order (configuration, core, components, pages) -->
+    <!-- SKG-IF code, split by task and loaded in this order (configuration, core, components, pages) -->
     <script type="text/javascript" src="../static/browser/skgif/config.js"></script>
     <script type="text/javascript" src="../static/browser/skgif/core.js"></script>
     <script type="text/javascript" src="../static/browser/skgif/ui.js"></script>
@@ -51,7 +51,7 @@
     <script type="text/javascript" src="../static/browser/skgif/pages/org.js"></script>
     <script type="text/javascript" src="../static/browser/skgif/pages/venue.js"></script>
     <script type="text/javascript" src="../static/browser/skgif/pages/citation.js"></script>
-    <!-- SILVIA: load-time measurement, off by default (switched on from tools/misure.html); delete this line to remove it -->
+    <!-- Load-time measurement, off by default (switched on from tools/misure.html); delete this line to remove it -->
     <script type="text/javascript" src="../static/browser/skgif/timing.js"></script>
     <script>
       Lucinda.init({
@@ -60,14 +60,14 @@
             "new_venue_browser",
             "new_ci_browser",
             "new_ra_browser",
-            "new_org_browser", // SILVIA: ra/ that is not a person (new_ra_browser checks /persons)
+            "new_org_browser", // ra/ that is not a person (new_ra_browser checks /persons)
             "new_br_any_browser",
             "doc_citations",
             "doc_references",
             "doc_free_text",
             "aut_free_text",
             "venue_free_text",
-            "org_free_text" // SILVIA: organisation search
+            "org_free_text" // Organisation search
           ],
           verbose: true
       });

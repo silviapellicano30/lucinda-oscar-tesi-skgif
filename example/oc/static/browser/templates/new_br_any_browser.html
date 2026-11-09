@@ -11,29 +11,29 @@
       </a>
     </div>
 
-    <!-- SILVIA: the document data is set by Lucinda (#api blocks of the .hf + skgif_* view functions);
+    <!-- The document data is set by Lucinda (#api blocks of the .hf + skgif_* view functions);
          lists and chart are built by api_document_record_skgif() (#callfun) -->
     <div class="row">
 
       <div class="col-12 mb-4">
           <div class="card shadow-sm p-3 h-100">
           <div class="card-header text-center">
-              <!-- SILVIA: document header, one item per line -->
+              <!-- Document header, one item per line -->
               <p class="mb-1 small text-muted">Bibliographic Resource Record</p>
               <div class="skgif-head">[[Lucinda:skgif_head(doc_meta.title, doc_meta.head_line, doc_meta.head_meta, doc_meta.omid)]]</div>
           </div>
           </div>
       </div>
 
-      <!-- SILVIA: errors (non-existent document, failed call) -->
+      <!-- Errors (non-existent document, failed call) -->
       <div class="col-12 skgif-lv">[[Lucinda:ifcond(doc_meta.message != null, concat(_HTML_(<div class="alert alert-danger mb-4">), skgif_text(doc_meta.message), _HTML_(</div>)))]]</div>
 
     </div>
 
-    <!-- SILVIA: document data next to counters and chart, Citations / References tabs below -->
+    <!-- Document data next to counters and chart, Citations / References tabs below -->
     <div class="d-none skgif-lv" id="br-record">
 
-    <!-- SILVIA: "Overview" on the left (data from /products), "Citation metrics" on the right (counters and chart) -->
+    <!-- "Overview" on the left (data from /products), "Citation metrics" on the right (counters and chart) -->
     <div class="row">
 
       <div class="col-12 col-lg-8 mb-4">
@@ -43,7 +43,7 @@
           </div>
           <div class="card-body p-4">
 
-            <!-- SILVIA: fields in the order of a bibliographic citation -->
+            <!-- Fields in the order of a bibliographic citation -->
             [[Lucinda:ifcond(doc_meta.authors != null, concat(_HTML_(<div class="br-field mb-3"><span class="br-label">Authors</span>), skgif_agents(doc_meta.authors), _HTML_(</div>)), _HTML_(<div class="br-field mb-3"><span class="br-label">Authors</span><span class="skgif-none">Not available</span></div>))]]
 
             [[Lucinda:ifcond(doc_meta.editors != null, concat(_HTML_(<div class="br-field mb-3"><span class="br-label">Editors</span>), skgif_agents(doc_meta.editors), _HTML_(</div>)))]]
@@ -84,7 +84,7 @@
               </div>
             </div>
 
-            <!-- SILVIA: "Citations per year" chart, drawn by _skgifListChart() -->
+            <!-- "Citations per year" chart, drawn by _skgifListChart() -->
             <div class="card shadow-sm flex-grow-1">
               <div class="card-header text-center py-1"><span class="fw-bold small">Citations per year</span></div>
               <div class="card-body text-center text-muted small d-flex flex-column justify-content-center align-items-center" id="br-cits-chart"></div>
@@ -107,7 +107,7 @@
 
           <div class="card-body p-4">
             <div id="br-cits-pane" role="tabpanel">
-              <!-- SILVIA: paged list of the citations, with its tools (_skgifListTools()) -->
+              <!-- Paged list of the citations, with its tools (_skgifListTools()) -->
               <div class="ra-toolbar mb-3">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <span class="fw-bold" id="br-cits-status"></span>
@@ -120,7 +120,7 @@
                 <div class="d-flex flex-wrap align-items-center gap-3 skgif-toolbar-row">
                   <button type="button" class="btn btn-sm br-load-chart d-none" id="br-cits-load">Load all citations</button>
                   <span class="small text-muted d-none" id="br-cits-note"></span>
-                  <!-- SILVIA: progress bar right after "Loading… x/N" (on desktop it stays under the row, see browser.css) -->
+                  <!-- Progress bar right after "Loading… x/N" (on desktop it stays under the row, see browser.css) -->
                   <div class="progress mt-2 d-none br-chart-progress" id="br-cits-progress" style="height: 6px;" role="progressbar" aria-label="Loading citations">
                     <div class="progress-bar" style="width: 0%"></div>
                   </div>
@@ -143,7 +143,7 @@
               <div class="row" id="br-cits-list"></div>
             </div>
             <div id="br-refs-pane" role="tabpanel" class="d-none">
-              <!-- SILVIA: paged list of the references, with its tools (_skgifListTools()) -->
+              <!-- Paged list of the references, with its tools (_skgifListTools()) -->
               <div class="ra-toolbar mb-3">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                   <span class="fw-bold" id="br-refs-status"></span>
@@ -156,7 +156,7 @@
                 <div class="d-flex flex-wrap align-items-center gap-3 skgif-toolbar-row">
                   <button type="button" class="btn btn-sm br-load-chart d-none" id="br-refs-load">Load all references</button>
                   <span class="small text-muted d-none" id="br-refs-note"></span>
-                  <!-- SILVIA: progress bar right after "Loading… x/N" (on desktop it stays under the row, see browser.css) -->
+                  <!-- Progress bar right after "Loading… x/N" (on desktop it stays under the row, see browser.css) -->
                   <div class="progress mt-2 d-none br-chart-progress" id="br-refs-progress" style="height: 6px;" role="progressbar" aria-label="Loading references">
                     <div class="progress-bar" style="width: 0%"></div>
                   </div>
@@ -186,7 +186,7 @@
 
     </div>
 
-    <!-- SILVIA: "Back to top" button -->
+    <!-- "Back to top" button -->
     <button type="button" class="btn btn-sm ra-top d-none" id="ra-top">&uarr; Back to top</button>
 
   </body>

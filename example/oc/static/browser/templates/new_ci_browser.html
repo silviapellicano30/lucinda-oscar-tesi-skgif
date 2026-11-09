@@ -4,7 +4,7 @@
     <i class="fas fa-arrow-left"></i> Home
   </a>
 </div>
-<!-- SILVIA: the fields are set by Lucinda (#api blocks of the .hf + skgif_* view functions);
+<!-- The fields are set by Lucinda (#api blocks of the .hf + skgif_* view functions);
      api_citation_record_skgif() shows the record and draws the charts -->
 <div class="row">
 
@@ -14,13 +14,13 @@
       <div class="card-header text-center">
         <p class="mb-1 small text-muted">Citation Record</p>
         <h3 class="my-0" id="ci-oci">[[Lucinda:skgif_oci(main.oci)]]</h3>
-        <!-- SILVIA: link to the external page of the OCI -->
+        <!-- Link to the external page of the OCI -->
         [[Lucinda:skgif_oci_uri(main.oci)]]
       </div>
     </div>
   </div>
 
-  <!-- SILVIA: errors (invalid OCI, missing document...) and "citation not found" notice -->
+  <!-- Errors (invalid OCI, missing document...) and "citation not found" notice -->
   <div class="col-12" id="ci-message">[[Lucinda:skgif_ci_message(main.oci, citing_meta.status, cited_meta.status, citing_meta.cites)]]</div>
 
 </div>
@@ -48,7 +48,7 @@
           [[Lucinda:ifcond(citing_meta.source != null, concat(_HTML_(<div class="br-field mb-3"><span class="br-label">Source</span>), skgif_source(citing_meta.source), _HTML_(</div>)))]]
           <div class="br-field mb-3"><span class="br-label">Identifiers</span><span id="citing-ids">[[Lucinda:skgif_ids(citing_meta.ids, citing_meta.omid)]]</span></div>
 
-          <!-- SILVIA: counters and chart at the bottom, aligned with the other card -->
+          <!-- Counters and chart at the bottom, aligned with the other card -->
           <div class="mt-auto">
             <div class="row g-2 mb-3">
               <div class="col-6">
@@ -73,7 +73,7 @@
               </div>
             </div>
 
-            <!-- SILVIA: data from the Index API, drawn by _skgifCitationsPerYearChart() -->
+            <!-- Data from the Index API, drawn by _skgifCitationsPerYearChart() -->
             <div class="card shadow-sm skgif-fold">
               <div class="card-header text-center py-1">
                 <span class="fw-bold small">Citations per year</span>
@@ -86,7 +86,7 @@
       </div>
     </div>
 
-    <!-- SILVIA: "cites" arrow: on the right on wide screens, below on narrow ones -->
+    <!-- "cites" arrow: on the right on wide screens, below on narrow ones -->
     <div class="col-12 col-md-auto d-flex flex-md-column align-items-center justify-content-center gap-2 my-3 my-md-0">
       <span class="ci-arrow" aria-hidden="true"><span class="d-none d-md-inline">&rarr;</span><span class="d-md-none">&darr;</span></span>
       <span class="fw-bold small ci-arrow-label">cites</span>
@@ -148,7 +148,7 @@
 
   </div>
 
-  <!-- SILVIA: WHAT THE TWO DOCUMENTS HAVE IN COMMON -->
+  <!-- What the two documents have in common -->
   <div class="row mb-4">
     <div class="col-12">
       <div class="card shadow-sm" id="ci-overlap">
@@ -180,7 +180,7 @@
               </div>
             </div>
           </div>
-          <!-- SILVIA: click on a box = list of the works below (_ciOverlapToggle) -->
+          <!-- Click on a box = list of the works below (_ciOverlapToggle) -->
           <div class="d-none mt-4" id="ci-shared-pane">
             <div class="ra-toolbar mb-3">
               <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">

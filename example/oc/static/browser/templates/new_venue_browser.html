@@ -4,7 +4,7 @@
   </head>
   <body>
 
-    <!-- SILVIA: venue page. The data is set by Lucinda (#api blocks of the .hf + skgif_* view functions);
+    <!-- Venue page. The data is set by Lucinda (#api blocks of the .hf + skgif_* view functions);
          publications are not available (SKG-IF has no venue filter) -->
 
     <br>
@@ -26,7 +26,7 @@
         </div>
       </div>
 
-      <!-- SILVIA: errors (non-existent venue, failed call) -->
+      <!-- Errors (non-existent venue, failed call) -->
       <div class="col-12 skgif-lv">[[Lucinda:ifcond(venue_meta.message != null, concat(_HTML_(<div class="alert alert-danger mb-4">), skgif_text(venue_meta.message), _HTML_(</div>)))]]</div>
 
     </div>
@@ -49,7 +49,7 @@
         </div>
       </div>
 
-      <!-- SILVIA: publications not shown: SKG-IF does not allow retrieving the publications of a venue -->
+      <!-- Publications not shown: SKG-IF does not allow retrieving the publications of a venue -->
       <div class="col-12">
         <div class="card shadow-sm">
           <div class="card-header text-center">

@@ -1,9 +1,9 @@
-/* SILVIA: fonts of opencitations.net (Work Sans for titles/menus/buttons, PT Serif for text) */
+/* Fonts of opencitations.net (Work Sans for titles/menus/buttons, PT Serif for text) */
 @import url("https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap");
 
 body {
   background-color: #E1CEEC;
-  /* SILVIA: the .row elements are not inside a .container: keeps them from overflowing the screen */
+  /* The .row elements are not inside a .container: keeps them from overflowing the screen */
   overflow-x: hidden;
 }
 
@@ -24,7 +24,7 @@ header .logo img {
   height: 150px;
   margin-left: 2em;
 }
-/* SILVIA: logo aligned with the left edge of the page boxes (no inner left padding) */
+/* Logo aligned with the left edge of the page boxes (no inner left padding) */
 header .logo img {
   padding-left: 0 !important;   /* overrides the style="padding: 10%" of the image in browser.html */
   margin-left: 20px;
@@ -66,7 +66,7 @@ a:hover {
 }
 
 /* ==========================================================================
-   SILVIA: SKG-IF browser styles (everything below this line).
+   SKG-IF browser styles.
    Colours, fonts, buttons and menus follow opencitations.net.
    ========================================================================== */
 :root {
@@ -1936,7 +1936,7 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
   }
 }
 
-/* SILVIA: "Home" link above the first box aligned with the boxes and the logo (the arrow icon needs Font Awesome,
+/* "Home" link above the first box aligned with the boxes and the logo (the arrow icon needs Font Awesome,
    which browser.html does not load) */
 @media (min-width: 576px) {
   #__lucinda__ > .mb-3 > a[href="home2.html"] {

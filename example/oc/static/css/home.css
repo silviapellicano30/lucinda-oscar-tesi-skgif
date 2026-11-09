@@ -1,9 +1,9 @@
-/* SILVIA: fonts of opencitations.net (Work Sans for titles/menus/buttons, PT Serif for text) */
+/* Fonts of opencitations.net (Work Sans for titles/menus/buttons, PT Serif for text) */
 @import url("https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap");
 
 /* ==========================================================================
-   SILVIA: search panel of home.html and home2.html, opencitations.net style
-   (selectors more specific than the <style> of home2.html; everything below this line)
+   Search panel of home.html and home2.html, opencitations.net style
+   (selectors more specific than the <style> of home2.html)
    ========================================================================== */
 html body {
   background: #f0def7 linear-gradient(to bottom, #d3c0e2 0%, rgba(240, 222, 247, 0) 300px) no-repeat;
