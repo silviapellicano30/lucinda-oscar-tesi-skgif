@@ -4,14 +4,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const categorySelect = searchForm.querySelector('select[name="category"]');
 
   // --- 1. Placeholder Logic ---
-  // SILVIA: tabs, labels and placeholders of the search panel are
+  // Tabs, labels and placeholders of the search panel are
   // set by skgifInitSearchFields() (SKGIF_CATEGORIES, at the end of the file)
-  skgifInitSearchFields(searchForm, searchInput, categorySelect); // SILVIA: resource tabs, given/family name fields + ID panel
+  skgifInitSearchFields(searchForm, searchInput, categorySelect); // Resource tabs, given/family name fields + ID panel
 
 
   // --- 2. Regex Definitions ---
   // Lucinda native prefixes
-  // SILVIA: only prefix + "/" + digits ("br/0605748453"; an OCI has a dash:
+  // Only prefix + "/" + digits ("br/0605748453"; an OCI has a dash:
   // "ci/06010572394-0605748453"), so that free text starting with the same
   // letters ("brain tumor", "Veterinary Record") is not taken for an OMID.
   const lucindaPrefixRegex = /^(br|ci|ra|ve)\/[\d-]+$/i;
@@ -44,14 +44,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const category = categorySelect.value;
 
-    // SILVIA: documents, authors, venues and organisations are searched with skgifSearch();
+    // Documents, authors, venues and organisations are searched with skgifSearch();
     // the Citation Record (OCI) is handled below
     if (category !== "citation") return skgifSearch(category, searchInput);
 
     const query = searchInput.value.trim();
 
     if (!query) {
-      skgifShowHint("Please enter an OCI."); // SILVIA: message under the search bar
+      skgifShowHint("Please enter an OCI."); // Message under the search bar
       return;
     }
 
@@ -61,7 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // SILVIA: an OCI typed without "ci/" (or as "oci:...") opens the citation record
+    // An OCI typed without "ci/" (or as "oci:...") opens the citation record
     const bareOci = query.replace(/^oci:/i, "");
     if (/^\d+-\d+$/.test(bareOci)) {
       window.location.href = `browser.html?value=ci/${bareOci}`;
@@ -93,7 +93,7 @@ async function openLucinda(identifier, category) {
       orcidRegex.test(identifier) ||
       issnRegex.test(identifier)
     ) {
-      omid = await skgifIdToOmid(identifier); // SILVIA: external ID -> OMID through SKG-IF
+      omid = await skgifIdToOmid(identifier); // External ID -> OMID through SKG-IF
     } else {
       // Input is already a Lucinda ID (br/..., ra/...)
       omid = identifier;
@@ -113,7 +113,7 @@ async function openLucinda(identifier, category) {
 
 /*
 ################################################################################
-# SILVIA: SKG-IF search panel (everything below this line)
+# SKG-IF search panel
 ################################################################################
 */
 // Finds the OMID of a document ID through SKG-IF (/products).
