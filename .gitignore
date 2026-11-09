@@ -1,3 +1,6 @@
 example/local_*
 .DS_Store
 __local__*
+
+# Local editor settings (VS Code)
+.vscode/
