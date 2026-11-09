@@ -1,48 +1,9 @@
-/* SILVIA: font del sito opencitations.net (Work Sans per titoli/menu/bottoni, PT Serif per i testi) */
+/* SILVIA: fonts of opencitations.net (Work Sans for titles/menus/buttons, PT Serif for text) */
 @import url("https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap");
 
-/* container */
-.search-bar form {
-  display: flex;
-  align-items: center;
-  gap: 8px;                 /* space between controls */
-}
-
-.search-bar * { box-sizing: border-box; }
-
-/* dropdown: fixed/narrow, don't grow */
-.search-bar .form-select {
-  width: 160px;             /* adjust as needed */
-  flex: 0 0 160px;          /* no grow, no shrink */
-}
-
-/* input: take remaining space and be editable */
-.search-bar .form-control {
-  flex: 1 1 auto;
-  min-width: 0;             /* IMPORTANT: allows shrinking inside flex */
-}
-
-/* round search button: fixed size, no overlap */
-.search-bar .btn {
-  flex: 0 0 44px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: #6c63ff;
-  color: #fff;
-  cursor: pointer;
-  transition: background-color .2s ease;
-}
-.search-bar .btn:hover { background: #574fd6; }
-.search-bar .btn i { font-size: 16px; }
-
 /* ==========================================================================
-   SILVIA - pannello di ricerca di home.html e home2.html, stile opencitations.net
-   (selettori più specifici dello <style> di home2.html)
+   SILVIA: search panel of home.html and home2.html, opencitations.net style
+   (selectors more specific than the <style> of home2.html; everything below this line)
    ========================================================================== */
 html body {
   background: #f0def7 linear-gradient(to bottom, #d3c0e2 0%, rgba(240, 222, 247, 0) 300px) no-repeat;
@@ -57,14 +18,14 @@ html body {
   --bs-border-radius: 10px;
   width: 100%;
   position: relative;
-  z-index: 5;               /* il menu si apre sopra le card di home2 */
+  z-index: 5;               /* the menu opens above the cards of home2 */
 }
 .oc-search, .oc-search button, .oc-label, .oc-or {
   font-family: "Work Sans", sans-serif;
 }
 .oc-search-card { padding: 0; }
 
-/* schede delle risorse: voce attiva viola con riga sotto, come il menu del sito OC */
+/* resource tabs: active entry purple with a line below, like the menu of the OC site */
 .oc-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -98,7 +59,7 @@ html body {
 }
 .oc-tab:focus-visible { outline: 2px solid var(--oc-purple); outline-offset: 1px; }
 
-/* riga dei campi: testo / nomi | or | identificativo | Search */
+/* row of fields: text / names | or | identifier | Search */
 .oc-search-row {
   display: flex;
   align-items: flex-end;
@@ -115,7 +76,7 @@ html body {
   margin-bottom: 6px;
 }
 
-/* campi bianchi, viola al clic */
+/* white fields, purple on focus */
 .oc-search form .form-control,
 .oc-search form .form-select {
   height: 46px;
@@ -157,7 +118,7 @@ html body {
   color: #a9a3b8;
 }
 
-/* bottone Search: maiuscolo spaziato, hover azzurro */
+/* Search button: spaced capitals, light blue hover */
 .oc-btn {
   height: 46px;
   padding: 0 22px;
@@ -174,12 +135,12 @@ html body {
 }
 .oc-btn:hover, .oc-btn:focus { background: var(--oc-blue); color: #fff; }
 
-/* pannello ID nascosto (Citation) e lato non cercato sbiadito */
+/* ID panel hidden (Citation) and the side not searched faded */
 .oc-hidden { display: none; }
 .oc-inactive { opacity: .35; filter: grayscale(1); transition: opacity .15s ease; }
 .oc-inactive:hover { opacity: .7; }
 
-/* filtro facoltativo accanto al campo del nome (Type delle riviste), stessa riga */
+/* optional filter next to the name field (Type of the venues), same row */
 .oc-search-row .oc-refine {
   flex: 0 0 210px;
   transition: opacity .15s ease;
@@ -187,7 +148,7 @@ html body {
 .oc-refine .oc-dd { width: 100%; flex: none; }
 .oc-refine .oc-dd-btn { border-radius: 8px; }
 
-/* messaggio sotto la barra, altezza fissa */
+/* message under the bar, fixed height */
 .oc-hint {
   min-height: 1.3rem;
   margin-top: 8px;
@@ -195,7 +156,7 @@ html body {
   color: #b42318;
 }
 
-/* menu degli schemi di ID: pannello bianco, angoli vivi, ombra ampia, dissolvenza */
+/* ID scheme menu: white panel, sharp corners, wide shadow, fade */
 .oc-dd {
   position: relative;
   flex: 0 0 140px;
@@ -275,7 +236,7 @@ html body {
 .oc-dd-item.selected { color: var(--oc-purple); font-weight: 500; }
 .oc-dd-item.selected i { visibility: visible; }
 
-/* card delle risorse (home2.html): bianche con ombra morbida, in hover salgono e diventano azzurre */
+/* resource cards (home2.html): white with a soft shadow, on hover they rise and turn light blue */
 .card.resource-card {
   background: #fff;
   backdrop-filter: none;
@@ -300,10 +261,11 @@ html body {
 
 @media (max-width: 767.98px) {
   .oc-tab { flex: 1 1 30%; padding: 8px 6px; font-size: .9rem; }
+}
+/* phones and tablets (below 992px): fields one under the other (in a row they were too narrow on tablets) */
+@media (max-width: 991.98px) {
   .oc-search-row { flex-direction: column; align-items: stretch; }
   .oc-or { height: auto; justify-content: center; }
   .oc-search-row .oc-refine { flex: none; }
-  /* spazio del filtro tenuto anche quando la risorsa non ne ha uno: il pannello non cambia altezza */
-  .oc-search-row:not(:has(.oc-refine:not(.d-none))) .venue-filter { display: block !important; visibility: hidden; }
-  .oc-hidden { display: block; visibility: hidden; }
+  /* no reserved spaces (Type filter, ID panel of Citation): on phones they left gaps between the fields */
 }

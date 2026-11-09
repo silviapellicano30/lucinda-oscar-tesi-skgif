@@ -4,8 +4,8 @@
   </head>
   <body>
 
-    <!-- SILVIA: scheda organizzazione, si apre per un ra/ che non è in /persons.
-         Nome, ID e conteggio li mette Lucinda; pubblicazioni e grafico li fa api_org_record_skgif() -->
+    <!-- Organisation page, opened for a ra/ that is not in /persons.
+         Name, IDs and count are set by Lucinda; publications and chart are built by api_org_record_skgif() -->
 
     <br>
 
@@ -26,14 +26,14 @@
         </div>
       </div>
 
-      <!-- errori -->
+      <!-- errors -->
       <div class="col-12 skgif-lv" id="org-message">[[Lucinda:ifcond(org_meta.message != null, concat(_HTML_(<div class="alert alert-danger mb-4">), skgif_text(org_meta.message), _HTML_(</div>)))]]</div>
 
     </div>
 
     <div class="row d-none" id="org-record">
 
-      <!-- il nome è solo nell'intestazione: qui ID e conteggio -->
+      <!-- the name is only in the header: here IDs and count -->
       <div class="col-12 col-lg-4 mb-4">
         <div class="card shadow-sm h-100">
           <div class="card-header text-center">
@@ -41,22 +41,22 @@
           </div>
           <div class="card-body p-4 d-flex flex-column justify-content-center">
 
-            <!-- SKG-IF ha solo nome e identificativi per le organizzazioni -->
-            <div class="br-field mb-4"><span class="br-label">Crossref</span><span id="org-crossref">[[Lucinda:ifcond(org_meta.crossref != null, skgif_ids(org_meta.crossref), _HTML_(<span class="skgif-none">No Crossref ID found</span>))]]</span></div>
+            <!-- SKG-IF only has name and identifiers for organisations -->
+            [[Lucinda:ifcond(org_meta.crossref != null, concat(_HTML_(<div class="br-field mb-4"><span class="br-label">Crossref</span><span id="org-crossref">), skgif_ids(org_meta.crossref), _HTML_(</span></div>)))]]
             <div class="br-field mb-4"><span class="br-label">Other identifiers</span><span id="org-ids">[[Lucinda:skgif_ids(org_meta.ids, org_meta.omid)]]</span></div>
 
             <div class="card shadow-sm ra-count-box skgif-count-link" role="button" tabindex="0" data-skgif-goto="org-pubs">
               <div class="card-header text-center py-1"><span class="fw-bold small">Publications</span></div>
-              <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number" id="org-count">[[Lucinda:skgif_text(org_works.total)]]</h3></div>
+              <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number" id="org-count">[[Lucinda:skgif_num(org_works.total)]]</h3></div>
             </div>
 
           </div>
         </div>
       </div>
 
-      <!-- grafico per anno, disegnato da _skgifListChart() -->
+      <!-- per-year chart, drawn by _skgifListChart() -->
       <div class="col-12 col-lg-8 mb-4">
-        <div class="card shadow-sm h-100">
+        <div class="card shadow-sm skgif-fold h-100">
           <div class="card-header text-center">
             <h5 class="my-1 fw-bold skgif-box-title">Publications per year</h5>
           </div>
@@ -72,7 +72,7 @@
           </div>
 
           <div class="card-body p-4">
-            <!-- lista delle pubblicazioni a pagine, con i suoi strumenti (_skgifListTools()) -->
+            <!-- paged list of the publications, with its tools (_skgifListTools()) -->
             <div class="ra-toolbar mb-3">
               <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                 <span class="fw-bold" id="org-pubs-status"></span>
@@ -85,6 +85,10 @@
               <div class="d-flex flex-wrap align-items-center gap-3 skgif-toolbar-row">
                 <button type="button" class="btn btn-sm br-load-chart d-none" id="org-pubs-load">Load all publications</button>
                 <span class="small text-muted d-none" id="org-pubs-note"></span>
+                <!-- progress bar right after "Loading… x/N" (on desktop it stays under the row, see browser.css) -->
+                <div class="progress mt-2 d-none br-chart-progress" id="org-pubs-progress" style="height: 6px;" role="progressbar" aria-label="Loading publications">
+                  <div class="progress-bar" style="width: 0%"></div>
+                </div>
                 <div class="d-flex flex-wrap align-items-center gap-3 d-none" id="org-pubs-tools">
                   <div class="d-flex flex-wrap align-items-center gap-3 skgif-filters"></div>
                   <div class="d-flex align-items-center gap-2">
@@ -100,9 +104,6 @@
                 </div>
                 <div class="d-flex align-items-center gap-2 ms-auto d-none" id="org-pubs-perpage"><span class="small fw-bold">Show</span></div>
               </div>
-              <div class="progress mt-2 d-none br-chart-progress" id="org-pubs-progress" style="height: 6px;" role="progressbar" aria-label="Loading publications">
-                <div class="progress-bar" style="width: 0%"></div>
-              </div>
             </div>
             <div class="row" id="org-pubs-list"></div>
           </div>
@@ -112,7 +113,7 @@
 
     </div>
 
-    <!-- bottone "Back to top" -->
+    <!-- "Back to top" button -->
     <button type="button" class="btn btn-sm ra-top d-none" id="ra-top">&uarr; Back to top</button>
 
   </body>

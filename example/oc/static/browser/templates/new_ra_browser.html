@@ -12,29 +12,29 @@
       </a>
     </div>
 
-    <!-- SILVIA: nome, ID e conteggio li mette Lucinda (blocchi #api del .hf + view functions skgif_*);
-         opere e grafico li fa api_author_record_skgif() -->
+    <!-- SILVIA: name, IDs and count are set by Lucinda (#api blocks of the .hf + skgif_* view functions);
+         works and charts are built by api_author_record_skgif() -->
     <div class="row">
 
       <div class="col-12 mb-4">
         <div class="card shadow-sm p-3 h-100">
           <div class="card-header text-center">
-            <!-- SILVIA: il nome al posto dell'OMID -->
+            <!-- SILVIA: the name instead of the OMID -->
             <p class="mb-1 small text-muted">Responsible Agent Record</p>
             <h3 class="my-0" id="ra-id">[[Lucinda:skgif_text(author_meta.head)]]</h3>
           </div>
         </div>
       </div>
 
-      <!-- errori (autore inesistente, chiamata fallita) -->
+      <!-- SILVIA: errors (non-existent author, failed call) -->
       <div class="col-12 skgif-lv" id="ra-message">[[Lucinda:ifcond(author_meta.message != null, concat(_HTML_(<div class="alert alert-danger mb-4">), skgif_text(author_meta.message), _HTML_(</div>)))]]</div>
 
     </div>
 
-    <!-- SILVIA: a sinistra ORCID, altri ID e contatore, a destra il grafico per anno -->
+    <!-- SILVIA: ORCID, other IDs and counters on the left, per-year charts on the right -->
     <div class="row d-none" id="ra-record">
 
-      <!-- il nome è solo nell'intestazione: qui ID e conteggio -->
+      <!-- SILVIA: the name is only in the header: here IDs and counts -->
       <div class="col-12 col-lg-4 mb-4">
         <div class="card shadow-sm h-100">
           <div class="card-header text-center">
@@ -42,25 +42,52 @@
           </div>
           <div class="card-body p-4 d-flex flex-column justify-content-center">
 
-            <div class="br-field mb-4"><span class="br-label">ORCID</span><span id="ra-orcid">[[Lucinda:ifcond(author_meta.orcid != null, skgif_orcid(author_meta.orcid), _HTML_(<span class="skgif-none">No ORCID found</span>))]]</span></div>
+            <div class="br-field mb-4"><span class="br-label">ORCID</span><span id="ra-orcid">[[Lucinda:ifcond(author_meta.orcid != null, skgif_orcid(author_meta.orcid), _HTML_(<span class="skgif-none">Not available</span>))]]</span></div>
             <div class="br-field mb-4"><span class="br-label">Other identifiers</span><span id="ra-ids">[[Lucinda:skgif_ids(author_meta.ids, author_meta.omid)]]</span></div>
+            <!-- SILVIA: first and last year of the works (dates as given by SKG-IF), once all of them have arrived -->
+            <div class="br-field mb-4 d-none" id="ra-active-field"><span class="br-label">Years active</span><span id="ra-active"></span></div>
 
-            <div class="card shadow-sm ra-count-box skgif-count-link" role="button" tabindex="0" data-skgif-goto="ra-pubs">
-              <div class="card-header text-center py-1"><span class="fw-bold small">Publications</span></div>
-              <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number" id="search-total-count">[[Lucinda:skgif_text(author_works.total)]]</h3></div>
+            <!-- SILVIA: Publications (Lucinda) and Citations (sum of the SKG-IF totals of each work, _loadAuthorCitations) -->
+            <div class="d-flex flex-wrap gap-3">
+              <div class="card shadow-sm ra-count-box skgif-count-link flex-fill" role="button" tabindex="0" data-skgif-goto="ra-pubs">
+                <div class="card-header text-center py-1"><span class="fw-bold small">Publications</span></div>
+                <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number" id="search-total-count">[[Lucinda:skgif_num(author_works.total)]]</h3></div>
+              </div>
+              <div class="card shadow-sm ra-count-box skgif-count-link flex-fill" role="button" tabindex="0" data-skgif-goto="ra-charts" data-br-goto-tab="ra-cityear">
+                <div class="card-header text-center py-1"><span class="fw-bold small">Citations</span></div>
+                <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number" id="ra-cits-count">…</h3></div>
+              </div>
             </div>
+            <div class="small text-muted mt-2" id="ra-cits-note"></div>
 
           </div>
         </div>
       </div>
 
-      <!-- grafico "Publications per year", disegnato quando sono arrivate tutte le opere -->
-      <div class="col-12 col-lg-8 mb-4">
-        <div class="card shadow-sm h-100">
-          <div class="card-header text-center">
-            <h5 class="my-1 fw-bold skgif-box-title">Publications per year</h5>
+      <!-- SILVIA: per-year charts in two tabs: "Publications per year" (once all works have arrived) and
+           "Citations per year" (Index, one call per work, _loadAuthorCitations) -->
+      <div class="col-12 col-lg-8 mb-4" id="ra-charts">
+        <div class="card shadow-sm skgif-fold h-100">
+          <div class="card-header br-tabs justify-content-center" role="tablist">
+            <button type="button" class="br-tab active" role="tab" aria-selected="true" data-br-tab="ra-pubyear">Publications per year</button>
+            <button type="button" class="br-tab" role="tab" aria-selected="false" data-br-tab="ra-cityear">Citations per year</button>
           </div>
-          <div class="card-body text-center text-muted small d-flex flex-column justify-content-center" id="ra-pubs-chart"></div>
+          <div class="card-body text-center text-muted small d-flex flex-column justify-content-center" id="br-ra-pubyear-pane">
+            <div id="ra-pubs-chart"></div>
+          </div>
+          <div class="card-body text-center text-muted small d-flex flex-column justify-content-center d-none" id="br-ra-cityear-pane">
+            <div id="ra-cits-chart"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SILVIA: the sources where the author publishes most (from the downloaded works); click = Source filter of the list -->
+      <div class="col-12 mb-4 d-none" id="ra-top-sources">
+        <div class="card shadow-sm skgif-fold">
+          <div class="card-header text-center">
+            <h5 class="my-1 fw-bold skgif-box-title">Top sources</h5>
+          </div>
+          <div class="card-body px-4 py-3"><ol class="skgif-top-list mb-0" id="ra-top-sources-list"></ol></div>
         </div>
       </div>
 
@@ -72,35 +99,38 @@
             </div>
             
             <div class="card-body p-4">
-                <!-- SILVIA: tutte le opere scaricate, pagine lato client; Sort by attivo quando sono arrivate tutte -->
+                <!-- SILVIA: all works downloaded, client-side pages; Sort by enabled once all of them have arrived -->
                 <div class="ra-toolbar mb-3">
                     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                         <span class="fw-bold" id="ra-sort-status"></span>
-                        <!-- "Search in titles": filtra le opere già caricate -->
+                        <!-- SILVIA: "Search in titles": filters the works already loaded -->
                         <form class="d-flex flex-wrap align-items-center gap-2" id="ra-search" role="search">
                             <input type="search" class="form-control form-control-sm skgif-search-input" id="ra-search-input" placeholder="Search in titles" aria-label="Search in the titles of the publications" disabled>
                             <button type="submit" class="btn btn-sm br-load-chart" disabled>Search</button>
                             <button type="button" class="btn btn-sm skgif-search-reset d-none" id="ra-search-reset">Clear search</button>
                         </form>
                     </div>
-                    <!-- filtri Type, Year, Role (_skgifListFilters()) -->
+                    <!-- SILVIA: Type, Year, Source, Role filters (_skgifListFilters()) -->
                     <div class="d-flex flex-wrap align-items-center gap-3 skgif-toolbar-row">
                         <span class="small text-muted d-none" id="ra-note"></span>
+                        <!-- SILVIA: progress bar right after "Loading… x/N" (on desktop it stays under the row, see browser.css) -->
+                        <div class="progress mt-2 d-none" id="ra-progress" style="height: 6px;" role="progressbar" aria-label="Loading publications">
+                          <div class="progress-bar" style="width: 0%"></div>
+                        </div>
                         <div class="d-flex flex-wrap align-items-center gap-3 skgif-filters" id="ra-filters"></div>
                         <div class="d-flex align-items-center gap-2">
                             <span class="small fw-bold">Sort by:</span>
                             <div class="btn-group btn-group-sm ra-sort" id="ra-sort" role="group" aria-label="Sort publications">
                                 <button type="button" class="btn" data-order="newest" disabled>Newest</button>
                                 <button type="button" class="btn" data-order="oldest" disabled>Oldest</button>
+                                <!-- SILVIA: enabled once the citation counts have arrived (_loadAuthorCitations) -->
+                                <button type="button" class="btn" data-order="cited" disabled>Most cited</button>
                                 <button type="button" class="btn" data-order="title-asc" disabled>Title A–Z</button>
                                 <button type="button" class="btn" data-order="title-desc" disabled>Title Z–A</button>
                                 <button type="button" class="btn active" data-order="default" disabled>Default order</button>
                             </div>
                         </div>
                         <div class="d-flex align-items-center gap-2 ms-auto d-none" id="ra-perpage"><span class="small fw-bold">Show</span></div>
-                    </div>
-                    <div class="progress mt-2 d-none" id="ra-progress" style="height: 6px;" role="progressbar" aria-label="Loading publications">
-                        <div class="progress-bar" style="width: 0%"></div>
                     </div>
                 </div>
                 <div class="row" id="search-results-container"></div>
@@ -109,7 +139,7 @@
         </div>
       </div>
 
-      <!-- SILVIA: bottone "Back to top" -->
+      <!-- SILVIA: "Back to top" button -->
       <button type="button" class="btn btn-sm ra-top d-none" id="ra-top">&uarr; Back to top</button>
 
       <footer>

@@ -2,6 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
+    <!-- SILVIA: OpenCitations favicon (browser tab icon) -->
+    <link rel="icon" type="image/png" href="../static/img/favicon-oc.png">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
@@ -65,11 +67,11 @@
       <img src="../static/img/oc-medium.png" alt="OpenCitations Logo" class="img-fluid" style="max-height: 100px;">
     </div>
 
-    <!-- SILVIA: pannello di ricerca (uguale a home.html, stile in home.css) -->
+    <!-- SILVIA: search panel (same as home.html, styled in home.css) -->
     <div class="oc-search mb-5 search-container">
       <form id="searchForm" class="oc-search-card">
 
-        <!-- tipo di risorsa: select nascosto comandato dalle schede -->
+        <!-- resource type: hidden select driven by the tabs -->
         <select name="category" class="d-none" aria-hidden="true" tabindex="-1">
           <option value="document">Document</option>
           <option value="author">Author</option>
@@ -80,7 +82,7 @@
         <div class="oc-tabs" role="tablist" aria-label="Resource type"></div>
 
         <div class="oc-search-row">
-          <!-- testo libero o, per gli autori, nome + cognome -->
+          <!-- free text or, for authors, given + family name -->
           <div class="oc-field" id="textSide">
             <label class="oc-label" id="textLabel" for="searchQuery">Title</label>
             <div class="oc-input-icon text-field">
@@ -93,7 +95,7 @@
             </div>
           </div>
 
-          <!-- SILVIA: filtro facoltativo della ricerca per nome delle riviste (tipo), nella stessa riga -->
+          <!-- optional filter of the venue name search (type), on the same row -->
           <div class="oc-field oc-refine venue-filter d-none">
             <label class="oc-label" for="venueType">Type</label>
             <select id="venueType" class="form-select" aria-label="Venue type">
@@ -109,7 +111,7 @@
 
           <div class="oc-or id-field">or</div>
 
-          <!-- identificativo: schema + valore -->
+          <!-- identifier: scheme + value -->
           <div class="oc-field id-field" id="idSide">
             <label class="oc-label" for="idQuery">Identifier</label>
             <div class="input-group">
@@ -137,7 +139,7 @@
           </div>
           <h5 class="fw-bold mb-2">Document</h5>
           <p class="small text-muted mb-0">
-            Search bibliographic resources (articles, books) by DOI, OMID, or PMID to view metadata and references.
+            Search by title or identifier (DOI, PMID, ISBN, OMID…) to view a work's metadata, references and citations.
           </p>
         </div>
       </div>
@@ -149,7 +151,7 @@
           </div>
           <h5 class="fw-bold mb-2">Author</h5>
           <p class="small text-muted mb-0">
-            Find researchers to explore their publication history, affiliations, and collaboration networks.
+            Search by name or ORCID to explore a researcher's publications and the citations they received.
           </p>
         </div>
       </div>
@@ -161,12 +163,12 @@
           </div>
           <h5 class="fw-bold mb-2">Venue</h5>
           <p class="small text-muted mb-0">
-            Browse journals, conferences, and series metadata to track publication volumes over time.
+            Search journals, books and conference proceedings by name or identifier (ISSN, ISBN…) to view their type and publishers.
           </p>
         </div>
       </div>
 
-      <!-- SILVIA: ricerca organizzazioni -->
+      <!-- SILVIA: organisation search -->
       <div class="col-12 col-md-6 col-lg">
         <div class="card resource-card p-4 text-center">
           <div class="icon-box">
@@ -174,7 +176,7 @@
           </div>
           <h5 class="fw-bold mb-2">Organisation</h5>
           <p class="small text-muted mb-0">
-            Find publishers and institutions by name and view their identifiers (Crossref, OMID).
+            Search publishers and other organisations by name or identifier to browse their publications.
           </p>
         </div>
       </div>
@@ -186,7 +188,7 @@
           </div>
           <h5 class="fw-bold mb-2">Citation</h5>
           <p class="small text-muted mb-0">
-            Visualize the direct citation link between a citing entity and a cited entity (OCI).
+            Open a citation by its OCI to compare the citing and the cited work, with the references and citations they share.
           </p>
         </div>
       </div>

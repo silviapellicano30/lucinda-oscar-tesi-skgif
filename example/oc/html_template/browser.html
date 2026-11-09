@@ -1,6 +1,8 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
+    <!-- SILVIA: OpenCitations favicon (browser tab icon) -->
+    <link rel="icon" type="image/png" href="../static/img/favicon-oc.png">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
@@ -18,35 +20,24 @@
 
     <header>
       <div class="logo">
-        <!-- SILVIA: il logo porta alla home -->
-        <a href="home2.html"><img src="../static/img/oc-medium.png" " alt="OC Logo"/ style="padding: 10%;"></a>
-        <!--<h1>Lucinda v2.0</h1>-->
+        <!-- SILVIA: the logo links to the home page -->
+        <a href="home2.html"><img src="../static/img/oc-medium.png" alt="OC Logo" style="padding: 10%;"></a>
       </div>
     </header>
-
-    <!--<div class="mb-3">
-      <a href="http://127.0.0.1:5500/example/oc/html_template/home.html" class="btn btn-sm">
-        <i class="fas fa-arrow-left"></i> Home
-      </a>
-    </div>-->
-    
-
 
     <div id="__lucinda__"></div>
 
 
     <footer>
       <div class="footer-content">
-        <p><em>2025 Lucinda v2.0<em></p>
+        <p><em>2025 Lucinda v2.0</em></p>
       </div>
     </footer>
 
     <script src="../static/vendor/bootstrap-5.3.5-dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.6.1"></script><!-- SILVIA: fixed Chart.js version (per-year charts) -->
     <script type="text/javascript" src="../static/js/lucinda.js"></script>
-    <!-- SILVIA (SKG-IF): codice diviso per compito, in quest'ordine (config, base, componenti, pagine).
-         Il codice di Pietro (SPARQL) è in ../static/browser/legacy/localbrowser_pietro.js, non caricato:
-         nessun template attivo lo usa; riaggiungerlo qui se si riattivano i template di old_templates. -->
+    <!-- SILVIA: SKG-IF code, split by task and loaded in this order (configuration, core, components, pages) -->
     <script type="text/javascript" src="../static/browser/skgif/config.js"></script>
     <script type="text/javascript" src="../static/browser/skgif/core.js"></script>
     <script type="text/javascript" src="../static/browser/skgif/ui.js"></script>
@@ -60,28 +51,23 @@
     <script type="text/javascript" src="../static/browser/skgif/pages/org.js"></script>
     <script type="text/javascript" src="../static/browser/skgif/pages/venue.js"></script>
     <script type="text/javascript" src="../static/browser/skgif/pages/citation.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SILVIA: load-time measurement, off by default (switched on from tools/misure.html); delete this line to remove it -->
+    <script type="text/javascript" src="../static/browser/skgif/timing.js"></script>
     <script>
       Lucinda.init({
           templates_url: "../static/browser/templates/",
           templates: [
-            // with ASK
             "new_venue_browser",
-            
             "new_ci_browser",
             "new_ra_browser",
-            "new_org_browser", // SILVIA (SKG-IF): ra/ that is not a person (new_ra_browser checks /persons)
+            "new_org_browser", // SILVIA: ra/ that is not a person (new_ra_browser checks /persons)
             "new_br_any_browser",
             "doc_citations",
             "doc_references",
-            "doc_free_text" ,
+            "doc_free_text",
             "aut_free_text",
             "venue_free_text",
-            "org_free_text" // SILVIA (SKG-IF): new organisation search
-             // with ASK if is an Author
-            //"br_ja_browser", // with ASK if its a Journal Article
-            //"br_j_browser" // with ASK if its a Journal
-            
+            "org_free_text" // SILVIA: organisation search
           ],
           verbose: true
       });

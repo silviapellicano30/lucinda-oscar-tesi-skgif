@@ -1,4 +1,4 @@
-<!-- SILVIA: ricerca per ID, finché non si sa se il record è uno solo (allora si apre la sua scheda) -->
+<!-- SILVIA: search by ID: hidden until it is known whether there is a single record (then its page opens) -->
 <div class="skgif-id-loading">Loading the resource<br><span class="loading-dots"><span>.</span><span>.</span><span>.</span> </span></div>
 <br>
 <div class="mb-3">
@@ -11,10 +11,10 @@
   <div class="col-12 mb-4">
     <div class="card shadow-sm p-3 h-100">
       <div class="card-header text-center">
-        <!-- SILVIA: conteggio e ricerca su una riga; tipo di risorsa nella riga dei controlli -->
-        <h3><span id="search-total-count">[[Lucinda:skgif_text(search_count.total)]]</span> Results <span class="fw-normal">for:</span> <span id="search-query-label">[[Lucinda:skgif_text(search_count.label)]]</span></h3>
+        <!-- SILVIA: count and query on one line; resource type in the controls row -->
+        <h3><span id="search-total-count">[[Lucinda:skgif_num(search_count.total)]]</span> Results <span class="fw-normal">for:</span> <span id="search-query-label">[[Lucinda:skgif_text(search_count.label)]]</span></h3>
       </div>
-      <!-- SILVIA: tipo di risorsa, filtri della ricerca (_skgifSearchRefine) e "Show [N] entries" -->
+      <!-- SILVIA: resource type, search filters (_skgifSearchRefine) and "Show [N] entries" -->
       <div class="d-flex flex-wrap align-items-center gap-3 skgif-search-tools">
         <div class="skgif-head-meta me-auto">Venue Resource Records</div>
         <div class="d-flex flex-wrap align-items-center gap-2" id="search-refine"></div>
