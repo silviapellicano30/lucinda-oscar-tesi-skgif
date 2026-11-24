@@ -4,12 +4,12 @@
 #id citing_meta
 #api [[skgif_api]]/products/[[id_base]]br/[[citing]]
 #preprocess pre_skgif_oci(oci)
-#postprocess post_skgif_ci_doc(citing)
+#postprocess post_skgif_ci_product(citing)
 
 #id cited_meta
 #api [[skgif_api]]/products/[[id_base]]br/[[cited]]
 #preprocess pre_skgif_oci(oci)
-#postprocess post_skgif_ci_doc(cited)
+#postprocess post_skgif_ci_product(cited)
 
 #id citing_refs
 #api [[skgif_api]]/products?filter=cf.cited_by:[[id_base_enc]]br%2F[[citing]]&page_size=1

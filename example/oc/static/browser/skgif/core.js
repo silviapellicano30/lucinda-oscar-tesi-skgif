@@ -7,6 +7,10 @@ const SKGIF_DEFAULT_PAGE_SIZE = 10; // results per page (same as the API default
 const SKGIF_UNAVAILABLE_TEXT = "The OpenCitations API is temporarily unable to answer (maintenance or high load). Please try again later.";
 const SKGIF_UNAVAILABLE_MESSAGE = `Service unavailable. ${SKGIF_UNAVAILABLE_TEXT}`; // plain text (Lucinda record pages)
 
+// Alphabetical comparison ignoring case and accents (titles, sources). Created once: String.localeCompare with
+// options builds a new collator at every call, which makes sorting long lists slow.
+const _skgifCompareText = new Intl.Collator(undefined, { sensitivity: 'base' }).compare;
+
 // "Service unavailable" box with a "Try again" button; search = adds a hint about long queries.
 function _skgifUnavailableHtml(search = false) {
   return `<div class="col-12"><div class="alert alert-danger mb-4 skgif-unavailable">`
@@ -76,7 +80,7 @@ function _skgifFetchUrl(url, timeoutMs) {
     });
 }
 
-// For long series of calls (e.g. one per work): on 429 (too many requests) waits 2, 4, 6 s and retries.
+// For long series of calls (e.g. one per publication): on 429 (too many requests) waits 2, 4, 6 s and retries.
 // Returns the JSON, {} on 404 (no results), null on failure. Does not use the skgifFetch cache.
 function skgifFetchPatient(url, tries = 4, waitMs = 2000) {
   const controller = new AbortController();
@@ -188,7 +192,11 @@ function _skgifUrlParam(lucinda_main_data, key) {
 // Message shown instead of the results (e.g. empty search).
 function _skgifShowMessage(text, containerId = 'search-results-container') {
   const container = document.getElementById(containerId);
-  if (container) container.innerHTML = `<div class="col-12"><p class="fst-italic text-muted">${text}</p></div>`; // same look for every empty list
+  if (container) container.innerHTML = _skgifMessageHtml(text);
+}
+// HTML of the message: same look for every empty list.
+function _skgifMessageHtml(text) {
+  return `<div class="col-12"><p class="fst-italic text-muted">${text}</p></div>`;
 }
 
 // An API field that should be a list: [] if missing.

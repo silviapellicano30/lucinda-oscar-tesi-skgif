@@ -10,7 +10,7 @@
     <br>
 
     <div class="mb-3">
-      <a href="home2.html" class="btn  btn-sm">
+      <a href="home.html" class="btn  btn-sm">
         <i class="fas fa-arrow-left"></i> Home
       </a>
     </div>
@@ -20,7 +20,7 @@
       <div class="col-12 mb-4">
         <div class="card shadow-sm p-3 h-100">
           <div class="card-header text-center">
-            <p class="mb-1 small text-muted">Responsible Agent Record</p>
+            <p class="mb-1 small text-muted">Organisation Record</p>
             <h3 class="my-0" id="org-head">[[Lucinda:skgif_text(org_meta.head)]]</h3>
           </div>
         </div>
@@ -39,15 +39,17 @@
           <div class="card-header text-center">
             <h5 class="my-1 fw-bold skgif-box-title">Overview</h5>
           </div>
-          <div class="card-body p-4 d-flex flex-column justify-content-center">
+          <div class="card-body p-4 d-flex flex-column">
 
             <!-- SKG-IF only has name and identifiers for organisations -->
             [[Lucinda:ifcond(org_meta.crossref != null, concat(_HTML_(<div class="br-field mb-4"><span class="br-label">Crossref</span><span id="org-crossref">), skgif_ids(org_meta.crossref), _HTML_(</span></div>)))]]
-            <div class="br-field mb-4"><span class="br-label">Other identifiers</span><span id="org-ids">[[Lucinda:skgif_ids(org_meta.ids, org_meta.omid)]]</span></div>
+            <div class="br-field mb-4"><span class="br-label">Identifiers</span><span id="org-ids">[[Lucinda:skgif_ids(org_meta.ids, org_meta.omid)]]</span></div>
 
-            <div class="card shadow-sm ra-count-box skgif-count-link" role="button" tabindex="0" data-skgif-goto="org-pubs">
-              <div class="card-header text-center py-1"><span class="fw-bold small">Publications</span></div>
-              <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number" id="org-count">[[Lucinda:skgif_num(org_works.total)]]</h3></div>
+            <div class="skgif-count-seg">
+              <div class="card shadow-sm ra-count-box skgif-count-link" role="button" tabindex="0" data-skgif-goto="org-pubs">
+                <div class="card-header text-center py-1"><span class="fw-bold small">Publications</span></div>
+                <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number" id="org-count">[[Lucinda:skgif_num(org_products.total)]]</h3></div>
+              </div>
             </div>
 
           </div>
@@ -64,7 +66,7 @@
         </div>
       </div>
 
-      <div class="col-12" id="org-pubs">
+      <div class="col-12 mb-4" id="org-pubs">
         <div class="card shadow-sm">
 
           <div class="card-header text-center">

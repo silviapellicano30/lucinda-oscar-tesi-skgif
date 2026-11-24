@@ -86,19 +86,19 @@ function _skgifDropdown(ariaLabel, options, onChange) {
   };
 }
 
-// List filters (Type, Year, Source, Role).
+// List filters (Type, Year, Publication venue, Role).
 const SKGIF_FILTERS = {
   type: { label: 'Type', values: p => [_skgifProductType(p)], sort: (a, b) => a.localeCompare(b) },
   year: {
     label: 'Year',
     values: p => [/^\d{4}/.test(String(_skgifProductRawDate(p) || '')) ? String(_skgifProductRawDate(p)).slice(0, 4) : 'Date not available'],
-    sort: (a, b) => (a === 'Date not available') - (b === 'Date not available') || b.localeCompare(a) // most recent first, works without a date last
+    sort: (a, b) => (a === 'Date not available') - (b === 'Date not available') || b.localeCompare(a) // most recent first, publications without a date last
   },
-  // journal/series/book where the work was published (name as given by the API), works without one last
-  source: {
-    label: 'Source',
-    values: p => [_skgifProductVenue(p)?.name || 'Source not available'],
-    sort: (a, b) => (a === 'Source not available') - (b === 'Source not available') || a.localeCompare(b, undefined, { sensitivity: 'base' })
+  // journal/series/book where the publication was published (name as given by the API), publications without one last
+  venue: {
+    label: 'Publication venue',
+    values: p => [_skgifProductVenue(p)?.name || 'Venue not available'],
+    sort: (a, b) => (a === 'Venue not available') - (b === 'Venue not available') || _skgifCompareText(a, b)
   },
   role: {
     label: 'Role', startHidden: true,
@@ -248,7 +248,7 @@ document.addEventListener('click', e => {
   });
 });
 
-// Header of the document pages (title, authors/year/source, IDs): one line with "…" when too long;
+// Header of the research product records (title, authors/year/venue, IDs): one line with "…" when too long;
 // a click/tap expands it to several lines, another click collapses it. Only when the line is actually cut.
 const SKGIF_HEAD_LINE = '.skgif-head div[class^="skgif-head-"]';
 const _skgifIsCut = el => el.scrollWidth > el.clientWidth;
@@ -390,7 +390,7 @@ function _skgifFilterCounts() {
 document.addEventListener('click', () => setTimeout(_skgifFilterCounts, 0));
 
 // Collapsible sections on phones (cards with class skgif-fold, initially closed): clicking the header opens/closes
-// the section. Tabbed header (author profile charts): a tab opens the section, the already active tab closes it.
+// the section. Tabbed header (person record charts): a tab opens the section, the already active tab closes it.
 // On desktop the CSS hides nothing, so the class does not change the layout.
 document.addEventListener('click', e => {
   const header = e.target.closest('.skgif-fold > .card-header');
@@ -420,8 +420,8 @@ function _skgifExportControl(getItems, what, enabled = true) {
   return wrap;
 }
 
-// Document page: "Open at publisher" link (only with a DOI) on the right of the "Bibliographic Resource Record" row.
-function _skgifDocActions(product, head) {
+// Research product record: "Open at publisher" link (only with a DOI) on the right of the "Research Product Record" row.
+function _skgifProductActions(product, head) {
   const doi = _skgifArray(product?.identifiers).find(i => i.scheme === 'doi')?.value;
   const label = head?.previousElementSibling;
   if (!doi || !label) return;
@@ -431,7 +431,7 @@ function _skgifDocActions(product, head) {
 
 // --- Tabs ---
 
-// Tabs (data-br-tab): References / Citations of the document page, charts of the author profile.
+// Tabs (data-br-tab): References / Citations of the research product record, charts of the person record.
 function _skgifInitTabs() {
   const tabs = document.querySelectorAll('[data-br-tab]');
   tabs.forEach(tab => tab.addEventListener('click', () => {

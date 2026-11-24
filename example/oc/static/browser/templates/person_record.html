@@ -7,27 +7,27 @@
     <br>
 
     <div class="mb-3">
-      <a href="home2.html" class="btn  btn-sm">
+      <a href="home.html" class="btn  btn-sm">
         <i class="fas fa-arrow-left"></i> Home
       </a>
     </div>
 
     <!-- Name, IDs and count are set by Lucinda (#api blocks of the .hf + skgif_* view functions);
-         works and charts are built by api_author_record_skgif() -->
+         publications and charts are built by api_person_record_skgif() -->
     <div class="row">
 
       <div class="col-12 mb-4">
         <div class="card shadow-sm p-3 h-100">
           <div class="card-header text-center">
             <!-- The name instead of the OMID -->
-            <p class="mb-1 small text-muted">Responsible Agent Record</p>
-            <h3 class="my-0" id="ra-id">[[Lucinda:skgif_text(author_meta.head)]]</h3>
+            <p class="mb-1 small text-muted">Person Record</p>
+            <h3 class="my-0" id="ra-id">[[Lucinda:skgif_text(person_meta.head)]]</h3>
           </div>
         </div>
       </div>
 
-      <!-- Errors (non-existent author, failed call) -->
-      <div class="col-12 skgif-lv" id="ra-message">[[Lucinda:ifcond(author_meta.message != null, concat(_HTML_(<div class="alert alert-danger mb-4">), skgif_text(author_meta.message), _HTML_(</div>)))]]</div>
+      <!-- Errors (non-existent person, failed call) -->
+      <div class="col-12 skgif-lv" id="ra-message">[[Lucinda:ifcond(person_meta.message != null, concat(_HTML_(<div class="alert alert-danger mb-4">), skgif_text(person_meta.message), _HTML_(</div>)))]]</div>
 
     </div>
 
@@ -42,16 +42,16 @@
           </div>
           <div class="card-body p-4 d-flex flex-column justify-content-center">
 
-            <div class="br-field mb-4"><span class="br-label">ORCID</span><span id="ra-orcid">[[Lucinda:ifcond(author_meta.orcid != null, skgif_orcid(author_meta.orcid), _HTML_(<span class="skgif-none">Not available</span>))]]</span></div>
-            <div class="br-field mb-4"><span class="br-label">Other identifiers</span><span id="ra-ids">[[Lucinda:skgif_ids(author_meta.ids, author_meta.omid)]]</span></div>
-            <!-- First and last year of the works (dates as given by SKG-IF), once all of them have arrived -->
+            <div class="br-field mb-4"><span class="br-label">ORCID</span><span id="ra-orcid">[[Lucinda:ifcond(person_meta.orcid != null, skgif_orcid(person_meta.orcid), _HTML_(<span class="skgif-none">Not available</span>))]]</span></div>
+            <div class="br-field mb-4"><span class="br-label">Other identifiers</span><span id="ra-ids">[[Lucinda:skgif_ids(person_meta.ids, person_meta.omid)]]</span></div>
+            <!-- First and last year of the publications (dates as given by SKG-IF), once all of them have arrived -->
             <div class="br-field mb-4 d-none" id="ra-active-field"><span class="br-label">Years active</span><span id="ra-active"></span></div>
 
-            <!-- Publications (Lucinda) and Citations (sum of the SKG-IF totals of each work, _loadAuthorCitations) -->
-            <div class="d-flex flex-wrap gap-3">
+            <!-- Publications (Lucinda) and Citations (sum of the SKG-IF totals of each publication, _loadPersonCitations) -->
+            <div class="d-flex flex-wrap gap-3 skgif-count-seg skgif-count-seg-full skgif-count-seg-stack">
               <div class="card shadow-sm ra-count-box skgif-count-link flex-fill" role="button" tabindex="0" data-skgif-goto="ra-pubs">
                 <div class="card-header text-center py-1"><span class="fw-bold small">Publications</span></div>
-                <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number" id="search-total-count">[[Lucinda:skgif_num(author_works.total)]]</h3></div>
+                <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number" id="search-total-count">[[Lucinda:skgif_num(person_products.total)]]</h3></div>
               </div>
               <div class="card shadow-sm ra-count-box skgif-count-link flex-fill" role="button" tabindex="0" data-skgif-goto="ra-charts" data-br-goto-tab="ra-cityear">
                 <div class="card-header text-center py-1"><span class="fw-bold small">Citations</span></div>
@@ -64,8 +64,8 @@
         </div>
       </div>
 
-      <!-- Per-year charts in two tabs: "Publications per year" (once all works have arrived) and
-           "Citations per year" (Index, one call per work, _loadAuthorCitations) -->
+      <!-- Per-year charts in two tabs: "Publications per year" (once all publications have arrived) and
+           "Citations per year" (Index, one call per publication, _loadPersonCitations) -->
       <div class="col-12 col-lg-8 mb-4" id="ra-charts">
         <div class="card shadow-sm skgif-fold h-100">
           <div class="card-header br-tabs justify-content-center" role="tablist">
@@ -81,13 +81,13 @@
         </div>
       </div>
 
-      <!-- The sources where the author publishes most (from the downloaded works); click = Source filter of the list -->
-      <div class="col-12 mb-4 d-none" id="ra-top-sources">
+      <!-- The publication venues where the person publishes most (from the downloaded publications); click = Publication venue filter of the list -->
+      <div class="col-12 mb-4 d-none" id="ra-top-venues">
         <div class="card shadow-sm skgif-fold">
           <div class="card-header text-center">
-            <h5 class="my-1 fw-bold skgif-box-title">Top sources</h5>
+            <h5 class="my-1 fw-bold skgif-box-title">Top publication venues</h5>
           </div>
-          <div class="card-body px-4 py-3"><ol class="skgif-top-list mb-0" id="ra-top-sources-list"></ol></div>
+          <div class="card-body px-4 py-3"><ol class="skgif-top-list mb-0" id="ra-top-venues-list"></ol></div>
         </div>
       </div>
 
@@ -99,18 +99,18 @@
             </div>
             
             <div class="card-body p-4">
-                <!-- All works downloaded, client-side pages; Sort by enabled once all of them have arrived -->
+                <!-- All publications downloaded, client-side pages; Sort by enabled once all of them have arrived -->
                 <div class="ra-toolbar mb-3">
                     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                         <span class="fw-bold" id="ra-sort-status"></span>
-                        <!-- "Search in titles": filters the works already loaded -->
+                        <!-- "Search in titles": filters the publications already loaded -->
                         <form class="d-flex flex-wrap align-items-center gap-2" id="ra-search" role="search">
                             <input type="search" class="form-control form-control-sm skgif-search-input" id="ra-search-input" placeholder="Search in titles" aria-label="Search in the titles of the publications" disabled>
                             <button type="submit" class="btn btn-sm br-load-chart" disabled>Search</button>
                             <button type="button" class="btn btn-sm skgif-search-reset d-none" id="ra-search-reset">Clear search</button>
                         </form>
                     </div>
-                    <!-- Type, Year, Source, Role filters (_skgifListFilters()) -->
+                    <!-- Type, Year, Publication venue, Role filters (_skgifListFilters()) -->
                     <div class="d-flex flex-wrap align-items-center gap-3 skgif-toolbar-row">
                         <span class="small text-muted d-none" id="ra-note"></span>
                         <!-- Progress bar right after "Loading… x/N" (on desktop it stays under the row, see browser.css) -->
@@ -123,7 +123,7 @@
                             <div class="btn-group btn-group-sm ra-sort" id="ra-sort" role="group" aria-label="Sort publications">
                                 <button type="button" class="btn" data-order="newest" disabled>Newest</button>
                                 <button type="button" class="btn" data-order="oldest" disabled>Oldest</button>
-                                <!-- Enabled once the citation counts have arrived (_loadAuthorCitations) -->
+                                <!-- Enabled once the citation counts have arrived (_loadPersonCitations) -->
                                 <button type="button" class="btn" data-order="cited" disabled>Most cited</button>
                                 <button type="button" class="btn" data-order="title-asc" disabled>Title A–Z</button>
                                 <button type="button" class="btn" data-order="title-desc" disabled>Title Z–A</button>

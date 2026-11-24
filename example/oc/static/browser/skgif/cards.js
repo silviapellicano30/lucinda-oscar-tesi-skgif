@@ -1,4 +1,4 @@
-// Document cards, identifiers with links, names (authors, editors, publishers), record page headers.
+// Research product cards, identifiers with links, names (authors, editors, publishers), record page headers.
 
 // Product type ("journal article"...).
 function _skgifProductType(product) {
@@ -79,7 +79,7 @@ function _skgifIdList(identifiers, omid, asBadges = false, copy = false) {
     .join(asBadges ? ' ' : ' • ');
 }
 
-// People/organisations of a product with a given role (author, editor, publisher), in order.
+// Persons/organisations of a product with a given role (author, editor, publisher), in order.
 function _skgifContributors(contributions, role) {
   return _skgifArray(contributions)
     .filter(c => c && c.role === role && c.by)
@@ -131,7 +131,7 @@ function _skgifAgentHtml(agent) {
   return html;
 }
 
-// --- Products: title, date, source ---
+// --- Products: title, date, venue ---
 
 // Title of a product (the one without a language tag, otherwise the first).
 function _skgifProductTitle(product) {
@@ -150,33 +150,56 @@ function _skgifProductRawDate(product) {
   return manifestations.map(m => m?.dates?.publication?.[0]).find(Boolean);
 }
 
-// Name of the product's source (italic, with link); "" if missing.
-function _skgifProductSource(product) {
+// Name of the product's venue (italic, with link); "" if missing.
+function _skgifProductVenueHtml(product) {
   const venue = _skgifProductVenue(product);
-  return venue ? _skgifSourceHtml(venue.name, _skgifOmid(venue.local_identifier), []) : "";
+  return venue ? _skgifVenueHtml(venue.name, _skgifOmid(venue.local_identifier), []) : "";
 }
 
-// The source of the product, or undefined.
+// The venue of the product, or undefined.
 function _skgifProductVenue(product) {
   return _skgifArray(product.manifestations).map(m => m?.biblio?.in).find(v => v && v.name);
 }
 
-// HTML of a source from its data.
-function _skgifSourceHtml(name, venueOmid, identifiers) {
+// Record pages: the product's venue with its IDs, or "".
+function _skgifRecordVenue(product) {
+  const venue = _skgifProductVenue(product);
+  return venue ? { name: venue.name, omid: _skgifOmid(venue.local_identifier), identifiers: _skgifArray(venue.identifiers) } : '';
+}
+
+// Record pages: the product's contributors with a given role, with their ORCID (IDs are not shown in cards).
+function _skgifRecordAgents(product, role) {
+  return _skgifContributors(product.contributions, role).map(by => ({
+    name: _skgifAgentPlainName(by),
+    omid: _skgifOmid(by.local_identifier),
+    orcid: _skgifArray(by.identifiers).find(i => i.scheme === 'orcid')?.value || ''
+  }));
+}
+
+// Record pages: the product's identifiers as { scheme, value }.
+function _skgifRecordIds(product) {
+  return _skgifArray(product.identifiers).map(i => ({ scheme: i.scheme, value: i.value }));
+}
+
+// HTML of a venue from its data.
+function _skgifVenueHtml(name, venueOmid, identifiers) {
   const venueTitle = `<i>${_skgifEscape(name)}</i>`;
   const titleHtml = venueOmid
     ? `<a href="browser.html?value=${venueOmid}" class="text-dark text-decoration-none">${venueTitle}</a>`
     : venueTitle;
   const venueIds = _skgifIdList(identifiers, undefined, false, true); // record pages only (cards pass [])
-  return venueIds ? `${titleHtml}<span class="skgif-source-ids"> (${venueIds})</span>` : titleHtml; // span = can be hidden on phones
+  return venueIds ? `${titleHtml}<span class="skgif-venue-ids"> (${venueIds})</span>` : titleHtml; // span = can be hidden on phones
 }
 
 // --- Cards and lists shared by several pages ---
 
-// Card of a work, used by every list: year/role badge, Authors, Type, Source or Publisher, IDs, Go to (airy = more spacing).
-function _skgifWorkCard(product, badgeOf = _skgifEditorBadge, airy = false) {
+// Card of a publication, used by every list: year/role badge, Authors, Type, Venue or Publisher, IDs, Citations/References counts (airy = more spacing).
+// citation = { citing, cited } (short OMIDs): adds a "Citation details" link to the citation record (OCI = the two OMIDs).
+function _skgifProductCard(product, badgeOf = _skgifEditorBadge, airy = false, citation = null) {
   const omid = _skgifOmid(product.local_identifier);
   if (!omid) return '';
+  const oci = citation && `${citation.citing.replace(/^br\//, '')}-${citation.cited.replace(/^br\//, '')}`;
+  const ciLink = oci ? `<a class="skgif-ci-link" href="browser.html?value=ci/${_skgifEscape(oci)}">Citation details</a>` : '';
   const year = String(_skgifProductRawDate(product) || '').slice(0, 4);
   const contributions = _skgifArray(product.contributions);
   const role = contributions.some(c => c && c.role === 'author' && c.by) ? 'author' : 'editor';
@@ -187,8 +210,8 @@ function _skgifWorkCard(product, badgeOf = _skgifEditorBadge, airy = false) {
     return by.local_identifier === _skgifProfileOmid ? `<strong>${html}</strong>` : html; // the person of the profile in bold
   });
   const namesHtml = names.length ? _skgifShortNames(names, contributions, role) : '<span class="skgif-none">Not available</span>';
-  const source = _skgifProductSource(product);
-  const publisher = source ? '' : _skgifAgents(contributions, 'publisher');
+  const venue = _skgifProductVenueHtml(product);
+  const publisher = venue ? '' : _skgifAgents(contributions, 'publisher');
   const type = _skgifArray(product.manifestations).map(m => m?.type?.labels?.en).find(Boolean) || '';
   const ids = _skgifIdList(product.identifiers, omid); // links as in the Overview
   const roleBadge = badgeOf(_skgifProfileRoles(product));
@@ -203,18 +226,13 @@ function _skgifWorkCard(product, badgeOf = _skgifEditorBadge, airy = false) {
             <h5 class="ra-work-title"><a href="browser.html?value=${omid}">${_skgifEscape(_skgifProductTitle(product))}</a></h5>
             <div class="d-flex gap-1 flex-shrink-0">${badges}</div>
           </div>
-          <div class="ra-work-line ra-line-authors"><span class="fw-bold${role === 'author' && names.length ? ' ra-label-phone-hide' : ''}">${role === 'author' || !names.length ? 'Authors' : 'Editors'}:</span> ${namesHtml}</div>
-          ${type ? `<div class="ra-work-line ra-line-type"><span class="fw-bold ra-label-phone-hide">Type:</span> ${_skgifEscape(type)}</div>` : ''}
-          ${source ? `<div class="ra-work-line ra-line-source"><span class="fw-bold ra-label-phone-hide">Source:</span> ${source}</div>` : ''}
-          ${publisher ? `<div class="ra-work-line ra-line-publisher"><span class="fw-bold">Publisher:</span> ${publisher}</div>` : ''}
-          <div class="ra-work-line ra-line-meta">${[source, year && _skgifEscape(year), roleBadge].filter(Boolean).join(' · ')}</div><!-- source · year · role, shown on phones only -->
-          ${ids ? `<div class="ra-work-line ra-line-ids"><span class="fw-bold">IDs:</span> ${ids}</div>` : ''}
-          <div class="d-flex justify-content-end gap-3 ra-work-links">
-            <span class="ra-work-linkpair">
-              ${_skgifLinkButton(`browser.html?value=doc_ref/${omid}`, 'Go to References', _skgifArray(product.related_products?.cites).length, 'ra-ref-btn')}
-              <span class="skgif-cit-slot">${_skgifCitationsButton(omid)}</span>
-            </span>
-          </div>
+          <div class="ra-work-line ra-line-authors"><span class="fw-bold${role === 'author' && names.length ? ' ra-label-phone-hide' : ''}">${role === 'author' || !names.length ? 'Authors' : 'Editors'}:</span> <span class="ra-work-value">${namesHtml}</span></div>
+          ${type ? `<div class="ra-work-line ra-line-type"><span class="fw-bold ra-label-phone-hide">Type:</span> <span class="ra-work-value">${_skgifEscape(type)}</span></div>` : ''}
+          ${venue ? `<div class="ra-work-line ra-line-venue"><span class="fw-bold ra-label-phone-hide">Publication venue:</span> <span class="ra-work-value">${venue}</span></div>` : ''}
+          ${publisher ? `<div class="ra-work-line ra-line-publisher"><span class="fw-bold">Publisher:</span> <span class="ra-work-value">${publisher}</span></div>` : ''}
+          <div class="ra-work-line ra-line-meta">${[venue, year && _skgifEscape(year), roleBadge].filter(Boolean).join(' · ')}</div><!-- venue · year · role, shown on phones only -->
+          ${ids ? `<div class="ra-work-line ra-line-ids"><span class="fw-bold">Identifiers:</span> <span class="ra-work-value">${ids}</span></div>` : ''}
+          <div class="ra-work-line ra-line-counts">${_skgifCitationsButton(omid)}<span class="ra-count-sep"> • </span>${_skgifCountText('References', _skgifArray(product.related_products?.cites).length, 'ra-ref-count')}${ciLink}</div>
         </div>
       </div>
     </div>`;
@@ -249,6 +267,7 @@ document.addEventListener('click', e => {
   line.querySelector('.skgif-names-full').hidden = !open;
   line.querySelector('.skgif-names-short').hidden = open;
   btn.textContent = open ? 'Show less' : btn.dataset.more;
+  if (e.detail) btn.blur(); // mouse/touch click: no focus outline (keyboard keeps it)
 });
 
 // Click/Enter on the count boxes: goes to the list (data-skgif-goto) or to another page (data-skgif-href).
@@ -313,25 +332,25 @@ function _skgifHeaderHtml(title, lineText, meta) {
   return line('skgif-head-title', title) + line('skgif-head-line', lineText) + line('skgif-head-meta', meta);
 }
 
-// Cards of the search results and of the Go to pages: the shared card, airy version, without role.
-function _skgifDocumentCard(product) {
-  return _skgifWorkCard(product, () => '', true);
+// Cards of the search results: the shared card, airy version, without role.
+function _skgifProductCardAiry(product) {
+  return _skgifProductCard(product, () => '', true);
 }
 
 // OMID of the person/organisation whose profile is shown (bold in the cards, used for the role badges).
 let _skgifProfileOmid = '';
 
-// "Go to References (N)" and "Go to Citations (N)" in every card. With 0 the button is grey and not clickable.
-// References: number of references already in the work's JSON (related_products.cites), no calls.
-// Citations: one SKG-IF call per work (cf.cites, page_size=1, 404 = 0), only for the cards on screen,
-// SKGIF_CITE_COUNT_PARALLEL at a time; numbers are remembered and calls are never repeated (the author profile,
-// _loadAuthorCitations, also requests them from here). No number until it arrives or if the call fails.
+// "Citations: N" and "References: N" in every card, as plain text (not links).
+// References: number of references already in the publication's JSON (related_products.cites), no calls.
+// Citations: one SKG-IF call per publication (cf.cites, page_size=1, 404 = 0), only for the cards on screen,
+// SKGIF_CITE_COUNT_PARALLEL at a time; numbers are remembered and calls are never repeated (the person record,
+// _loadPersonCitations, also requests them from here). No number until it arrives or if the call fails.
 const SKGIF_CITE_COUNT_PARALLEL = 6;
-const _skgifCitedBy = {}; // OMID of the work (br/...) -> number of citations
+const _skgifCitedBy = {}; // OMID of the publication (br/...) -> number of citations
 const _skgifCitedByPending = {}; // OMID -> promise of the number (null = call failed)
 const _skgifCiteQueue = [];
 let _skgifCiteRunning = 0;
-// later = at the end of the queue (author profile total); the cards on screen go first.
+// later = at the end of the queue (person record total); the cards on screen go first.
 function _skgifCountCitations(omid, later = false) {
   if (omid in _skgifCitedBy) return Promise.resolve(_skgifCitedBy[omid]);
   const firstLater = () => { const i = _skgifCiteQueue.findIndex(job => job.later); return i < 0 ? _skgifCiteQueue.length : i; };
@@ -362,29 +381,27 @@ function _skgifCiteNext() {
     });
   }
 }
-// Number in brackets inside a <span> (.skgif-n): in the Citations button it has its own reserved space (browser.css).
-function _skgifLinkButton(href, label, n, cls, fadeIn = false) {
-  label = label.replace(/^Go to /, '<span class="skgif-goto">Go to </span>'); // "Go to" hidden on phones (CSS)
-  const number = n === undefined ? '' : `<span class="skgif-n${fadeIn ? ' skgif-n-in' : ''}"> (${_skgifNum(n)})</span>`;
-  if (n === 0) return `<span class="btn btn-sm ${cls} skgif-link-none" aria-disabled="true">${label}${number}</span>`;
-  return `<a href="${href}" class="btn btn-sm ${cls}">${label}${number}</a>`;
+// "Label: N" of a card; the number has its own reserved space (.skgif-n-slot), where it fades in when it arrives.
+function _skgifCountText(label, n, cls, fadeIn = false) {
+  const number = n === undefined ? '' : `<span class="skgif-n${fadeIn ? ' skgif-n-in' : ''}">${_skgifNum(n)}</span>`;
+  return `<span class="${cls}"><span class="fw-bold">${label}:</span> <span class="skgif-n-slot">${number}</span></span>`;
 }
-// "Go to Citations (N)" button of a work; without a known number it is marked to be counted.
+// "Citations: N" of a publication; without a known number it is marked to be counted.
 function _skgifCitationsButton(omid, fadeIn = false) {
   const n = _skgifCitedBy[omid];
-  const button = _skgifLinkButton(`browser.html?value=doc_cit/${omid}`, 'Go to Citations', n, 'ra-cit-btn', fadeIn);
-  return n === undefined ? button.replace('<a ', `<a data-count="${omid}" `) : button; // to be counted (_skgifCountVisible)
+  const text = _skgifCountText('Citations', n, 'ra-cit-count', fadeIn);
+  return n === undefined ? text.replace('<span ', `<span data-count="${omid}" `) : text; // to be counted (_skgifCountVisible)
 }
-// Puts the number into the button of the cards already on screen (fading in, in the reserved space).
+// Puts the number into the Citations count of the cards already on screen (fading in, in the reserved space).
 function _skgifShowCitedBy(omid) {
-  document.querySelectorAll(`.ra-work[data-omid="${omid}"] .ra-cit-btn`).forEach(btn => {
+  document.querySelectorAll(`.ra-work[data-omid="${omid}"] .ra-cit-count`).forEach(btn => {
     btn.outerHTML = _skgifCitationsButton(omid, true).replace(/ data-count="[^"]*"/, '');
   });
 }
 // The first page of a list (skgifFirstPage) waits for the citation counts of the first
-// SKGIF_FIRST_COUNTS works, at most SKGIF_FIRST_COUNTS_WAIT ms: the top cards appear with their number.
-// The others receive it later, in the reserved space (.skgif-cit-slot). Products only (not people/venues).
-// Also applies to every page change, Sort by and filter (_skgifPagedList, searches, author profile).
+// SKGIF_FIRST_COUNTS publications, at most SKGIF_FIRST_COUNTS_WAIT ms: the top cards appear with their number.
+// The others receive it later, in the reserved space (.skgif-n-slot). Products only (not persons/venues).
+// Also applies to every page change, Sort by and filter (_skgifPagedList, searches, person record).
 const SKGIF_FIRST_COUNTS = 3;
 const SKGIF_FIRST_COUNTS_WAIT = 3000;
 const _skgifCountsWaited = new Set(); // already waited for once (even if the call failed): never waited for again
@@ -405,7 +422,7 @@ function _skgifWithFirstCounts(page) {
 }
 // New cards on screen -> requests their citation count (once per button).
 function _skgifCountVisible() {
-  document.querySelectorAll('.ra-cit-btn[data-count]').forEach(btn => {
+  document.querySelectorAll('.ra-cit-count[data-count]').forEach(btn => {
     const omid = btn.dataset.count;
     btn.removeAttribute('data-count');
     _skgifCountCitations(omid);
@@ -418,7 +435,7 @@ new MutationObserver(() => {
   requestAnimationFrame(() => { _skgifCountScheduled = false; _skgifCountVisible(); });
 }).observe(document.documentElement, { childList: true, subtree: true });
 
-// Roles of the profile person in a work.
+// Roles of the profile person in a publication.
 function _skgifProfileRoles(product) {
   const contributions = _skgifArray(product.contributions);
   return new Set(contributions.filter(c => c && c.by && c.by.local_identifier === _skgifProfileOmid).map(c => c.role));
@@ -426,7 +443,7 @@ function _skgifProfileRoles(product) {
 
 // --- List export (CSV, BibTeX), from the /products data as it is ---
 // Missing field = field left out.
-function _skgifWorkFields(product) {
+function _skgifProductFields(product) {
   const biblio = (_skgifArray(product.manifestations)[0] || {}).biblio || {};
   const pages = biblio.pages || {};
   const person = by => ({ family: by.family_name || '', given: by.given_name || '', name: (by.name || '').trim() });
@@ -438,7 +455,7 @@ function _skgifWorkFields(product) {
     publishers: _skgifContributors(product.contributions, 'publisher').map(_skgifAgentPlainName),
     date: String(_skgifProductRawDate(product) || '').slice(0, 10),
     type: _skgifArray(product.manifestations).map(m => m?.type?.labels?.en).find(Boolean) || '',
-    source: _skgifProductVenue(product)?.name || '',
+    venue: _skgifProductVenue(product)?.name || '',
     volume: biblio.volume || '',
     issue: biblio.issue || '',
     pages: pages.first && pages.last && pages.first !== pages.last ? [pages.first, pages.last] : [pages.first || pages.last].filter(Boolean),
@@ -457,37 +474,37 @@ const SKGIF_BIBTEX_TYPES = {
   'journal article': ['article', 'journal'], 'book': ['book', ''], 'book chapter': ['incollection', 'booktitle'],
   'proceedings article': ['inproceedings', 'booktitle'], 'dissertation': ['phdthesis', ''], 'report': ['techreport', '']
 };
-// BibTeX entry of a work.
+// BibTeX entry of a publication.
 function _skgifBibtex(product) {
-  const f = _skgifWorkFields(product);
-  const [kind, sourceField] = SKGIF_BIBTEX_TYPES[f.type] || ['misc', 'howpublished'];
+  const f = _skgifProductFields(product);
+  const [kind, venueField] = SKGIF_BIBTEX_TYPES[f.type] || ['misc', 'howpublished'];
   const esc = s => String(s).replace(/([&%$#_{}])/g, '\$1');
   const names = list => list.map(a => a.family ? esc(_skgifPersonText(a)) : `{${esc(a.name)}}`).join(' and ');
   const fields = [
     ['author', names(f.authors)], ['editor', names(f.editors)], ['title', f.title && esc(f.title)],
-    [sourceField, f.source && esc(f.source)], ['publisher', esc(f.publishers.join(', '))],
+    [venueField, f.venue && esc(f.venue)], ['publisher', esc(f.publishers.join(', '))],
     ['year', f.date.slice(0, 4)], ['volume', esc(f.volume)], ['number', esc(f.issue)],
     ['pages', esc(f.pages.join('--'))], ['doi', esc(f.doi)]
   ].filter(([key, value]) => key && value);
-  const key = (f.omid || 'work').replace(/\W/g, '');
+  const key = (f.omid || 'product').replace(/\W/g, '');
   return `@${kind}{${key},\n${fields.map(([k, v]) => `  ${k} = {${v}}`).join(',\n')}\n}`;
 }
 
-// CSV of a list: one row per work (UTF-8 with BOM, so Excel reads accented letters).
+// CSV of a list: one row per publication (UTF-8 with BOM, so Excel reads accented letters).
 function _skgifCsv(products) {
   const cell = v => /[",\n;]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
-  const rows = [['Title', 'Authors', 'Editors', 'Date', 'Type', 'Source', 'Publisher', 'Volume', 'Issue', 'Pages', 'DOI', 'Identifiers', 'OMID']];
+  const rows = [['Title', 'Authors', 'Editors', 'Date', 'Type', 'Publication venue', 'Publisher', 'Volume', 'Issue', 'Pages', 'DOI', 'Identifiers', 'OMID']];
   products.forEach(p => {
-    const f = _skgifWorkFields(p);
+    const f = _skgifProductFields(p);
     rows.push([f.title, f.authors.map(_skgifPersonText).join('; '), f.editors.map(_skgifPersonText).join('; '), f.date, f.type,
-      f.source, f.publishers.join('; '), f.volume, f.issue, f.pages.join('-'), f.doi, f.ids.join('; '), f.omid]);
+      f.venue, f.publishers.join('; '), f.volume, f.issue, f.pages.join('-'), f.doi, f.ids.join('; '), f.omid]);
   });
   return '﻿' + rows.map(r => r.map(cell).join(',')).join('\r\n');
 }
 
 // --- Badges ---
 
-// "Editor" badge of a work in a profile.
+// "Editor" badge of a publication in a profile.
 function _skgifEditorBadge(roles) {
   return !roles.has('editor') ? '' : roles.has('author') ? 'Author &amp; Editor' : 'Editor';
 }

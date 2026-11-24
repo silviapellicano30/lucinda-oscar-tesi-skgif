@@ -10,36 +10,54 @@
     <link rel="stylesheet" href="../static/vendor/bootstrap-5.3.5-dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
 
+    <link href="../static/css/theme.css" rel="stylesheet">
     <link href="../static/css/home.css" rel="stylesheet">
     <style>
       body {
-        background-color: #ffffff; 
-        min-height: 100vh;         
-        display: flex;         
-        flex-direction: column;    
-        justify-content: center;  
+        background-color: #E1CEEC;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
       }
       
       .search-container {
-        max-width: 800px;
-        width: 100%;              
-        margin: 0 auto;           
+        /* Increased width from 800px to 1000px */
+        max-width: 1000px;
+        margin: 0 auto;
       }
 
+      /* Minimalist Glass Cards */
+      .resource-card {
+        border: none;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.6); /* Semi-transparent white */
+        backdrop-filter: blur(10px);           /* Frosted glass effect */
+        transition: all 0.3s ease;
+        height: 100%;
+        cursor: default;
+      }
+
+      @media (hover: hover) {
+        .resource-card:hover {
+          background: rgba(255, 255, 255, 0.95);
+          transform: translateY(-5px);
+          box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        }
+      }
+
+      .icon-box {
+        font-size: 2.2rem;
+        margin-bottom: 1rem;
+        color: #8A2BE2; /* OpenCitations Purple */
+      }
       
-      .btn-purple {
-        background-color: #8A2BE2;
-        border-color: #8A2BE2;
-        color: white;
+      .input-group .form-control, 
+      .input-group .form-select {
+        border: 1px solid #ced4da;
       }
-      .btn-purple:hover {
-        background-color: #7a26c9;
-        border-color: #7a26c9;
-        color: white;
-      }
-
-    
-      .form-control:focus, .form-select:focus {
+      .input-group .form-control:focus {
         border-color: #8A2BE2;
         box-shadow: 0 0 0 0.25rem rgba(138, 43, 226, 0.25);
       }
@@ -48,33 +66,33 @@
 
   <body class="container py-4">
 
-    <div class="d-flex justify-content-center mb-4">
+    <div class="d-flex justify-content-center mb-5">
       <img src="../static/img/oc-medium.png" alt="OpenCitations Logo" class="img-fluid" style="max-height: 100px;">
     </div>
 
-    <!-- Search panel (same as home2.html, styled in home.css) -->
-    <div class="oc-search mb-4 search-container">
+    <!-- Search panel (same as home.html, styled in home.css) -->
+    <div class="oc-search mb-5 search-container">
       <form id="searchForm" class="oc-search-card">
 
         <!-- resource type: hidden select driven by the tabs -->
         <select name="category" class="d-none" aria-hidden="true" tabindex="-1">
-          <option value="document">Document Record</option>
-          <option value="author">Author Record</option>
-          <option value="venue">Venue Record</option>
-          <option value="organisation">Organisation Record</option>
-          <option value="citation">Citation Record</option>
+          <option value="product">Research product</option>
+          <option value="person">Person</option>
+          <option value="venue">Venue</option>
+          <option value="organisation">Organisation</option>
+          <option value="citation">Citation</option>
         </select>
         <div class="oc-tabs" role="tablist" aria-label="Resource type"></div>
 
         <div class="oc-search-row">
-          <!-- free text or, for authors, given + family name -->
+          <!-- free text or, for persons, given + family name -->
           <div class="oc-field" id="textSide">
             <label class="oc-label" id="textLabel" for="searchQuery">Title</label>
             <div class="oc-input-icon text-field">
               <i class="fa fa-magnifying-glass"></i>
               <input type="text" id="searchQuery" name="query" class="form-control" autocomplete="off" />
             </div>
-            <div class="oc-name-fields author-field d-none">
+            <div class="oc-name-fields person-field d-none">
               <input type="text" id="givenName" class="form-control" placeholder="Enter given name" aria-label="Given name" autocomplete="off" />
               <input type="text" id="familyName" class="form-control" placeholder="Enter family name" aria-label="Family name" autocomplete="off" />
             </div>
@@ -113,6 +131,71 @@
         <div class="oc-hint" id="searchHint" role="alert"></div>
 
       </form>
+    </div>
+
+    <div class="row g-4 justify-content-center">
+
+      <div class="col-12 col-md-6 col-lg">
+        <div class="card resource-card p-4 text-center" id="help-product">
+          <div class="icon-box">
+            <i class="fa-regular fa-file-lines"></i>
+          </div>
+          <h5 class="fw-bold mb-2">Research product</h5>
+          <p class="small text-muted mb-0">
+            Any research output (article, book, dataset…) with its references and citations.
+          </p>
+        </div>
+      </div>
+
+      <div class="col-12 col-md-6 col-lg">
+        <div class="card resource-card p-4 text-center" id="help-person">
+          <div class="icon-box">
+            <i class="fa-solid fa-user-pen"></i>
+          </div>
+          <h5 class="fw-bold mb-2">Person</h5>
+          <p class="small text-muted mb-0">
+            An author or editor of publications.
+          </p>
+        </div>
+      </div>
+
+      <div class="col-12 col-md-6 col-lg">
+        <div class="card resource-card p-4 text-center" id="help-venue">
+          <div class="icon-box">
+            <i class="fa-solid fa-building-columns"></i>
+          </div>
+          <h5 class="fw-bold mb-2">Venue</h5>
+          <p class="small text-muted mb-0">
+            Where a publication appears: a journal, book series, edited book, conference proceedings or repository.
+          </p>
+        </div>
+      </div>
+
+      <!-- Organisation search -->
+      <div class="col-12 col-md-6 col-lg">
+        <div class="card resource-card p-4 text-center" id="help-organisation">
+          <div class="icon-box">
+            <i class="fa-solid fa-building"></i>
+          </div>
+          <h5 class="fw-bold mb-2">Organisation</h5>
+          <p class="small text-muted mb-0">
+            An organisation involved in publications, usually as their publisher.
+          </p>
+        </div>
+      </div>
+
+      <div class="col-12 col-md-6 col-lg">
+        <div class="card resource-card p-4 text-center" id="help-citation">
+          <div class="icon-box">
+            <i class="fa-solid fa-share-nodes"></i>
+          </div>
+          <h5 class="fw-bold mb-2">Citation</h5>
+          <p class="small text-muted mb-0">
+            The link from a publication to another one that it cites. Each citation has its own identifier, the OCI.
+          </p>
+        </div>
+      </div>
+
     </div>
 
     <script src="../static/vendor/bootstrap-5.3.5-dist/js/bootstrap.bundle.min.js"></script>

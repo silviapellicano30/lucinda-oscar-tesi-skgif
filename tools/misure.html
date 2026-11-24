@@ -1,45 +1,180 @@
 <!DOCTYPE html>
 <!-- Load-time measurement (test tool, not part of the site).
      Open it through the local server: python -m http.server 5500 from the repository root, then
-     http://127.0.0.1:5500/tools/misure.html -->
+     http://127.0.0.1:5500/tools/misure.html
+     Results: tools/analysis.R reads the CSV downloaded from this page. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Load-time measurements - LUCINDA SKG-IF</title>
 <style>
-  body { font-family: system-ui, sans-serif; margin: 24px; color: #222; max-width: 1200px; }
-  h1 { font-size: 1.4rem; margin-bottom: 4px; }
-  h2 { font-size: 1.1rem; margin-top: 28px; }
-  p.note { color: #555; margin-top: 4px; }
-  fieldset { border: 1px solid #ccc; padding: 10px 14px; margin: 12px 0; }
-  label { display: block; margin: 3px 0; }
-  input[type=number] { width: 60px; }
-  button { padding: 6px 14px; margin: 4px 6px 4px 0; cursor: pointer; }
-  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
-  th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
-  th { background: #f2f2f2; }
+  /* Colours and fonts of the OpenCitations site, as in example/oc/static/css/theme.css. */
+  @import url("https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap");
+  :root {
+    --oc-purple: #8f4ec7; --oc-blue: #68c5f9; --oc-title: #2c3847; --oc-text: #353d42; --oc-grey: #6c727a;
+    --oc-line: #e6dcef; --oc-violet: #f6eefc; --oc-shadow: 2px 5px 43px rgba(138, 164, 181, 0.28);
+    --oc-sans: "Work Sans", sans-serif; --oc-serif: "PT Serif", serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--oc-text); font-family: var(--oc-serif); font-size: 16px; line-height: 1.6;
+    background: #f0def7 linear-gradient(#d3c0e2, rgba(211, 192, 226, 0) 304px) no-repeat; }
+  main { max-width: 1200px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1, h2, legend, summary, th, button, .case-group { font-family: var(--oc-sans); color: var(--oc-title); font-weight: 500; }
+  h1 { font-size: 2rem; letter-spacing: -0.7px; margin: 0 0 8px; padding-bottom: 10px; border-bottom: 4px solid var(--oc-purple); display: inline-block; }
+  h2 { font-size: 1.2rem; letter-spacing: -0.35px; margin: 24px 0 8px; }
+  a { color: var(--oc-purple); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-size: 0.9em; background: var(--oc-violet); padding: 1px 4px; border-radius: 4px; overflow-wrap: anywhere; }
+  fieldset { min-width: 0; } /* fieldsets are as wide as their content by default */
+  p.note { color: var(--oc-grey); margin: 4px 0 12px; }
+  .panel, fieldset, details { background: #fff; border: 0; border-radius: 10px; box-shadow: var(--oc-shadow); padding: 16px 20px; margin: 16px 0; }
+  legend { float: left; width: 100%; font-size: 1.1rem; margin-bottom: 8px; }
+  summary { cursor: pointer; font-size: 1.1rem; color: var(--oc-purple); }
+  label { display: block; margin: 4px 0; }
+  input[type=number], input[type=text] { font: inherit; padding: 3px 8px; border: 1px solid var(--oc-line); border-radius: 6px; }
+  input[type=number] { width: 70px; }
+  input[type=text] { width: 420px; max-width: 100%; }
+  input[type=checkbox] { accent-color: var(--oc-purple); }
+  button { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; padding: 8px 16px; margin: 4px 6px 4px 0; cursor: pointer;
+    border-radius: 10px; border: 2px solid var(--oc-purple); background: #fff; color: var(--oc-purple); transition: 0.3s; }
+  button.primary { background: var(--oc-purple); color: #fff; }
+  button:hover:not(:disabled) { background: var(--oc-blue); border-color: var(--oc-blue); color: #fff; }
+  button:disabled { opacity: 0.45; cursor: default; }
+  .buttons { margin: 16px 0 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; background: #fff; }
+  th, td { border-bottom: 1px solid var(--oc-line); padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--oc-violet); font-size: 0.85rem; }
+  .table-wrap { overflow-x: auto; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  td.median { font-weight: bold; }
-  #status { margin: 10px 0; padding: 8px 12px; background: #f6f2fb; border-left: 4px solid #9931fc; min-height: 1.2em; }
-  #frame { width: 100%; height: 520px; border: 1px solid #ccc; margin-top: 8px; }
-  .case-group { font-weight: bold; margin-top: 8px; }
-  td.warn { color: #b45309; }
-  .warning { background: #fff7e6; border-left: 4px solid #f59e0b; padding: 8px 12px; }
+  td.median { font-weight: bold; color: var(--oc-purple); }
+  td.warn { color: #b45309; font-weight: bold; }
+  #status { margin: 10px 0; padding: 10px 14px; background: #fff; border-left: 4px solid var(--oc-purple); border-radius: 6px; min-height: 1.2em; font-family: var(--oc-sans); }
+  #frame { width: 100%; height: 520px; border: 1px solid var(--oc-line); border-radius: 10px; background: #fff; }
+  .case-group { margin-top: 12px; }
+  .case-purpose { color: var(--oc-grey); font-size: 0.9rem; margin: 0 0 4px 24px; }
+  tr.sub td { background: #faf6fd; font-family: var(--oc-sans); font-weight: 500; color: var(--oc-title); }
+  details li { margin-bottom: 4px; }
+  .warning { background: #fff7e6; border-left: 4px solid #f59e0b; border-radius: 6px; padding: 10px 14px; }
 </style>
 </head>
 <body>
+<main>
 <h1>Load-time measurements</h1>
-<p class="note">Each case is opened below and repeated several times; the times are recorded automatically.
-The results stay saved even if you close the page (until you press "Clear results").</p>
+<p class="note">Measures how long the pages of the SKG-IF version take to load and how often the API calls fail, as perceived
+by a user of the interface. The API is treated as a black box; every time is also split into waiting for the API and
+time of the interface, to show how much each part weighs.</p>
 <p class="warning"><b>Keep this tab in the foreground while measuring</b> (do not switch tabs or minimise Chrome):
-Chrome slows down hidden tabs and the times would not be reliable. Runs made with the tab hidden are marked with ⚠.</p>
+Chrome slows down hidden tabs. Runs made with the tab hidden or while the browser was offline are flagged
+(<code>tab_hidden</code>, <code>browser_offline</code>) and excluded from the analysis.
+<b>Download the CSV at the end of every session</b>: the results are kept only in this browser.</p>
+
+<details>
+<summary>What is measured and why</summary>
+<h2>Method</h2>
+<ul>
+  <li><b>Session</b> = one press of "Start". Each session runs a number of <b>rounds</b>; in every round each selected case is
+    opened once, <b>in a new random order</b> (randomized multiple interleaved trials). Running the trials of one case
+    back to back would expose that case alone to a slow period of the API.</li>
+  <li><b>Server cache always bypassed</b> (<code>preview=true</code> on every SKG-IF call) and browser cache disabled
+    (<code>no-store</code>): every run measures the real answer time of the API, as for the first visitor of a page.</li>
+  <li>Above the automatic thresholds (250 citations or references in the research product record, 500 publications in the organisation record)
+    the "Load all" buttons are pressed automatically and the time is measured <b>from the click</b>.</li>
+  <li>Every session starts with one <b>warm-up</b> page, not recorded: it opens the connection to the API, so that cost does not fall on the first measured case.</li>
+  <li>A session <b>stops by itself</b> when two runs receive a 429 "too many requests": the agreed load is exceeded.</li>
+  <li>Each run has a time limit; a measure that does not arrive in time is recorded as <code>timeout</code>.</li>
+  <li><b>Interface time against API time:</b> <code>api_wait_ms</code> is the time in which at least one API call was open
+    (from the request to the end of the reading of its answer); the rest of the measured time belongs to the interface
+    (code, drawing of the page, its own files). <code>long_tasks_ms</code> is the part of the interface time in which the code
+    blocked the page.</li>
+  <li>The <b>pilot session</b> only serves to decide the number of sessions: tick "Pilot session" and its runs are
+    excluded from the analysis (<code>pilot</code> column).</li>
+</ul>
+<h2>Measures</h2>
+<p class="note">Values of the <code>measure</code> column; the time is in <code>duration_s</code>.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Measure</th><th>Meaning</th><th>Why it is measured</th></tr></thead>
+  <tbody>
+    <tr><td>page_shown</td><td>Seconds from opening the page to the page shown (metadata and counts)</td><td>Waiting time of every record page</td></tr>
+    <tr><td>first_results</td><td>Seconds to the first page of search results</td><td>Waiting time of a search</td></tr>
+    <tr><td>all_citations / all_references</td><td>Seconds to download every citation / reference of a research product (chart, filters and sorting become available)</td><td>Cost of having no sorting or date filter in SKG-IF: the whole list must be downloaded</td></tr>
+    <tr><td>all_publications</td><td>Same, for the publications of an organisation</td><td>As above, for the largest lists</td></tr>
+    <tr><td>all_person_publications</td><td>Seconds to download every publication of a person</td><td>As above, for the person record</td></tr>
+    <tr><td>person_citations</td><td>Seconds to the total number of citations received by a person (one SKG-IF call per publication)</td><td>Cost of a number that SKG-IF does not provide directly</td></tr>
+    <tr><td>person_citation_chart</td><td>Seconds to the person's citations-per-year chart (one Index call per publication)</td><td>Slowest element of the person record</td></tr>
+    <tr><td>ci_year_charts</td><td>Seconds to the two citations-per-year charts of a citation record (Index API)</td><td>The citation record also depends on the Index API</td></tr>
+  </tbody>
+</table></div>
+<h2>Columns of the CSV</h2>
+<p class="note">One row per measure of each run. The counters start when the page is opened; for the measures taken from the
+"Load all" click, <code>api_wait_ms</code> and <code>long_tasks_ms</code> start from the click.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr class="sub"><td colspan="2">Session</td></tr>
+    <tr><td>session_id</td><td>Start of the session (date and time, ISO 8601): identifies the session</td></tr>
+    <tr><td>session_notes</td><td>Notes written before the start (computer, network)</td></tr>
+    <tr><td>commit</td><td>Version of the code measured</td></tr>
+    <tr><td>pilot</td><td>TRUE = run of the pilot session, excluded from the analysis</td></tr>
+    <tr><td>user_agent</td><td>Browser and operating system</td></tr>
+    <tr class="sub"><td colspan="2">Run</td></tr>
+    <tr><td>round</td><td>Round of the session (1, 2, 3...)</td></tr>
+    <tr><td>order_in_round</td><td>Position of the case in the random order of its round</td></tr>
+    <tr><td>case_id / case_group</td><td>Case measured and its group (see "Cases to measure")</td></tr>
+    <tr><td>page_id</td><td>Page opened: the value in <code>browser.html?value=...</code></td></tr>
+    <tr><td>measure</td><td>What is timed (table above)</td></tr>
+    <tr><td>from_click</td><td>TRUE = timed from the click on "Load all", FALSE = from the opening of the page</td></tr>
+    <tr><td>list_size</td><td>Size of the list (publications, for the person measures); empty for page_shown</td></tr>
+    <tr><td>timestamp / weekday / hour</td><td>Start of the run: date and time (ISO 8601), day of the week, hour of the day</td></tr>
+    <tr class="sub"><td colspan="2">Result</td></tr>
+    <tr><td>duration_s</td><td>Seconds, one decimal; empty for a timeout</td></tr>
+    <tr><td>outcome</td><td><code>ok</code> = arrived with no problem; <code>incomplete</code> = arrived, but the API was unavailable or some
+      data could not be loaded (see <code>problems</code>); <code>timeout</code> = not arrived within the time limit</td></tr>
+    <tr><td>tab_hidden</td><td>The tab was hidden during the run: Chrome slows it down, the run is excluded</td></tr>
+    <tr><td>browser_offline</td><td>The browser went offline during the run (local network down): a problem of the measuring computer, the run is excluded</td></tr>
+    <tr><td>items_missing</td><td>Items that could not be downloaded even after the retries</td></tr>
+    <tr><td>problems</td><td>Problems of the run in words (server unavailable, items not downloaded...)</td></tr>
+    <tr class="sub"><td colspan="2">API calls</td></tr>
+    <tr><td>skgif_calls / index_calls</td><td>API calls made: explain the times (more data = more calls = more time)</td></tr>
+    <tr><td>http_404</td><td>"No results" answers: normal in SKG-IF, not an error</td></tr>
+    <tr><td>http_429</td><td>"Too many requests": the call is retried after a pause</td></tr>
+    <tr><td>http_other_errors</td><td>Other error answers (e.g. 500, 503)</td></tr>
+    <tr><td>network_errors</td><td>Calls with no answer at all, including those aborted by the interface timeout (35/15/10 s)</td></tr>
+    <tr><td>truncated_responses</td><td>Answers that arrived ("200 OK") but with incomplete data: the server cut the response</td></tr>
+    <tr><td>page_splits</td><td>Pages that did not arrive and were requested again in smaller pages (50 &rarr; 10 &rarr; 1)</td></tr>
+    <tr class="sub"><td colspan="2">Interface time against API time</td></tr>
+    <tr><td>api_wait_ms</td><td>Milliseconds in which at least one SKG-IF or Index call was open (overlapping calls counted once):
+      the time spent waiting for the API. Measured time minus this = time of the interface. The pause before asking again
+      after a 429 counts as waiting (at most 7 s).</td></tr>
+    <tr><td>long_tasks_ms</td><td>Milliseconds in which the interface code kept the page busy (blocks of more than 50 ms, Long Tasks API):
+      the part of the interface time that blocks the page</td></tr>
+    <tr><td>longest_task_ms</td><td>Longest of those blocks: how long the page stopped reacting to clicks at most</td></tr>
+    <tr><td>heap_peak_mb</td><td>Highest JavaScript memory used by the page, in MB (Chrome only)</td></tr>
+  </tbody>
+</table></div>
+<h2>After the sessions</h2>
+<ol>
+  <li>At the end of every session press "Download all runs": every file contains all the runs saved so far in this browser.
+    Always use the same Chrome profile and do not press "Clear results".</li>
+  <li>Keep all the downloaded files in one folder, with their names unchanged (<code>skgif-timing-runs-....csv</code>):
+    runs that appear in several files are counted once.</li>
+  <li>Runs to discard by hand (problems of the measuring computer, e.g. it went to sleep): list them in
+    <code>excluded_runs.csv</code> in the same folder, with the columns <code>session_id,round,case_id,measure,reason</code>;
+    an empty <code>round</code>, <code>case_id</code> or <code>measure</code> means all of them. Example:
+    <code>2026-11-20T09:15:02+01:00,2,,,laptop went to sleep</code> discards round 2 of that session.</li>
+  <li>From the repository root run <code>Rscript tools/analysis.R &lt;folder&gt;</code>: tables and charts are written in
+    <code>&lt;folder&gt;/analysis</code>. Pilot runs, hidden tabs and offline runs are excluded automatically and counted in
+    <code>excluded_summary.csv</code>.</li>
+</ol>
+</details>
 
 <fieldset>
-  <legend>Settings</legend>
-  <label><input type="checkbox" id="opt-preview" checked> Bypass the server cache (<code>preview=true</code>) - real time, as for the first visitor</label>
-  <label><input type="checkbox" id="opt-click" checked> Above the thresholds, press the "Load all" buttons automatically (time measured from the click)</label>
-  <label>Runs per case: <input type="number" id="opt-runs" value="3" min="1" max="10"></label>
-  <label>Time limit for each run (minutes): <input type="number" id="opt-timeout" value="10" min="1" max="60"></label>
+  <legend>Session</legend>
+  <label>Rounds (each case once per round, random order): <input type="number" id="opt-rounds" value="3" min="1" max="10"></label>
+  <label>Time limit for each run (minutes): <input type="number" id="opt-timeout" value="15" min="1" max="60"></label>
+  <label>Notes on this session (computer, network): <input type="text" id="opt-notes" placeholder="e.g. home laptop, Wi-Fi"></label>
+  <label>Version of the code measured (commit): <input type="text" id="opt-commit" placeholder="e.g. misure-v1 or the commit hash"></label>
+  <label><input type="checkbox" id="opt-pilot"> Pilot session (its runs are excluded from the analysis)</label>
 </fieldset>
 
 <fieldset>
@@ -48,69 +183,89 @@ Chrome slows down hidden tabs and the times would not be reliable. Runs made wit
   <button id="all">Select all</button><button id="none">Deselect all</button>
 </fieldset>
 
-<button id="start">Start</button>
+<div class="buttons">
+<button id="start" class="primary">Start</button>
 <button id="stop" disabled>Stop</button>
-<button id="csv">Download summary (CSV)</button>
-<button id="csv-runs">Download all runs with date and time (CSV)</button>
+<button id="csv">Download all runs (CSV for R)</button>
 <button id="clear">Clear results</button>
 <button id="manual">Measure manually in this tab</button>
+</div>
 <div id="status">Ready.</div>
 
-<h2>Results</h2>
-<p class="note">Times in seconds. "Median" = the median of the runs without problems. For lists above the threshold the time is measured from the click on "Load all".
-⚠ = run with problems (server unavailable, items not downloaded, hidden tab: hover over the number for details), excluded from the median.
-Hovering over a time also shows the date and time of the run.</p>
+<h2>Results so far</h2>
+<p class="note">Seconds; statistics over the runs with outcome <code>ok</code>, the tab visible and the browser online (pilot runs included).
+Full analysis: <code>tools/analysis.R</code>.</p>
+<div class="panel table-wrap">
 <table>
-  <thead><tr><th>Case</th><th>Measure</th><th>Items</th><th>Server cache</th><th id="run-heads">Runs</th><th>Median</th><th>API calls</th></tr></thead>
+  <thead><tr><th>Case</th><th>Measure</th><th>List size</th><th>n ok</th><th>Median</th><th>Q1</th><th>Q3</th><th>Min</th><th>Max</th><th>Incomplete</th><th>Timeout</th><th>SKG-IF calls (median)</th><th>Waiting for the API (median)</th></tr></thead>
   <tbody id="results"></tbody>
 </table>
+</div>
 
 <h2>Current page</h2>
 <iframe id="frame" title="Measured page"></iframe>
+</main>
 
 <script>
-const BROWSER = '/example/oc/html_template/browser.html?value=';
-// Cases: id, group, name, URL value, expected measurements.
+const BROWSER = '../example/oc/html_template/browser.html?value=';
+
+// Groups of cases: what each group is for.
+const GROUPS = {
+  'Research product record': 'Small, medium and large lists of citations and references, below and above the 250 threshold.',
+  'Person record': 'Persons with few to many publications: all publications are always downloaded, then the citations received.',
+  'Organisation record': 'Publishers with small to very large lists, below and above the 500 threshold.',
+  'Venue record': 'Venue record: metadata only (SKG-IF has no venue -> publications filter).',
+  'Citation record': 'Eight SKG-IF calls plus two Index charts: a small record and one whose cited work is very cited.',
+  'Searches': 'First page of results of the four searches.'
+};
+// Cases: id, group, name, URL value, expected measures.
 const CASES = [
-  // Document page: threshold 250 (below it everything loads automatically, above it with the button)
-  { id: 'doc-24', group: 'Document page', name: 'Document, 24 citations / 60 references', value: 'br/06702496683', wait: ['page', 'citations', 'references'] },
-  { id: 'doc-136', group: 'Document page', name: 'Document, 136 citations / 13 references', value: 'br/062501777134', wait: ['page', 'citations', 'references'] },
-  { id: 'doc-266', group: 'Document page', name: 'Document, 266 citations (button) / 55 references', value: 'br/061301512373', wait: ['page', 'citations', 'references'] },
-  { id: 'doc-1041', group: 'Document page', name: 'Document, 1,041 citations (button) / 25 references', value: 'br/062501777136', wait: ['page', 'citations', 'references'] },
-  { id: 'doc-1058', group: 'Document page', name: 'Document, 1,058 citations (button) / 334 references (button)', value: 'br/06250648328', wait: ['page', 'citations', 'references'] },
-  { id: 'doc-3865', group: 'Document page', name: 'Document, 3,865 citations (button) / 20 references', value: 'br/061402112342', wait: ['page', 'citations', 'references'] },
-  // Author profile: always downloads everything
-  { id: 'aut-6', group: 'Author profile', name: 'Author, 6 works', value: 'ra/06036206707', wait: ['page', 'works'] },
-  { id: 'aut-115', group: 'Author profile', name: 'Author, 115 works (Silvio Peroni)', value: 'ra/0614010840729', wait: ['page', 'works'] },
-  // Organisation page: threshold 500
-  { id: 'org-61', group: 'Organisation page', name: 'Organisation, 61 publications', value: 'ra/0670114898', wait: ['page', 'publications'] },
-  { id: 'org-302', group: 'Organisation page', name: 'Organisation, 302 publications', value: 'ra/061303831403', wait: ['page', 'publications'] },
-  { id: 'org-849', group: 'Organisation page', name: 'Organisation, 849 publications (button, Ubiquity Press)', value: 'ra/06011045248', wait: ['page', 'publications'] },
-  { id: 'org-3661', group: 'Organisation page', name: 'Organisation, 3,661 publications (button, The Open Journal)', value: 'ra/0640115183', wait: ['page', 'publications'] },
-  // Searches: first page of results
-  { id: 'search-doc', group: 'Searches', name: 'Document search: "open citations"', value: 'document/' + encodeURIComponent('open citations'), wait: ['results'] },
-  { id: 'search-aut', group: 'Searches', name: 'Author search: Silvio Peroni', value: 'author/' + encodeURIComponent('given=Silvio&family=Peroni'), wait: ['results'] },
+  { id: 'product-24', group: 'Research product record', name: 'Research product, 24 citations / 60 references', value: 'br/06702496683', wait: ['page', 'citations', 'references'] },
+  { id: 'product-136', group: 'Research product record', name: 'Research product, 136 citations / 13 references', value: 'br/062501777134', wait: ['page', 'citations', 'references'] },
+  { id: 'product-266', group: 'Research product record', name: 'Research product, 266 citations (button) / 55 references', value: 'br/061301512373', wait: ['page', 'citations', 'references'] },
+  { id: 'product-1041', group: 'Research product record', name: 'Research product, 1,041 citations (button) / 25 references', value: 'br/062501777136', wait: ['page', 'citations', 'references'] },
+  { id: 'product-1058', group: 'Research product record', name: 'Research product, 1,058 citations (button) / 334 references (button)', value: 'br/06250648328', wait: ['page', 'citations', 'references'] },
+  { id: 'product-3865', group: 'Research product record', name: 'Research product, 3,865 citations (button) / 20 references', value: 'br/061402112342', wait: ['page', 'citations', 'references'] },
+  { id: 'person-6', group: 'Person record', name: 'Person, 6 publications (Vincent Larivière, one of his records)', value: 'ra/06036206707', wait: ['page', 'person_publications', 'person_citations', 'person_citation_chart'] },
+  { id: 'person-18', group: 'Person record', name: 'Person, 18 publications (Vincent Larivière, another record)', value: 'ra/0614010840740', wait: ['page', 'person_publications', 'person_citations', 'person_citation_chart'] },
+  { id: 'person-115', group: 'Person record', name: 'Person, 115 publications (Silvio Peroni)', value: 'ra/0614010840729', wait: ['page', 'person_publications', 'person_citations', 'person_citation_chart'] },
+  { id: 'person-298', group: 'Person record', name: 'Person, 298 publications (Loet Leydesdorff)', value: 'ra/0619018217', wait: ['page', 'person_publications', 'person_citations', 'person_citation_chart'] },
+  { id: 'org-61', group: 'Organisation record', name: 'Organisation, 61 publications', value: 'ra/0670114898', wait: ['page', 'publications'] },
+  { id: 'org-302', group: 'Organisation record', name: 'Organisation, 302 publications', value: 'ra/061303831403', wait: ['page', 'publications'] },
+  { id: 'org-849', group: 'Organisation record', name: 'Organisation, 849 publications (button, Ubiquity Press)', value: 'ra/06011045248', wait: ['page', 'publications'] },
+  { id: 'org-3661', group: 'Organisation record', name: 'Organisation, 3,661 publications (button, The Open Journal)', value: 'ra/0640115183', wait: ['page', 'publications'] },
+  { id: 'venue-1', group: 'Venue record', name: 'Venue: Scientometrics', value: 'br/06010060186', wait: ['page'] },
+  { id: 'ci-small', group: 'Citation record', name: 'Citation record, citing work with 24 citations', value: 'ci/06702496683-061103399292', wait: ['page', 'ci_year_charts'] },
+  { id: 'ci-large', group: 'Citation record', name: 'Citation record, cited work with 3,865 citations', value: 'ci/06010022218-061402112342', wait: ['page', 'ci_year_charts'] },
+  { id: 'search-product', group: 'Searches', name: 'Research product search: "open citations"', value: 'product/' + encodeURIComponent('open citations'), wait: ['results'] },
+  { id: 'search-person', group: 'Searches', name: 'Person search: Silvio Peroni', value: 'person/' + encodeURIComponent('given=Silvio&family=Peroni'), wait: ['results'] },
   { id: 'search-venue', group: 'Searches', name: 'Venue search: "scientometrics"', value: 'venue/' + encodeURIComponent('scientometrics'), wait: ['results'] },
   { id: 'search-org', group: 'Searches', name: 'Organisation search: "ubiquity press"', value: 'organisation/' + encodeURIComponent('ubiquity press'), wait: ['results'] },
 ];
-const LABELS = {
-  page: 'page shown', results: 'first page of results', citations: 'all citations',
-  references: 'all references', publications: 'all publications', works: 'all works'
+// Warm-up page opened once at the start of every session and not recorded (a light page: venue Scientometrics).
+const WARM_UP_CASE = { id: 'warm-up', value: 'br/06010060186', wait: ['page'] };
+// A session stops by itself when this many runs received a 429 "too many requests".
+const MAX_RUNS_WITH_429 = 2;
+// Event sent by timing.js -> name of the measure in the CSV.
+const MEASURES = {
+  page: 'page_shown', results: 'first_results', citations: 'all_citations', references: 'all_references',
+  publications: 'all_publications', person_publications: 'all_person_publications', person_citations: 'person_citations',
+  person_citation_chart: 'person_citation_chart', ci_year_charts: 'ci_year_charts'
 };
-const STORE = 'skgifTimingResults';
+const COUNTERS = ['skgif_calls', 'index_calls', 'http_404', 'http_429', 'http_other_errors', 'network_errors', 'truncated_responses',
+  'page_splits', 'api_wait_ms', 'long_tasks_ms', 'longest_task_ms', 'heap_peak_mb'];
+const STORE = 'skgifTimingRunsV2'; // one record per measure of each run
 const $ = id => document.getElementById(id);
 
-// Saved results: { "<case>|<measure>|<cache>": { case, event, cache, total, fromClick, runs: [{ s, calls, problems }, ...] } }
-let results = JSON.parse(localStorage.getItem(STORE) || '{}');
-Object.keys(results).forEach(k => { if (results[k].runs.some(run => typeof run !== 'object')) delete results[k]; }); // discards results saved in an older format
-const okRuns = r => r.runs.filter(run => !run.problems.length);
-const save = () => localStorage.setItem(STORE, JSON.stringify(results));
+let runs = [];
+try { runs = JSON.parse(localStorage.getItem(STORE) || '[]'); } catch (e) { runs = []; }
+const save = () => { try { localStorage.setItem(STORE, JSON.stringify(runs)); } catch (e) { setStatus('Could not save the results in the browser: download the CSV now.'); } };
 
-// List of the cases with their checkboxes.
+// List of the cases with their checkboxes, grouped.
 let lastGroup = '';
 CASES.forEach(c => {
   if (c.group !== lastGroup) {
-    $('cases').insertAdjacentHTML('beforeend', `<div class="case-group">${c.group}</div>`);
+    $('cases').insertAdjacentHTML('beforeend', `<div class="case-group">${c.group}</div><div class="case-purpose">${GROUPS[c.group]}</div>`);
     lastGroup = c.group;
   }
   $('cases').insertAdjacentHTML('beforeend', `<label><input type="checkbox" class="case" value="${c.id}" checked> ${c.name} <small>(<a href="${BROWSER}${c.value}" target="_blank">${c.value}</a>)</small></label>`);
@@ -118,52 +273,85 @@ CASES.forEach(c => {
 $('all').onclick = () => document.querySelectorAll('.case').forEach(b => { b.checked = true; });
 $('none').onclick = () => document.querySelectorAll('.case').forEach(b => { b.checked = false; });
 
-const median = list => {
+// Quantile with linear interpolation (same as R's default, type 7).
+const quantile = (list, p) => {
   const s = [...list].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  if (!s.length) return null;
+  const h = (s.length - 1) * p, lo = Math.floor(h);
+  return s[lo] + (h - lo) * ((s[lo + 1] ?? s[lo]) - s[lo]);
 };
-const fmt = n => n == null ? '–' : n.toLocaleString('en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmt = n => n == null ? '–' : n.toFixed(1);
 
 function render() {
-  const rows = Object.values(results);
-  const maxRuns = Math.max(1, ...rows.map(r => r.runs.length));
-  $('run-heads').colSpan = maxRuns;
-  $('run-heads').textContent = 'Runs';
-  const order = Object.keys(LABELS);
-  rows.sort((a, b) => CASES.findIndex(c => c.id === a.case) - CASES.findIndex(c => c.id === b.case)
-    || order.indexOf(a.event) - order.indexOf(b.event) || a.cache.localeCompare(b.cache));
-  $('results').innerHTML = rows.map(r => {
-    const c = CASES.find(x => x.id === r.case);
-    const runs = Array.from({ length: maxRuns }, (_, i) => {
-      const run = r.runs[i];
-      if (!run) return '<td class="num"></td>';
-      const when = run.at ? new Date(run.at).toLocaleString('en-GB') : '';
-      if (!run.problems.length) return `<td class="num" title="${when}">${fmt(run.s)}</td>`;
-      return `<td class="num warn" title="${when} - ${run.problems.join('; ').replace(/"/g, '&quot;')}">⚠ ${fmt(run.s)}</td>`;
-    }).join('');
-    const ok = okRuns(r);
-    return `<tr><td>${c ? c.name : r.case}</td><td>${LABELS[r.event] || r.event}${r.fromClick ? ' (from the click)' : ''}</td>
-      <td class="num">${r.total ?? '–'}</td><td>${r.cache}</td>${runs}<td class="num median">${ok.length ? fmt(median(ok.map(x => x.s))) : '–'}</td>
-      <td class="num">${ok.length ? Math.round(median(ok.map(x => x.calls))) : '–'}</td></tr>`;
+  const keys = [];
+  const byKey = {};
+  runs.forEach(r => {
+    const key = `${r.case_id}|${r.measure}`;
+    if (!byKey[key]) { byKey[key] = []; keys.push(key); }
+    byKey[key].push(r);
+  });
+  const measureOrder = Object.values(MEASURES);
+  keys.sort((a, b) => {
+    const [ca, ma] = a.split('|'), [cb, mb] = b.split('|');
+    return CASES.findIndex(c => c.id === ca) - CASES.findIndex(c => c.id === cb) || measureOrder.indexOf(ma) - measureOrder.indexOf(mb);
+  });
+  $('results').innerHTML = keys.map(key => {
+    const list = byKey[key];
+    const c = CASES.find(x => x.id === list[0].case_id);
+    const ok = list.filter(r => r.outcome === 'ok' && !r.tab_hidden && !r.browser_offline);
+    const waits = ok.map(r => r.api_wait_ms).filter(v => v != null);
+    const secs = ok.map(r => r.duration_s);
+    const items = list.map(r => r.list_size).filter(v => v != null).pop();
+    const count = outcome => list.filter(r => r.outcome === outcome).length;
+    return `<tr><td>${c ? c.name : list[0].case_id}</td><td>${list[0].measure}${list.some(r => r.from_click) ? ' (from the click)' : ''}</td>
+      <td class="num">${items ?? '–'}</td><td class="num">${ok.length}</td>
+      <td class="num median">${fmt(quantile(secs, 0.5))}</td><td class="num">${fmt(quantile(secs, 0.25))}</td><td class="num">${fmt(quantile(secs, 0.75))}</td>
+      <td class="num">${fmt(secs.length ? Math.min(...secs) : null)}</td><td class="num">${fmt(secs.length ? Math.max(...secs) : null)}</td>
+      <td class="num ${count('incomplete') ? 'warn' : ''}">${count('incomplete')}</td><td class="num ${count('timeout') ? 'warn' : ''}">${count('timeout')}</td>
+      <td class="num">${ok.length ? Math.round(quantile(ok.map(r => r.skgif_calls), 0.5)) : '–'}</td>
+      <td class="num">${waits.length ? fmt(quantile(waits, 0.5) / 1000) : '–'}</td></tr>`;
   }).join('');
 }
 render();
 
-function record(caseId, entry, cache, extraProblems = []) {
-  const key = `${caseId}|${entry.event}|${cache}`;
-  const row = results[key] || (results[key] = { case: caseId, event: entry.event, cache, total: null, runs: [], fromClick: false });
-  const fromClick = entry.fromClickMs != null;
-  row.runs.push({ s: Math.round((fromClick ? entry.fromClickMs : entry.ms) / 100) / 10, calls: entry.calls, problems: [...(entry.problems || []), ...extraProblems], at: new Date().toISOString() });
-  row.fromClick = row.fromClick || fromClick;
-  if (entry.total != null) row.total = entry.total;
+// Local date and time in ISO 8601 with the UTC offset (e.g. 2026-11-12T10:03:21+01:00).
+function isoLocal(d) {
+  const pad = n => String(Math.abs(n)).padStart(2, '0');
+  const offset = -d.getTimezoneOffset();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+    + `${offset >= 0 ? '+' : '-'}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`;
+}
+
+// Records one measure of a run (entry = message of timing.js, or null when the measure did not arrive in time).
+function record(session, c, round, position, event, entry, startedAt) {
+  const now = new Date(startedAt); // start of the run
+  const fromClick = entry && entry.fromClickMs != null;
+  const problems = entry ? (entry.problems || []) : [];
+  const row = {
+    session_id: session.id, session_notes: session.notes, commit: session.commit, pilot: session.pilot, user_agent: navigator.userAgent,
+    round, order_in_round: position, case_id: c.id, case_group: c.group, page_id: c.value, measure: MEASURES[event] || event,
+    from_click: fromClick, list_size: entry && entry.total != null ? entry.total : null,
+    timestamp: isoLocal(now), weekday: now.toLocaleDateString('en-GB', { weekday: 'short' }), hour: now.getHours(),
+    duration_s: entry ? Math.round((fromClick ? entry.fromClickMs : entry.ms) / 100) / 10 : null,
+    outcome: !entry ? 'timeout' : problems.length ? 'incomplete' : 'ok',
+    tab_hidden: entry ? !!entry.hidden : false,
+    browser_offline: entry ? !!entry.offline : false,
+    items_missing: problems.map(p => Number((p.match(/^(\d+) not downloaded/) || [])[1]) || 0).reduce((a, b) => a + b, 0),
+    problems: problems.join('; ')
+  };
+  COUNTERS.forEach(k => { row[k] = entry && entry.stats ? entry.stats[k] : null; });
+  if (fromClick) { // measured from the click: waiting and busy time from the click too
+    row.api_wait_ms = entry.apiWaitFromClickMs;
+    row.long_tasks_ms = entry.busyFromClickMs;
+  }
+  runs.push(row);
   save();
   render();
 }
 
-// One run: opens the page in the iframe and waits for the expected measurements (or the time limit).
+// One run: opens the page in the iframe and waits for the expected measures (or the time limit).
 let stopped = false;
-let current = null; // { case, events, resolve }
+let current = null; // { case, events, started, onEvent }
 window.addEventListener('message', e => {
   const entry = e.data && e.data.skgifTiming;
   if (!entry || !current) return;
@@ -173,7 +361,7 @@ window.addEventListener('message', e => {
   current.onEvent();
 });
 
-function runOnce(c, timeoutMin) {
+function runOnce(c, timeoutMin, statusPrefix) {
   return new Promise(resolve => {
     const startedAt = Date.now();
     current = { case: c, events: {}, started: false, onEvent: null };
@@ -182,12 +370,12 @@ function runOnce(c, timeoutMin) {
       const got = current.events;
       current = null;
       $('frame').src = 'about:blank';
-      resolve({ got, reason });
+      resolve({ got, reason, startedAt });
     };
     current.onEvent = () => { if (c.wait.every(ev => current.events[ev])) finish('ok'); };
     const tick = setInterval(() => {
       const elapsed = (Date.now() - startedAt) / 1000;
-      const have = c.wait.filter(ev => current && current.events[ev]).map(ev => LABELS[ev]);
+      const have = c.wait.filter(ev => current && current.events[ev]).map(ev => MEASURES[ev]);
       setStatus(`${statusPrefix} - ${Math.round(elapsed)} s${have.length ? ' - arrived: ' + have.join(', ') : ''}`);
       if (stopped) finish('stopped');
       else if (elapsed > timeoutMin * 60) finish('timeout');
@@ -197,96 +385,90 @@ function runOnce(c, timeoutMin) {
   });
 }
 
-let statusPrefix = '';
 const setStatus = text => { $('status').textContent = text; };
+
+// Random order (Fisher-Yates).
+function shuffle(list) {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 $('start').onclick = async () => {
   const chosen = CASES.filter(c => document.querySelector(`.case[value="${c.id}"]`).checked);
   if (!chosen.length) return setStatus('No case selected.');
-  const runs = Math.max(1, Number($('opt-runs').value) || 3);
-  const timeoutMin = Math.max(1, Number($('opt-timeout').value) || 10);
-  const preview = $('opt-preview').checked;
-  const cache = preview ? 'bypassed' : 'used';
-  sessionStorage.setItem('skgifTiming', JSON.stringify({ preview, autoClick: $('opt-click').checked }));
+  const rounds = Math.max(1, Number($('opt-rounds').value) || 3);
+  const timeoutMin = Math.max(1, Number($('opt-timeout').value) || 15);
+  const session = { id: isoLocal(new Date()), notes: $('opt-notes').value.trim(), commit: $('opt-commit').value.trim(), pilot: $('opt-pilot').checked };
+  // Server cache always bypassed; "Load all" buttons always pressed.
+  sessionStorage.setItem('skgifTiming', JSON.stringify({ preview: true, autoClick: true }));
   stopped = false;
   $('start').disabled = true;
   $('stop').disabled = false;
   const problems = [];
-  for (const c of chosen) {
-    for (let r = 1; r <= runs && !stopped; r++) {
-      statusPrefix = `${c.name} - run ${r} of ${runs}`;
-      const { got, reason } = await runOnce(c, timeoutMin);
-      Object.values(got).forEach(entry => record(c.id, entry, cache));
-      if (reason === 'no-timing') { problems.push('timing.js does not answer: check its line in browser.html'); stopped = true; }
-      else if (reason === 'timeout') problems.push(`${c.name}, run ${r}: time limit exceeded (missing: ${c.wait.filter(ev => !got[ev]).map(ev => LABELS[ev]).join(', ')})`);
+  let runsWith429 = 0;
+  const sessionStart = Date.now();
+  // Warm-up run, not recorded: the first page of a session also pays for opening the connection to the API
+  // (DNS, TLS) and for loading the site files; those costs must not fall on the first measured case.
+  const warmUp = await runOnce(WARM_UP_CASE, timeoutMin, 'Warm-up (not recorded)');
+  if (warmUp.reason === 'no-timing') { problems.push('timing.js does not answer: check its line in browser.html'); stopped = true; }
+  if (!stopped) await new Promise(res => setTimeout(res, 1500));
+  for (let round = 1; round <= rounds && !stopped; round++) {
+    const order = shuffle(chosen);
+    for (let i = 0; i < order.length && !stopped; i++) {
+      const c = order[i];
+      const { got, reason, startedAt } = await runOnce(c, timeoutMin, `Round ${round} of ${rounds}, case ${i + 1} of ${order.length}: ${c.name}`);
+      if (reason === 'no-timing') { problems.push('timing.js does not answer: check its line in browser.html'); stopped = true; break; }
+      if (reason === 'stopped') break; // a run interrupted by Stop is not recorded
+      c.wait.forEach(ev => record(session, c, round, i + 1, ev, got[ev] || null, startedAt));
+      if (reason === 'timeout') problems.push(`${c.name}, round ${round}: time limit exceeded`);
+      // Repeated 429 (too many requests): the agreed load is exceeded, the collection stops.
+      if (Object.values(got).some(e => e.stats && e.stats.http_429 > 0) && ++runsWith429 >= MAX_RUNS_WITH_429) {
+        problems.push(`429 "too many requests" in ${runsWith429} runs: collection stopped, tell the professor`);
+        stopped = true;
+      }
       await new Promise(res => setTimeout(res, 1500)); // short pause between runs
     }
-    if (stopped) break;
   }
   $('start').disabled = false;
   $('stop').disabled = true;
-  setStatus((stopped ? 'Stopped.' : 'Finished.') + (problems.length ? ' Problems: ' + problems.join('; ') : ''));
+  const minutes = Math.round((Date.now() - sessionStart) / 60000);
+  setStatus(`${stopped ? 'Stopped' : 'Finished'} after ${minutes} min. Download the CSV now.` + (problems.length ? ' Problems: ' + problems.join('; ') : ''));
 };
 $('stop').onclick = () => { stopped = true; };
 
 $('clear').onclick = () => {
-  if (!confirm('Delete all saved results?')) return;
-  results = {};
+  if (!confirm('Delete all saved results? Download the CSV first.')) return;
+  runs = [];
   save();
   render();
 };
 
+// CSV for R: comma-separated, decimal point, one row per measure of each run, snake_case header, UTF-8.
+const COLUMNS = ['session_id', 'session_notes', 'commit', 'pilot', 'user_agent', 'round', 'order_in_round', 'case_id', 'case_group', 'page_id', 'measure',
+  'from_click', 'list_size', 'timestamp', 'weekday', 'hour', 'duration_s', 'outcome', 'tab_hidden', 'browser_offline', ...COUNTERS, 'items_missing', 'problems'];
 $('csv').onclick = () => {
-  const rows = Object.values(results);
-  const maxRuns = Math.max(1, ...rows.map(r => r.runs.length));
-  const head = ['Case', 'URL', 'Measure', 'From the click', 'Items', 'Server cache', ...Array.from({ length: maxRuns }, (_, i) => `Run ${i + 1} (s)`),
-    'Median (s, runs without problems)', 'API calls', 'Problems'];
-  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const num = n => n == null ? '' : String(n).replace('.', ',');
-  const lines = [head.map(q).join(';')].concat(rows.map(r => {
-    const c = CASES.find(x => x.id === r.case) || {};
-    const ok = okRuns(r);
-    const problems = r.runs.map((run, i) => run.problems.length ? `run ${i + 1}: ${run.problems.join(', ')}` : '').filter(Boolean).join(' | ');
-    return [c.name || r.case, c.value || '', LABELS[r.event] || r.event, r.fromClick ? 'yes' : 'no', r.total ?? '', r.cache,
-      ...Array.from({ length: maxRuns }, (_, i) => r.runs[i] ? (r.runs[i].problems.length ? '⚠ ' : '') + num(r.runs[i].s) : ''),
-      num(ok.length ? median(ok.map(x => x.s)) : null), ok.length ? Math.round(median(ok.map(x => x.calls))) : '', problems].map(q).join(';');
-  }));
-  downloadCsv(lines, 'summary');
-};
-
-// One row per run, with date and time: to compare different days and hours (e.g. pivot table in Excel).
-$('csv-runs').onclick = () => {
-  const order = Object.keys(LABELS);
-  const rows = Object.values(results).sort((a, b) => CASES.findIndex(c => c.id === a.case) - CASES.findIndex(c => c.id === b.case)
-    || order.indexOf(a.event) - order.indexOf(b.event));
-  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const head = ['Case', 'URL', 'Measure', 'From the click', 'Items', 'Server cache', 'Date', 'Time', 'Seconds', 'API calls', 'Problems'];
-  const lines = [head.map(q).join(';')];
-  rows.forEach(r => {
-    const c = CASES.find(x => x.id === r.case) || {};
-    r.runs.forEach(run => {
-      const d = run.at ? new Date(run.at) : null;
-      lines.push([c.name || r.case, c.value || '', LABELS[r.event] || r.event, r.fromClick ? 'yes' : 'no', r.total ?? '', r.cache,
-        d ? d.toLocaleDateString('en-GB') : '', d ? d.toLocaleTimeString('en-GB') : '', String(run.s).replace('.', ','), run.calls,
-        run.problems.join(', ')].map(q).join(';'));
-    });
-  });
-  downloadCsv(lines, 'runs');
-};
-
-// CSV with ';' separators and decimal commas, so that Excel with European settings opens it directly.
-function downloadCsv(lines, kind) {
-  const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }); // BOM: Excel reads accented letters
+  const cell = v => {
+    if (v === null || v === undefined) return 'NA';
+    if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
+    if (typeof v === 'number') return String(v);
+    return `"${String(v).replace(/"/g, '""')}"`;
+  };
+  const lines = [COLUMNS.join(',')].concat(runs.map(r => COLUMNS.map(k => cell(r[k])).join(',')));
+  const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `skgif-timing-${kind}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `skgif-timing-runs-${isoLocal(new Date()).slice(0, 16).replace(':', '')}.csv`;
   a.click();
-}
+};
 
 // Manual measurement: switches the tool on in this tab and opens the home page; the times are in F12 -> Console.
 $('manual').onclick = () => {
-  sessionStorage.setItem('skgifTiming', JSON.stringify({ preview: $('opt-preview').checked, autoClick: false }));
-  location.href = '/example/oc/html_template/home.html';
+  sessionStorage.setItem('skgifTiming', JSON.stringify({ preview: true, autoClick: false }));
+  location.href = '../example/oc/html_template/home.html';
 };
 </script>
 </body>

@@ -1,0 +1,58 @@
+/* ==========================================================================
+   Theme: colours, fonts and shadows of the whole interface (home and browser).
+   To adapt the interface to another style, change the values in this file:
+   browser.css and home.css only refer to these variables.
+   Loaded by browser.html and home.html before browser.css / home.css.
+   ========================================================================== */
+
+/* Fonts (here Work Sans and PT Serif, as on opencitations.net) */
+@import url("https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap");
+
+:root {
+  /* --- Main colours --- */
+  --theme-primary: #8f4ec7;      /* active tabs, buttons, selected items, icons */
+  --theme-secondary: #68c5f9;    /* button hover, hovered home cards */
+  --theme-accent: #aa5bf9;       /* "Loading" banners and texts, progress bars */
+  --theme-highlight: #9a31fc;    /* link underline, glow of hovered cards */
+
+  /* --- Text --- */
+  --theme-text: #000;            /* body text */
+  --theme-title: #2c3847;        /* titles, menus, form text */
+  --theme-muted: #6c727a;        /* labels, secondary text, "Not available" */
+  --theme-placeholder: #a9a3b8;  /* placeholders and hints of the search fields */
+  --theme-error: #b42318;        /* error messages of the search panel */
+
+  /* --- Backgrounds --- */
+  --theme-bg: #f0def7;           /* page background */
+  --theme-bg-top: #d3c0e2;       /* gradient at the top of the page */
+  --theme-surface: #fff;         /* cards, menus, boxes */
+  --theme-on-primary: #fff;      /* text on coloured buttons and badges */
+  --theme-tint: #f6eefc;         /* hover of small buttons (copy icon) */
+  --theme-tint-light: #fcf9fe;   /* hover of cards in lists */
+  --theme-panel: #f8f4fb;        /* "Filter" row of the lists */
+  --theme-disabled: #f6f4f9;     /* disabled fields of the search panel */
+
+  /* --- Lines and shadows --- */
+  --theme-line: #e6dcef;         /* thin lines and field borders */
+  --theme-line-soft: #f0ecf6;    /* separators inside menus */
+  --theme-page-border: #ece3f3;  /* border of the page buttons (1 2 3 …) */
+  --theme-footer-line: lightgray;/* line above the footer */
+  --theme-shadow: 2px 5px 43px rgba(138, 164, 181, 0.28);
+
+  /* --- Fonts --- */
+  --theme-sans: "Work Sans", sans-serif;   /* titles, menus, buttons, labels */
+  --theme-serif: "PT Serif", serif;        /* text */
+
+  /* --- Bootstrap: its components follow the theme --- */
+  --bs-body-font-family: var(--theme-serif);
+  --bs-primary: var(--theme-primary);
+  --bs-primary-rgb: 143, 78, 199;          /* = --theme-primary as R, G, B (Bootstrap needs it this way) */
+  --bs-link-color: var(--theme-primary);
+  --bs-link-color-rgb: 143, 78, 199;       /* = --theme-primary as R, G, B */
+  --bs-link-hover-color: var(--theme-secondary);
+  --bs-link-hover-color-rgb: 104, 197, 249; /* = --theme-secondary as R, G, B */
+}
+/* Bootstrap defines these on the component itself, not on :root */
+.progress {
+  --bs-progress-bar-bg: var(--theme-accent);
+}

@@ -1,6 +1,6 @@
 <br>
 <div class="mb-3">
-  <a href="home2.html" class="btn  btn-sm">
+  <a href="home.html" class="btn  btn-sm">
     <i class="fas fa-arrow-left"></i> Home
   </a>
 </div>
@@ -13,19 +13,82 @@
     <div class="card shadow-sm p-3 h-100">
       <div class="card-header text-center">
         <p class="mb-1 small text-muted">Citation Record</p>
-        <h3 class="my-0" id="ci-oci">[[Lucinda:skgif_oci(main.oci)]]</h3>
+        <h3 class="my-0" id="ci-oci">[[Lucinda:skgif_ci_title(main.oci, citing_meta.omid, citing_meta.title, citing_meta.date, cited_meta.omid, cited_meta.title, cited_meta.date)]]</h3>
         <!-- Link to the external page of the OCI -->
         [[Lucinda:skgif_oci_uri(main.oci)]]
       </div>
     </div>
   </div>
 
-  <!-- Errors (invalid OCI, missing document...) and "citation not found" notice -->
+  <!-- Errors (invalid OCI, missing work...) and "citation not found" notice -->
   <div class="col-12" id="ci-message">[[Lucinda:skgif_ci_message(main.oci, citing_meta.status, cited_meta.status, citing_meta.cites)]]</div>
 
 </div>
 
 <div class="d-none" id="ci-record">
+
+  <!-- What the two works have in common (right under the title, visible without scrolling) -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card shadow-sm" id="ci-overlap">
+        <div class="card-body">
+          <!-- Two-circle sign and title on the left, the two boxes on the right (one under the other on phones) -->
+          <div class="ci-overlap-strip">
+            <svg class="ci-overlap-sign" width="62" height="38" viewBox="0 0 62 38" aria-hidden="true"><circle cx="22" cy="19" r="16"/><circle cx="40" cy="19" r="16"/></svg>
+            <div class="ci-overlap-intro">
+              <h5 class="my-0 fw-bold skgif-box-title">Citation overlap</h5>
+              <p class="small text-muted mb-0">What the citing and the cited work have in common</p>
+            </div>
+            <div class="row g-3 ci-overlap-boxes skgif-count-seg">
+              <div class="col-12 col-sm-6 col-lg-4">
+                <div class="card shadow-sm h-100">
+                  <div class="card-header text-center py-1">
+                    <span class="fw-bold small">Shared references</span>
+                  </div>
+                  <div class="card-body text-center py-2">
+                    <h3 class="my-1 skgif-count-number" id="ci-cited-by-both">[[Lucinda:skgif_num(cited_by_both.total)]]</h3>
+                    <p class="small text-muted mb-0">Works cited by both</p>
+                  </div>
+                </div>
+              </div>
+              <div class="col-12 col-sm-6 col-lg-4">
+                <div class="card shadow-sm h-100">
+                  <div class="card-header text-center py-1">
+                    <span class="fw-bold small">Co-citations</span>
+                  </div>
+                  <div class="card-body text-center py-2">
+                    <h3 class="my-1 skgif-count-number" id="ci-citing-both">[[Lucinda:skgif_num(citing_both.total)]]</h3>
+                    <p class="small text-muted mb-0">Works that cite both</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Click on a box = list of the works below (_ciOverlapToggle) -->
+          <div class="d-none mt-4" id="ci-shared-pane">
+            <div class="ra-toolbar mb-3">
+              <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <span class="fw-bold" id="ci-shared-status"></span>
+                <div class="d-flex align-items-center gap-2 ms-auto d-none" id="ci-shared-perpage"><span class="small fw-bold">Show</span></div>
+                <button type="button" class="btn btn-sm skgif-search-reset ci-overlap-hide">Hide <span class="ci-overlap-chevron" aria-hidden="true">&#9652;</span></button>
+              </div>
+            </div>
+            <div class="row" id="ci-shared-list"></div>
+          </div>
+          <div class="d-none mt-4" id="ci-cocit-pane">
+            <div class="ra-toolbar mb-3">
+              <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <span class="fw-bold" id="ci-cocit-status"></span>
+                <div class="d-flex align-items-center gap-2 ms-auto d-none" id="ci-cocit-perpage"><span class="small fw-bold">Show</span></div>
+                <button type="button" class="btn btn-sm skgif-search-reset ci-overlap-hide">Hide <span class="ci-overlap-chevron" aria-hidden="true">&#9652;</span></button>
+              </div>
+            </div>
+            <div class="row" id="ci-cocit-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- CITING WORK -> CITED WORK -->
   <div class="row align-items-stretch mb-4">
@@ -39,18 +102,18 @@
 
         <div class="card-body d-flex flex-column">
 
-          <h5 class="ra-work-title" id="citing-title">[[Lucinda:skgif_doc_link(citing_meta.omid, citing_meta.title)]]</h5>
+          <h5 class="ra-work-title" id="citing-title">[[Lucinda:skgif_product_link(citing_meta.omid, citing_meta.title)]]</h5>
           <hr>
 
           <div class="br-field mb-3"><span class="br-label" id="citing-authors-label">[[Lucinda:skgif_text(citing_meta.agents_label)]]</span><span id="citing-authors">[[Lucinda:ifcond(citing_meta.agents != null, skgif_agents_short(citing_meta.agents), _HTML_(<span class="skgif-none">Not available</span>))]]</span></div>
-          <div class="br-field mb-3"><span class="br-label">Publication date</span><span id="citing-date">[[Lucinda:ifcond(citing_meta.date != null, skgif_text(citing_meta.date), _HTML_(<span class="skgif-none">Not available</span>))]]</span></div>
+          <div class="br-field mb-3"><span class="br-label">Publication date</span><span id="citing-date">[[Lucinda:ifcond(citing_meta.date != null, skgif_date(citing_meta.date), _HTML_(<span class="skgif-none">Not available</span>))]]</span></div>
           [[Lucinda:ifcond(citing_meta.type != null, concat(_HTML_(<div class="br-field mb-3"><span class="br-label">Type</span>), skgif_text(citing_meta.type), _HTML_(</div>)), _HTML_(<div class="br-field mb-3"><span class="br-label">Type</span><span class="skgif-none">Not available</span></div>))]]
-          [[Lucinda:ifcond(citing_meta.source != null, concat(_HTML_(<div class="br-field mb-3"><span class="br-label">Source</span>), skgif_source(citing_meta.source), _HTML_(</div>)))]]
+          [[Lucinda:ifcond(citing_meta.venue != null, concat(_HTML_(<div class="br-field mb-3"><span class="br-label">Publication venue</span>), skgif_venue(citing_meta.venue), _HTML_(</div>)))]]
           <div class="br-field mb-3"><span class="br-label">Identifiers</span><span id="citing-ids">[[Lucinda:skgif_ids(citing_meta.ids, citing_meta.omid)]]</span></div>
 
           <!-- Counters and chart at the bottom, aligned with the other card -->
           <div class="mt-auto">
-            <div class="row g-2 mb-3">
+            <div class="row g-2 mb-3 skgif-count-seg skgif-count-seg-full skgif-count-seg-tall">
               <div class="col-6">
                 <div class="card shadow-sm h-100">
                   <div class="card-header text-center py-1">
@@ -101,17 +164,17 @@
 
         <div class="card-body d-flex flex-column">
 
-          <h5 class="ra-work-title" id="cited-title">[[Lucinda:skgif_doc_link(cited_meta.omid, cited_meta.title)]]</h5>
+          <h5 class="ra-work-title" id="cited-title">[[Lucinda:skgif_product_link(cited_meta.omid, cited_meta.title)]]</h5>
           <hr>
 
           <div class="br-field mb-3"><span class="br-label" id="cited-authors-label">[[Lucinda:skgif_text(cited_meta.agents_label)]]</span><span id="cited-authors">[[Lucinda:ifcond(cited_meta.agents != null, skgif_agents_short(cited_meta.agents), _HTML_(<span class="skgif-none">Not available</span>))]]</span></div>
-          <div class="br-field mb-3"><span class="br-label">Publication date</span><span id="cited-date">[[Lucinda:ifcond(cited_meta.date != null, skgif_text(cited_meta.date), _HTML_(<span class="skgif-none">Not available</span>))]]</span></div>
+          <div class="br-field mb-3"><span class="br-label">Publication date</span><span id="cited-date">[[Lucinda:ifcond(cited_meta.date != null, skgif_date(cited_meta.date), _HTML_(<span class="skgif-none">Not available</span>))]]</span></div>
           [[Lucinda:ifcond(cited_meta.type != null, concat(_HTML_(<div class="br-field mb-3"><span class="br-label">Type</span>), skgif_text(cited_meta.type), _HTML_(</div>)), _HTML_(<div class="br-field mb-3"><span class="br-label">Type</span><span class="skgif-none">Not available</span></div>))]]
-          [[Lucinda:ifcond(cited_meta.source != null, concat(_HTML_(<div class="br-field mb-3"><span class="br-label">Source</span>), skgif_source(cited_meta.source), _HTML_(</div>)))]]
+          [[Lucinda:ifcond(cited_meta.venue != null, concat(_HTML_(<div class="br-field mb-3"><span class="br-label">Publication venue</span>), skgif_venue(cited_meta.venue), _HTML_(</div>)))]]
           <div class="br-field mb-3"><span class="br-label">Identifiers</span><span id="cited-ids">[[Lucinda:skgif_ids(cited_meta.ids, cited_meta.omid)]]</span></div>
 
           <div class="mt-auto">
-            <div class="row g-2 mb-3">
+            <div class="row g-2 mb-3 skgif-count-seg skgif-count-seg-full skgif-count-seg-tall">
               <div class="col-6">
                 <div class="card shadow-sm h-100">
                   <div class="card-header text-center py-1">
@@ -146,64 +209,6 @@
       </div>
     </div>
 
-  </div>
-
-  <!-- What the two documents have in common -->
-  <div class="row mb-4">
-    <div class="col-12">
-      <div class="card shadow-sm" id="ci-overlap">
-        <div class="card-header text-center">
-          <h5 class="my-1 fw-bold skgif-box-title">Citation overlap</h5>
-        </div>
-        <div class="card-body">
-          <div class="row g-3 justify-content-center">
-            <div class="col-12 col-sm-6 col-lg-4">
-              <div class="card shadow-sm h-100">
-                <div class="card-header text-center py-1">
-                  <span class="fw-bold small">Shared references</span>
-                </div>
-                <div class="card-body text-center py-2">
-                  <h3 class="my-1 skgif-count-number" id="ci-cited-by-both">[[Lucinda:skgif_num(cited_by_both.total)]]</h3>
-                  <p class="small text-muted mb-0">Works cited by both</p>
-                </div>
-              </div>
-            </div>
-            <div class="col-12 col-sm-6 col-lg-4">
-              <div class="card shadow-sm h-100">
-                <div class="card-header text-center py-1">
-                  <span class="fw-bold small">Co-citations</span>
-                </div>
-                <div class="card-body text-center py-2">
-                  <h3 class="my-1 skgif-count-number" id="ci-citing-both">[[Lucinda:skgif_num(citing_both.total)]]</h3>
-                  <p class="small text-muted mb-0">Works that cite both</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          <!-- Click on a box = list of the works below (_ciOverlapToggle) -->
-          <div class="d-none mt-4" id="ci-shared-pane">
-            <div class="ra-toolbar mb-3">
-              <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                <span class="fw-bold" id="ci-shared-status"></span>
-                <div class="d-flex align-items-center gap-2 ms-auto d-none" id="ci-shared-perpage"><span class="small fw-bold">Show</span></div>
-                <button type="button" class="btn btn-sm skgif-search-reset ci-overlap-hide">Hide <span class="ci-overlap-chevron" aria-hidden="true">&#9652;</span></button>
-              </div>
-            </div>
-            <div class="row" id="ci-shared-list"></div>
-          </div>
-          <div class="d-none mt-4" id="ci-cocit-pane">
-            <div class="ra-toolbar mb-3">
-              <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                <span class="fw-bold" id="ci-cocit-status"></span>
-                <div class="d-flex align-items-center gap-2 ms-auto d-none" id="ci-cocit-perpage"><span class="small fw-bold">Show</span></div>
-                <button type="button" class="btn btn-sm skgif-search-reset ci-overlap-hide">Hide <span class="ci-overlap-chevron" aria-hidden="true">&#9652;</span></button>
-              </div>
-            </div>
-            <div class="row" id="ci-cocit-list"></div>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 
 </div>

@@ -855,7 +855,7 @@ class Lucinda_view {
 
 class Lucinda {
     static conf = {
-      resource: window.location.href,
+      resource: window.location.href.split('#')[0], // SILVIA: the #fragment (e.g. #citations) selects a tab, not part of the resource
       templates_url: "/",
       templates: [],
       html_error_template: null,

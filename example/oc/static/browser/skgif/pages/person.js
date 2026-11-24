@@ -1,7 +1,7 @@
-// Author profile (new_ra_browser): data from /persons/<omid> (Lucinda); all works, in any role, through
+// Person record (person_record): data from /persons/<omid> (Lucinda); all publications, in any role, through
 // contributions.by.local_identifier, all downloaded; filters, Sort by, per-year charts.
 
-// Lucinda #postprocess for author_meta: person data (the HTML is built by the view functions).
+// Lucinda #postprocess for person_meta: person data (the HTML is built by the view functions).
 function post_skgif_person(res, id) {
   const header = ['found', 'message', 'omid', 'head', 'name', 'orcid', 'ids'];
   const omid = `ra/${id}`;
@@ -17,33 +17,33 @@ function post_skgif_person(res, id) {
     identifiers.filter(i => i.scheme !== 'orcid').map(i => ({ scheme: i.scheme, value: i.value }))]];
 }
 
-// #callfun: shows the record and loads all the works.
-function api_author_record_skgif(...args) {
-  if (!_lucindaValue('author_meta', 'found')) return; // message already written by Lucinda
+// #callfun: shows the record and loads all the publications.
+function api_person_record_skgif(...args) {
+  if (!_lucindaValue('person_meta', 'found')) return; // message already written by Lucinda
   const id = _skgifUrlParam(args[1], 'id').trim();
   const omidUrl = skgifFullId(`ra/${id}`);
-  const works = skgifFilterUrl('products', SKGIF_FILTER.contributor, `ra/${id}`);
+  const source = skgifFilterUrl('products', SKGIF_FILTER.contributor, `ra/${id}`);
 
   document.getElementById('ra-record')?.classList.remove('d-none');
   _skgifInitTabs(); // chart tabs: Publications / Citations per year
   _skgifSetField('ra-pubs-chart', '<em>Loading…</em>');
   _skgifSetField('ra-cits-chart', '<em>Loading…</em>');
   _skgifSetField('ra-cits-note', '<em>Loading…</em>'); // visible even when the chart tab is closed
-  skgifFirstPage(works, SKGIF_DEFAULT_PAGE_SIZE) // first page: already downloaded by Lucinda
-    .then(page => _loadAuthorWorks(works, page, omidUrl));
+  skgifFirstPage(source, SKGIF_DEFAULT_PAGE_SIZE) // first page: already downloaded by Lucinda
+    .then(page => _loadPersonProducts(source, page, omidUrl));
 }
 
-// Citations received by the author, once all the works have arrived:
-// count = sum of the SKG-IF totals of each work (cf.cites, page_size=1, 404 = 0 citations);
-// per-year chart = OpenCitations Index, one call per work (citation date in `creation`; SKG-IF has no dates
-// without downloading every citing work). A citation is a pair: a work citing 3 works of the author counts 3.
+// Citations received by the person, once all the publications have arrived:
+// count = sum of the SKG-IF totals of each publication (cf.cites, page_size=1, 404 = 0 citations);
+// per-year chart = OpenCitations Index, one call per publication (citation date in `creation`; SKG-IF has no dates
+// without downloading every citing publication). A citation is a pair: a publication citing 3 publications of the person counts 3.
 // Few calls at a time: with too many the server answers 429 (skgifFetchPatient retries).
-const SKGIF_AUTHOR_CITATION_PARALLEL = 3;
+const SKGIF_PERSON_CITATION_PARALLEL = 3;
 
-function _loadAuthorCitations(works) {
+function _loadPersonCitations(products) {
   const chart = document.getElementById('ra-cits-chart');
   const setChart = html => { if (chart) chart.innerHTML = html; };
-  const omids = [...new Set(works.map(w => _skgifOmid(w.local_identifier)).filter(Boolean))];
+  const omids = [...new Set(products.map(p => _skgifOmid(p.local_identifier)).filter(Boolean))];
   if (!omids.length) {
     _skgifSetField('ra-cits-count', '0');
     _skgifSetField('ra-cits-note', '');
@@ -63,8 +63,8 @@ function _loadAuthorCitations(works) {
   // progress also under the Citations box (the chart tab is usually closed)
   const setCounting = done => { setChart(chartLoading(1, done)); _skgifSetField('ra-cits-note', loading(done, 'citation counts')); };
   setCounting(0);
-  _skgifPool(indexes, SKGIF_AUTHOR_CITATION_PARALLEL, i =>
-    _skgifCountCitations(omids[i], true).then(n => { // same number as "Go to Citations (N)" in the cards (cards.js)
+  _skgifPool(indexes, SKGIF_PERSON_CITATION_PARALLEL, i =>
+    _skgifCountCitations(omids[i], true).then(n => { // same number as "Citations (N)" in the cards (cards.js)
       if (n !== null) total += n;
       else notCounted++;
       setCounting(++counted);
@@ -72,7 +72,7 @@ function _loadAuthorCitations(works) {
   ).then(() => {
     _skgifSetField('ra-cits-count', _skgifNum(total));
     _skgifSetField('ra-cits-note', notCounted ? `${_skgifPlural(notCounted, 'publication')} could not be counted.` : '');
-    // "Most cited" in Sort by, now that the counts are known (works not counted go last)
+    // "Most cited" in Sort by, now that the counts are known (publications not counted go last)
     const cited = document.querySelector('#ra-sort [data-order="cited"]');
     if (cited && notCounted < omids.length && omids.length >= 2) cited.disabled = false;
 
@@ -80,7 +80,7 @@ function _loadAuthorCitations(works) {
     const dates = [];
     let read = 0, notRead = 0;
     setChart(chartLoading(2, 0));
-    return _skgifPool(indexes, SKGIF_AUTHOR_CITATION_PARALLEL, i =>
+    return _skgifPool(indexes, SKGIF_PERSON_CITATION_PARALLEL, i =>
       skgifFetchPatient(`${OC_INDEX_API}/citations/omid:${omids[i]}`).then(data => {
         if (Array.isArray(data)) data.forEach(c => dates.push(c.creation));
         else if (!data || Object.keys(data).length) notRead++; // {} = 404, no citations
@@ -99,11 +99,11 @@ function _loadAuthorCitations(works) {
   });
 }
 
-// Number of pages of works requested in parallel.
-const SKGIF_AUTHOR_PARALLEL_PAGES = 6;
+// Number of pages of publications requested in parallel.
+const SKGIF_PERSON_PARALLEL_PAGES = 6;
 
-// Downloads all the works and shows them as they arrive; once the list is complete enables Sort by, filters and chart.
-function _loadAuthorWorks(works, firstPage, personOmid) {
+// Downloads all the publications and shows them as they arrive; once the list is complete enables Sort by, filters and chart.
+function _loadPersonProducts(source, firstPage, personOmid) {
   _skgifProfileOmid = personOmid;
   const container = document.getElementById('search-results-container');
   const chart = document.getElementById('ra-pubs-chart');
@@ -112,15 +112,15 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
   let order = 'default', keep = null, term = ''; // sorting, filters and words searched in the titles
   let show = () => {};
   let downloaded = false;
-  const filters = _skgifListFilters(document.getElementById('ra-filters'), ['type', 'year', 'source', 'role'], newKeep => { keep = newKeep; show(); });
+  const filters = _skgifListFilters(document.getElementById('ra-filters'), ['type', 'year', 'venue', 'role'], newKeep => { keep = newKeep; show(); });
   filters.onYears((from, to) => _skgifChartYears('ra-pubs-chart', from, to, filters.clearYears));
 
-  const hideTools = () => { // no works: no filters, Sort by or search
+  const hideTools = () => { // no publications: no filters, Sort by or search
     document.getElementById('ra-filters')?.parentElement.classList.add('d-none');
     document.getElementById('ra-search')?.classList.add('d-none');
   };
   if (!firstPage || !firstPage.total) hideTools();
-  else if (firstPage.total < 2) document.getElementById('ra-search')?.classList.add('d-none'); // "Search in titles" from 2 works
+  else if (firstPage.total < 2) document.getElementById('ra-search')?.classList.add('d-none'); // "Search in titles" from 2 publications
   if (!firstPage) {
     _skgifFallbackCount('search-total-count', '–');
     if (container) container.innerHTML = _skgifUnavailableHtml();
@@ -128,33 +128,33 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
     _skgifSetField('ra-cits-count', '–');
     _skgifSetField('ra-cits-note', '');
     _skgifSetField('ra-cits-chart', '<em>Chart not available.</em>');
-    return _setAuthorListStatus('', null);
+    return _setPersonListStatus('', null);
   }
   const total = firstPage.total;
   _skgifFallbackCount('search-total-count', total);
   if (!total) {
     if (container) container.innerHTML = '<div class="col-12"><p class="fst-italic text-muted">No publications found.</p></div>';
     setChart('<em>No publications found.</em>');
-    _loadAuthorCitations([]);
-    return _setAuthorListStatus('No publications', null);
+    _loadPersonCitations([]);
+    return _setPersonListStatus('No publications', null);
   }
 
   const pageCount = Math.ceil(total / SKGIF_DEFAULT_PAGE_SIZE);
-  const pages = new Array(pageCount); // works of each page
+  const pages = new Array(pageCount); // publications of each page
   pages[0] = firstPage.items;
   setChart('<em>Loading…</em>');
 
-  // Client-side pagination: all works are downloaded, one page at a time is shown.
+  // Client-side pagination: all publications are downloaded, one page at a time is shown.
   const listId = 'search-results-container';
   const pageSize = () => _skgifPageSizes[listId] || SKGIF_DEFAULT_PAGE_SIZE;
-  const cards = items => items.map(_renderAuthorWorkOrMissing).join('');
+  const cards = items => items.map(_renderPersonProductOrMissing).join('');
   let current = 1; // page shown
   let view = () => {}; // shows page `current` of the current list
   let shown = ''; // page already on screen, so it is not redrawn at every arrival
   let info = null, fraction = null; // status row (_skgifRangeStatus) and progress bar
-  const showStatus = () => { if (info) _setAuthorListStatus(_skgifRangeStatus(current, pageSize(), info), fraction); };
+  const showStatus = () => { if (info) _setPersonListStatus(_skgifRangeStatus(current, pageSize(), info), fraction); };
   const setStatus = (newInfo, newFraction = null) => { info = newInfo; fraction = newFraction; showStatus(); };
-  // Page `current` of list; count = how many works the list will have (including those not yet arrived).
+  // Page `current` of list; count = how many publications the list will have (including those not yet arrived).
   const showPage = (list, count, render) => {
     const size = pageSize();
     const pageTotal = Math.max(1, Math.ceil(count / size));
@@ -202,26 +202,26 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
   if (container) container.innerHTML = '';
   showArrived();
 
-  // Title search while works are still arriving: done by the API.
+  // Title search while publications are still arriving: done by the API.
   const searchApi = value => {
     term = value;
     current = 1;
     shown = '';
     if (!term) return showArrived();
     info = null;
-    _setAuthorListStatus('Searching…', null);
+    _setPersonListStatus('Searching…', null);
     if (container) container.innerHTML = SKGIF_LOADING_HTML;
-    const source = `${works},${SKGIF_FILTER.title}:${encodeURIComponent(term)}`;
+    const titleSource = `${source},${SKGIF_FILTER.title}:${encodeURIComponent(term)}`;
     const found = n => `${_skgifPlural(n, 'publication')} with “${value}” in the title`;
-    skgifFirstPage(source, SKGIF_DEFAULT_PAGE_SIZE).then(first => {
+    skgifFirstPage(titleSource, SKGIF_DEFAULT_PAGE_SIZE).then(first => {
       if (term !== value || downloaded) return;
       if (!first) {
         if (container) container.innerHTML = _skgifUnavailableHtml(); // same box as the other lists
         info = null;
-        return _setAuthorListStatus('', null);
+        return _setPersonListStatus('', null);
       }
       const foundPages = [first.items];
-      skgifFetchAllPages(source, first.total, SKGIF_DEFAULT_PAGE_SIZE, SKGIF_AUTHOR_PARALLEL_PAGES, (n, items) => { foundPages[n - 1] = items; }, { 1: first.items }).then(() => {
+      skgifFetchAllPages(titleSource, first.total, SKGIF_DEFAULT_PAGE_SIZE, SKGIF_PERSON_PARALLEL_PAGES, (n, items) => { foundPages[n - 1] = items; }, { 1: first.items }).then(() => {
         if (term !== value || downloaded) return;
         const results = _skgifDedupe(foundPages.flat());
         setStatus({ count: results.length, single: found(first.total) });
@@ -230,22 +230,22 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
       });
     });
   };
-  _initAuthorSearch(value => downloaded ? null : searchApi(value));
+  _initPersonSearch(value => downloaded ? null : searchApi(value));
 
   const onPage = (n, items) => { pages[n - 1] = items; showArrived(); };
-  skgifFetchAllPages(works, total, SKGIF_DEFAULT_PAGE_SIZE, SKGIF_AUTHOR_PARALLEL_PAGES, onPage, { 1: pages[0] }).then(() => {
+  skgifFetchAllPages(source, total, SKGIF_DEFAULT_PAGE_SIZE, SKGIF_PERSON_PARALLEL_PAGES, onPage, { 1: pages[0] }).then(() => {
     const inOrder = _skgifDedupe(pages.flat());
     const all = inOrder.filter(w => !w._skgifMissing);
     const missing = inOrder.length - all.length;
     const missingNote = missing ? ` (${_skgifNum(missing)} could not be loaded)` : '';
     _skgifYearChart(chart, all.map(_skgifProductRawDate), '# Publications', 'No publications found.', 200, year => {
-      if (filters.select('year', year)) document.getElementById('ra-pubs')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); // click on a year: the works of that year
+      if (filters.select('year', year)) document.getElementById('ra-pubs')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); // click on a year: the publications of that year
     });
     if (missing) chart.insertAdjacentHTML('beforeend', `<div class="mt-2">${_skgifPlural(missing, 'publication')} could not be loaded.</div>`);
     const plural = n => _skgifPlural(n, 'publication');
     _skgifSetNote('ra-note', '');
     downloaded = true;
-    _loadAuthorCitations(all);
+    _loadPersonCitations(all);
     _raYearsActive(all);
     let listed = all; // the list as currently shown (filters, search, order), used by Export
     const toolbar = document.getElementById('ra-filters')?.parentElement;
@@ -257,12 +257,12 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
         _skgifScrollToList(document.getElementById('ra-pubs'));
       }
       shown = '';
-      let works = keep ? all.filter(keep) : order === 'default' && !term ? inOrder : all;
-      if (term) works = works.filter(w => _skgifTitleHas(w, term));
-      works = _skgifSortWorks(works, order); // all sorted, then split into pages
-      listed = works.filter(w => !w._skgifMissing);
+      let products = keep ? all.filter(keep) : order === 'default' && !term ? inOrder : all;
+      if (term) products = products.filter(p => _skgifTitleHas(p, term));
+      products = _skgifSortProducts(products, order); // all sorted, then split into pages
+      listed = products.filter(p => !p._skgifMissing);
       const found = n => `${plural(n)} with “${term}” in the title`;
-      const count = works.length;
+      const count = products.length;
       if (term && keep) {
         const withTerm = all.filter(w => _skgifTitleHas(w, term)).length;
         info = { count, single: `${_skgifNum(count)} of ${found(withTerm)}`, phrase: found(count), from: withTerm };
@@ -270,23 +270,23 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
       else if (keep) info = { count, single: `${_skgifNum(count)} of ${plural(all.length)}`, phrase: plural(count), from: all.length };
       else info = { count, single: plural(all.length) + missingNote };
       fraction = null;
-      view = () => showPage(works, works.length, items => _skgifRenderWorks(items, order, _renderAuthorWorkOrMissing)); // by date: one heading per year
+      view = () => showPage(products, products.length, items => _skgifRenderProducts(items, order, _renderPersonProductOrMissing)); // by date: one heading per year
       view();
       showStatus();
     };
-    filters.fill(all); // Role only if the person is author of some works and editor of others
-    _raTopSources(all, name => { // click on a source = Source filter
-      if (filters.select('source', name)) document.getElementById('ra-pubs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    filters.fill(all); // Role only if the person is author of some publications and editor of others
+    _raTopVenues(all, name => { // click on a venue = Venue filter
+      if (filters.select('venue', name)) document.getElementById('ra-pubs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-    _onAuthorSearch = value => {
+    _onPersonSearch = value => {
       term = value;
       filters.setMatch(term ? w => _skgifTitleHas(w, term) : null);
       show();
     };
-    if (term) _onAuthorSearch(term);
+    if (term) _onPersonSearch(term);
     else show(true);
     document.querySelectorAll('#ra-sort button').forEach(button => {
-      if (button.dataset.order !== 'cited') button.disabled = all.length < 2; // "Most cited" is enabled by _loadAuthorCitations; Sort by from 2 works
+      if (button.dataset.order !== 'cited') button.disabled = all.length < 2; // "Most cited" is enabled by _loadPersonCitations; Sort by from 2 publications
       button.addEventListener('click', () => {
         document.querySelectorAll('#ra-sort button').forEach(b => b.classList.toggle('active', b === button));
         order = button.dataset.order;
@@ -296,20 +296,20 @@ function _loadAuthorWorks(works, firstPage, personOmid) {
   });
 }
 
-// "Search in titles" of the author profile: filters the works already downloaded, without calls.
-let _onAuthorSearch = null;
+// "Search in titles" of the person record: filters the publications already downloaded, without calls.
+let _onPersonSearch = null;
 
-// Connects the "Search in titles" form of the author profile (search, clear, Enter).
-function _initAuthorSearch(onSearch) {
+// Connects the "Search in titles" form of the person record (search, clear, Enter).
+function _initPersonSearch(onSearch) {
   const form = document.getElementById('ra-search');
   const input = document.getElementById('ra-search-input');
   const reset = document.getElementById('ra-search-reset');
-  _onAuthorSearch = onSearch;
+  _onPersonSearch = onSearch;
   if (!form || !input || !reset) return;
   form.querySelectorAll('input, button').forEach(el => { el.disabled = false; });
   const search = value => {
     reset.classList.toggle('d-none', !value);
-    _onAuthorSearch(value);
+    _onPersonSearch(value);
   };
   reset.addEventListener('click', () => {
     input.value = '';
@@ -326,40 +326,40 @@ function _initAuthorSearch(onSearch) {
   });
 }
 
-// Status text and progress bar of the author profile.
-function _setAuthorListStatus(text, fraction) {
+// Status text and progress bar of the person record.
+function _setPersonListStatus(text, fraction) {
   _skgifListStatus('ra-sort-status', 'ra-progress', text, fraction);
 }
 
-// Card of a work, or "could not be loaded" card.
-function _renderAuthorWorkOrMissing(work) {
-  return work._skgifMissing ? _skgifMissingCard('publication') : _skgifWorkCard(work);
+// Card of a publication, or "could not be loaded" card.
+function _renderPersonProductOrMissing(product) {
+  return product._skgifMissing ? _skgifMissingCard('publication') : _skgifProductCard(product);
 }
 
-// "Years active" in the Overview: first and last year of the works, with the dates as given by SKG-IF.
-function _raYearsActive(works) {
-  const years = works.map(w => String(_skgifProductRawDate(w) || '').slice(0, 4)).filter(y => /^\d{4}$/.test(y)).sort();
+// "Years active" in the Overview: first and last year of the publications, with the dates as given by SKG-IF.
+function _raYearsActive(products) {
+  const years = products.map(p => String(_skgifProductRawDate(p) || '').slice(0, 4)).filter(y => /^\d{4}$/.test(y)).sort();
   if (!years.length) return;
   const first = years[0], last = years[years.length - 1];
   _skgifSetField('ra-active', first === last ? first : `${first}–${last}`);
   document.getElementById('ra-active-field')?.classList.remove('d-none');
 }
 
-// "Top sources": the SKGIF_TOP_SOURCES sources with most works (name as given by the API); onPick(name) = filter.
-const SKGIF_TOP_SOURCES = 5;
-function _raTopSources(works, onPick) {
-  const box = document.getElementById('ra-top-sources');
-  const list = document.getElementById('ra-top-sources-list');
+// "Top venues": the SKGIF_TOP_VENUES venues with most publications (name as given by the API); onPick(name) = filter.
+const SKGIF_TOP_VENUES = 5;
+function _raTopVenues(products, onPick) {
+  const box = document.getElementById('ra-top-venues');
+  const list = document.getElementById('ra-top-venues-list');
   if (!box || !list) return;
   const counts = {};
-  works.forEach(w => { const name = _skgifProductVenue(w)?.name; if (name) counts[name] = (counts[name] || 0) + 1; });
-  const top = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, SKGIF_TOP_SOURCES);
+  products.forEach(p => { const name = _skgifProductVenue(p)?.name; if (name) counts[name] = (counts[name] || 0) + 1; });
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, SKGIF_TOP_VENUES);
   if (!top.length) return;
-  list.innerHTML = top.map(([name, n]) => `<li><button type="button" class="skgif-top-item" data-source="${_skgifEscape(name)}">
+  list.innerHTML = top.map(([name, n]) => `<li><button type="button" class="skgif-top-item" data-venue="${_skgifEscape(name)}">
       <span class="skgif-top-name">${_skgifEscape(name)}</span><span class="skgif-top-count">${_skgifPlural(n, 'publication')}</span></button></li>`).join('');
   list.addEventListener('click', e => {
-    const item = e.target.closest('[data-source]');
-    if (item) onPick(item.dataset.source);
+    const item = e.target.closest('[data-venue]');
+    if (item) onPick(item.dataset.venue);
   });
   box.classList.remove('d-none');
 }

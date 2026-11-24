@@ -1,4 +1,4 @@
-// Organisation page (new_org_browser): a ra/ not found in /persons. Data from /organisations/<omid>, list of
+// Organisation page (organisation_record): a ra/ not found in /persons. Data from /organisations/<omid>, list of
 // publications; chart, filters and Sort by automatic up to SKGIF_CHART_AUTO_LOAD, above it with a button (no limit).
 
 // Lucinda #postprocess for org_meta: organisation data (the HTML is built by the view functions).
@@ -20,17 +20,18 @@ function api_org_record_skgif(...args) {
   if (!_lucindaValue('org_meta', 'found')) return; // message already written by Lucinda
   const id = _skgifUrlParam(args[1], 'id').trim();
   const omidUrl = skgifFullId(`ra/${id}`);
-  const works = skgifFilterUrl('products', SKGIF_FILTER.contributor, `ra/${id}`);
+  const source = skgifFilterUrl('products', SKGIF_FILTER.contributor, `ra/${id}`);
   _skgifProfileOmid = omidUrl; // used for the role of the organisation in each publication
   document.getElementById('org-record')?.classList.remove('d-none');
   _skgifInitListUi('org-pubs');
   _skgifSetField('org-chart', '<em>Loading publications…</em>');
+  _skgifSetField('org-pubs-list', SKGIF_LOADING_HTML);
 
-  skgifFirstPage(works, SKGIF_DEFAULT_PAGE_SIZE).then(first => {
+  skgifFirstPage(source, SKGIF_DEFAULT_PAGE_SIZE).then(first => {
     if (first) _skgifFallbackCount('org-count', first.total);
-    const allPublications = _orgList(works, first);
+    const allPublications = _orgList(source, first);
     const filters = _skgifListTools({
-      prefix: 'org-pubs', list: allPublications, source: works, autoLoad: SKGIF_CHART_AUTO_LOAD, noun: 'publication',
+      prefix: 'org-pubs', list: allPublications, source, autoLoad: SKGIF_CHART_AUTO_LOAD, noun: 'publication',
       search: { noun: 'publication', statusNoun: 'publication', scrollId: 'org-pubs', renderCard: _orgCard }
     });
     _skgifListChart(allPublications, { boxId: 'org-chart', noun: 'publication', owner: 'organisation', label: '# Publications',
@@ -56,7 +57,7 @@ function _orgList(source, first) {
 
 // Card of a publication, with the role of the organisation.
 function _orgCard(product) {
-  return _skgifWorkCard(product, _orgRoleBadge);
+  return _skgifProductCard(product, _orgRoleBadge);
 }
 
 // Badge with the roles of the organisation ("Author", "Publisher & Author"...).

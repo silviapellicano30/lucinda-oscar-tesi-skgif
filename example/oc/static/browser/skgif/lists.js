@@ -8,7 +8,7 @@
 function _skgifScrollToList(el) {
   if (!el) return;
   _skgifKeepScroll();
-  const visible = sel => [...el.querySelectorAll(sel)].find(e => e.offsetParent); // hidden tabs excluded (document page)
+  const visible = sel => [...el.querySelectorAll(sel)].find(e => e.offsetParent); // hidden tabs excluded (research product record)
   const bar = visible('.ra-toolbar');
   const list = visible('[id$="-list"], #search-results-container');
   const hidden = bar && list
@@ -128,7 +128,7 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
     const render = items => {
       container.style.minHeight = '';
       const pageCount = Math.max(1, Math.ceil((ordered || inOrder || { length: total }).length / pageSize()));
-      const cards = order === 'newest' || order === 'oldest' ? _skgifRenderWorks(items, order, renderCard) : renderItems(items); // by date: one heading per year
+      const cards = order === 'newest' || order === 'oldest' ? _skgifRenderProducts(items, order, renderCard) : renderItems(items); // by date: one heading per year
       container.innerHTML = items.length ? cards + _skgifPaginationBar(containerId, p, pageCount) : '';
     };
     const inMemory = ordered || inOrder;
@@ -178,7 +178,7 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
     if (!inOrder) return 0;
     const base = keep || term ? all.filter(p => (!keep || keep(p)) && (!term || _skgifTitleHas(p, term)))
       : order === 'default' ? null : all;
-    ordered = base && _skgifSortWorks(base, order);
+    ordered = base && _skgifSortProducts(base, order);
     const found = n => `${statusText(n)} with “${term}” in the title`;
     const count = (ordered || inOrder).length;
     if (term && keep) {
@@ -295,7 +295,7 @@ function _skgifListTools({ prefix, list, source, autoLoad, noun, search }) {
     _skgifSetNote(`${prefix}-note`, empty ? `No ${noun}s found.` : text, loading && !!text);
     document.getElementById(`${prefix}-note`)?.classList.toggle('skgif-empty-note', empty);
   };
-  const filters = _skgifListFilters(tools?.querySelector('.skgif-filters'), ['type', 'year', 'source'], keep => list.filter(keep));
+  const filters = _skgifListFilters(tools?.querySelector('.skgif-filters'), ['type', 'year', 'venue'], keep => list.filter(keep));
   const sortButtons = tools ? [...tools.querySelectorAll('.ra-sort button')] : [];
   sortButtons.forEach(button => button.addEventListener('click', () => {
     sortButtons.forEach(b => b.classList.toggle('active', b === button));
@@ -401,8 +401,75 @@ function _skgifKeepCursor(input) {
 
 // Keeps the page at least as tall as the current scroll position: short results do not make it jump up.
 function _skgifKeepScroll() {
-  document.body.style.minHeight = `${window.scrollY + window.innerHeight}px`;
+  const body = document.body;
+  body.style.minHeight = `${window.scrollY + window.innerHeight}px`;
+  _skgifReleasing = false;
+  _skgifReleaseId++; // stops a release still running
+  _skgifReleaseWhenSettled();
 }
+
+// Releases the held height once the page has settled (nothing loading, no changes for a moment).
+// Changes that keep happening while charts and counts load are not waited for.
+const SKGIF_SETTLE_IGNORE = '[id$="-chart"], [id$="-note"], [id$="-count"], .ra-line-counts, .skgif-loading-note';
+let _skgifSettleWatch = null;
+function _skgifReleaseWhenSettled() {
+  if (_skgifSettleWatch) return;
+  let quiet = 0, waited = 0;
+  const observer = new MutationObserver(records => {
+    const element = node => node.nodeType === 1 ? node : node.parentElement;
+    if (records.some(r => !element(r.target)?.closest(SKGIF_SETTLE_IGNORE))) quiet = 0;
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  _skgifSettleWatch = setInterval(() => {
+    quiet += 100;
+    waited += 100;
+    const loading = [...document.querySelectorAll('.skgif-page-loading')].some(e => e.offsetParent);
+    if ((quiet < 200 || loading) && waited < 60000) return;
+    clearInterval(_skgifSettleWatch);
+    _skgifSettleWatch = null;
+    observer.disconnect();
+    _skgifReleaseHeight();
+  }, 100);
+}
+
+// Removes the held height little by little (0.35 s): the empty space above the footer closes smoothly and nothing
+// is left below the footer. With enough content below the screen the footer just rises; near the end of the page
+// the view moves down only as much as needed (never to another part of the page).
+let _skgifReleasing = false, _skgifReleaseId = 0;
+function _skgifReleaseHeight() {
+  const body = document.body;
+  if (_skgifReleasing || !body.style.minHeight) return;
+  const footer = document.querySelector('body > footer');
+  const above = footer?.previousElementSibling;
+  if (!footer || !above) { body.style.minHeight = ''; return; }
+  const free = footer.getBoundingClientRect().top - above.getBoundingClientRect().bottom
+    - parseFloat(getComputedStyle(above).marginBottom || 0); // empty space above the footer
+  if (free < 1) { body.style.minHeight = ''; return; }
+  _skgifReleasing = true;
+  const id = ++_skgifReleaseId, from = parseFloat(body.style.minHeight), to = from - free, start = performance.now();
+  const step = now => {
+    if (id !== _skgifReleaseId) return;
+    const t = Math.min(1, (now - start) / 350);
+    body.style.minHeight = `${Math.round(from - (from - to) * (1 - (1 - t) ** 3))}px`; // ease-out
+    if (t < 1) requestAnimationFrame(step);
+    else done();
+  };
+  const done = () => {
+    if (id !== _skgifReleaseId || !_skgifReleasing) return;
+    _skgifReleasing = false;
+    body.style.minHeight = '';
+  };
+  requestAnimationFrame(step);
+  setTimeout(done, 450); // no animation frames (e.g. hidden tab): final state at once
+}
+
+// Scrolling up releases the held height: it never exceeds what is needed to stay at the current position.
+window.addEventListener('scroll', () => {
+  const held = parseFloat(document.body.style.minHeight);
+  if (!held || _skgifReleasing) return;
+  const needed = window.scrollY + window.innerHeight;
+  if (needed < held) document.body.style.minHeight = `${Math.ceil(needed)}px`;
+}, { passive: true });
 
 // Card shown instead of a result the API did not return.
 function _skgifMissingCard(noun) {
@@ -422,8 +489,6 @@ Options of skgifPaginatedSearch():
   containerId    - (optional) where to put the cards
   totalCountId   - (optional) where to write the total
   dedupeKey      - (optional) key used to remove duplicates
-  missingNoun    - (optional) if set, pages that do not arrive are requested
-                   again in smaller pieces (citation/reference lists)
 */
 function skgifPaginatedSearch(config) {
   const containerId = config.containerId || 'search-results-container';
@@ -433,7 +498,6 @@ function skgifPaginatedSearch(config) {
   const sources = config.sources || [];
   let sourceTotals = null; // total of each source
   let listedTotal = 0; // sum of the totals of the sources
-  let firstItems = []; // first page of each source
 
   const pageUrl = (src, apiPage) => `${src}&page=${apiPage}&page_size=${pageSize}`; // URL of a page
 
@@ -452,14 +516,6 @@ function skgifPaginatedSearch(config) {
   // Reads the total of each source from its first page.
   function loadTotals() {
     if (sourceTotals) return Promise.resolve();
-    if (config.missingNoun) {
-      return Promise.all(sources.map(src => skgifFirstPage(src, pageSize))).then(firsts => {
-        if (firsts.some(f => !f)) throw new Error('The API did not answer.');
-        firstItems = firsts.map(f => f.items);
-        sourceTotals = firsts.map(f => f.total);
-        listedTotal = sourceTotals.reduce((a, b) => a + b, 0);
-      });
-    }
     return fetchAll(sources.map(src => pageUrl(src, 1))).then(responses => {
       sourceTotals = responses.map(skgifTotal);
       listedTotal = sourceTotals.reduce((a, b) => a + b, 0);
@@ -482,12 +538,7 @@ function skgifPaginatedSearch(config) {
       const lastApiPage = Math.floor((to - 1) / pageSize) + 1;
       const urls = [];
       for (let p = firstApiPage; p <= lastApiPage; p++) urls.push(pageUrl(src, p));
-      const pages = config.missingNoun
-        ? Promise.all(urls.map((url, k) => {
-            const p = firstApiPage + k;
-            return p === 1 ? firstItems[i] : skgifFetchRange(src, (p - 1) * pageSize, Math.min(pageSize, total - (p - 1) * pageSize), pageSize);
-          })).then(lists => lists.flat())
-        : fetchAll(urls).then(responses => responses.flatMap(r => _skgifArray(r["@graph"])));
+      const pages = fetchAll(urls).then(responses => responses.flatMap(r => _skgifArray(r["@graph"])));
       parts.push(pages.then(items => {
         const skip = from - (firstApiPage - 1) * pageSize;
         return items.slice(skip, skip + (to - from)); 
@@ -508,7 +559,6 @@ function skgifPaginatedSearch(config) {
       .then(pageItems => {
         const seen = new Set();
         const items = pageItems.filter(item => {
-          if (item._skgifMissing) return true; // missing result: not a duplicate
           const key = dedupeKey(item); // removes the duplicates of the page
           if (seen.has(key)) return false;
           seen.add(key);
@@ -528,7 +578,7 @@ function skgifPaginatedSearch(config) {
       .catch(error => {
         console.error("SKG-IF search failed:", error);
         if (container) container.style.minHeight = '';
-        if (container) container.innerHTML = _skgifUnavailableHtml(!config.missingNoun); // searches: hint about long queries
+        if (container) container.innerHTML = _skgifUnavailableHtml(true); // searches: hint about long queries
         skgifReleasePage(); // the search failed
       });
   }
@@ -542,7 +592,7 @@ function skgifPaginatedSearch(config) {
     }
 
     // The container is already a .row: the cards go directly inside.
-    let html = items.map(item => item._skgifMissing ? _skgifMissingCard(config.missingNoun) : config.renderItem(item)).join('');
+    let html = items.map(config.renderItem).join('');
 
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
     html += _skgifPaginationBar(containerId, page, totalPages);
@@ -566,16 +616,30 @@ function skgifPaginatedSearch(config) {
   // "Show [N] entries": new page size, page 1, without scrolling the page.
   const refresh = () => {
     pageSize = _skgifPageSizes[containerId] || SKGIF_DEFAULT_PAGE_SIZE;
-    if (config.missingNoun) sourceTotals = null; // the first page of each source must be requested again with the new size
     _skgifKeepScroll();
     fetchPage(1);
   };
   _skgifPaginators[containerId] = { goToPage, refresh };
-  // The search keeps the "Loading" banner until the total and the first results arrive.
   return {
+    // The search keeps the "Loading" banner until the total and the first results arrive.
     search: () => {
       skgifHoldPage();
       fetchPage(1);
+    },
+    // First page already built by Lucinda (`items` = its results): keeps the banner until the first
+    // citation counts arrive (as fetchPage does), then adds the pagination bar and "Show [N] entries".
+    firstPageShown: items => {
+      skgifHoldPage();
+      _skgifWithFirstCounts({ items })
+        .then(loadTotals)
+        .then(() => {
+          const container = document.getElementById(containerId);
+          if (container) container.insertAdjacentHTML('beforeend', _skgifPaginationBar(containerId, 1, Math.max(1, Math.ceil(listedTotal / pageSize))));
+          _skgifInitPerPage('search', { failed: false, total: listedTotal }, containerId, SKGIF_SEARCH_PER_PAGE);
+          if (pageSize < listedTotal) itemsForPage(2).catch(() => {}); // preloads the next page, so Next is faster
+        })
+        .catch(error => console.error("SKG-IF search failed:", error))
+        .finally(skgifReleasePage);
     }
   };
 }
@@ -589,7 +653,7 @@ function _skgifPaginationBar(containerId, page, totalPages) {
   const dots = `<button type="button" class="btn skgif-page-dots" title="Go to page (1-${_skgifNum(totalPages)})" aria-label="Go to page">…</button>`
     + `<input type="number" class="form-control skgif-page-input" min="1" max="${totalPages}" placeholder="#" aria-label="Go to page (1-${totalPages})" data-skgif-container="${containerId}" hidden>`;
   const numbers = shown.map((n, i) => (i && n - shown[i - 1] > 1 ? dots : '')
-    + btn(n, _skgifNum(n), `skgif-page-num${n === page ? ' current' : ''}${String(n).length > 4 ? ' skgif-page-long' : ''}`)).join('');
+    + btn(n, _skgifNum(n), `skgif-page-num${n === page ? ' current' : ''}${String(n).length > 3 ? ' skgif-page-long' : ''}`)).join('');
   return `
     <div class="col-12">
       <nav class="skgif-pagination" aria-label="Search results pages">
@@ -638,7 +702,7 @@ document.addEventListener('keydown', function (e) {
   paginator.goToPage(Math.min(Math.max(page, 1), max));
 });
 
-// Removes works with a repeated OMID.
+// Removes publications with a repeated OMID.
 function _skgifDedupe(products) {
   const seen = new Set();
   return products.filter(p => {
@@ -671,7 +735,7 @@ function _skgifSortAsDropdown(group) {
     value => buttons.find(b => b.dataset.order === value)?.click());
   const sync = () => {
     const on = buttons.some(b => !b.disabled);
-    // only enabled entries in the menu (e.g. "Most cited" in the author profile arrives later)
+    // only enabled entries in the menu (e.g. "Most cited" in the person record arrives later)
     if (on) dd.set(options.filter(o => !buttons.find(b => b.dataset.order === o.value).disabled), dd.value());
     dd.enable(on);
     const active = buttons.find(b => b.classList.contains('active'));
@@ -683,35 +747,36 @@ function _skgifSortAsDropdown(group) {
   sync();
 }
 
-// --- Work lists: order and title search (author profile, document and organisation pages) ---
+// --- Publication lists: order and title search (person record, research product and organisation records) ---
 
 // HTML of the list in the chosen order (by date with one heading per year).
-function _skgifRenderWorks(works, order, renderCard = _skgifWorkCard) {
-  const sorted = _skgifSortWorks(works, order);
-  if (order !== 'newest' && order !== 'oldest') return sorted.map(work => renderCard(work)).join('');
+function _skgifRenderProducts(products, order, renderCard = _skgifProductCard) {
+  const sorted = _skgifSortProducts(products, order);
+  if (order !== 'newest' && order !== 'oldest') return sorted.map(product => renderCard(product)).join('');
   let lastYear = null;
-  return sorted.map(work => {
-    const year = String(_skgifProductRawDate(work) || '').slice(0, 4) || 'Date not available';
+  return sorted.map(product => {
+    const year = String(_skgifProductRawDate(product) || '').slice(0, 4) || 'Date not available';
     const heading = year !== lastYear ? `<div class="col-12"><h6 class="ra-year-heading">${_skgifEscape(year)}</h6></div>` : '';
     lastYear = year;
-    return heading + renderCard(work);
+    return heading + renderCard(product);
   }).join('');
 }
 
-// The works in the chosen order: API, date (works without a date last), title or citations.
-function _skgifSortWorks(works, order) {
+// The publications in the chosen order: API, date (publications without a date last), title or citations.
+function _skgifSortProducts(products, order) {
   const date = p => _skgifProductRawDate(p) || '';
   const title = p => _skgifProductTitle(p);
-  const cites = p => _skgifCitedBy[_skgifOmid(p.local_identifier)] ?? -1; // works not counted go last
+  const cites = p => _skgifCitedBy[_skgifOmid(p.local_identifier)] ?? -1; // publications not counted go last
   const byDate = dir => (a, b) => (!date(a) - !date(b)) || dir * date(a).localeCompare(date(b));
-  const byTitle = dir => (a, b) => dir * title(a).localeCompare(title(b), undefined, { sensitivity: 'base' });
+  const byTitle = dir => (a, b) => dir * _skgifCompareText(title(a), title(b));
   const compare = { newest: byDate(-1), oldest: byDate(1), 'title-asc': byTitle(1), 'title-desc': byTitle(-1),
     cited: (a, b) => cites(b) - cites(a) }[order];
-  return compare ? [...works].sort(compare) : works;
+  return compare ? [...products].sort(compare) : products;
 }
 
 // True if every searched word is the start of a word of the title (like the API's cf.search.title).
 function _skgifTitleHas(product, term) {
-  const words = _skgifProductRawTitle(product).toLowerCase().split(/[^\p{L}\p{N}]+/u);
-  return term.toLowerCase().split(' ').filter(Boolean).every(part => words.some(word => word.startsWith(part)));
+  const split = text => String(text || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean); // "RADARSAT-1" = "radarsat", "1"
+  const words = split(_skgifProductRawTitle(product));
+  return split(term).every(part => words.some(word => word.startsWith(part)));
 }

@@ -10,6 +10,7 @@
     <link href="../static/css/lucinda.css" rel="stylesheet">
 
     
+    <link href="../static/css/theme.css" rel="stylesheet">
     <link href="../static/css/browser.css" rel="stylesheet">
 
   </head>
@@ -21,7 +22,7 @@
     <header>
       <div class="logo">
         <!-- The logo links to the home page -->
-        <a href="home2.html"><img src="../static/img/oc-medium.png" alt="OC Logo" style="padding: 10%;"></a>
+        <a href="home.html"><img src="../static/img/oc-medium.png" alt="OC Logo" style="padding: 10%;"></a>
       </div>
     </header>
 
@@ -45,9 +46,8 @@
     <script type="text/javascript" src="../static/browser/skgif/cards.js"></script>
     <script type="text/javascript" src="../static/browser/skgif/views.js"></script>
     <script type="text/javascript" src="../static/browser/skgif/pages/search.js"></script>
-    <script type="text/javascript" src="../static/browser/skgif/pages/doc-lists.js"></script>
-    <script type="text/javascript" src="../static/browser/skgif/pages/document.js"></script>
-    <script type="text/javascript" src="../static/browser/skgif/pages/author.js"></script>
+    <script type="text/javascript" src="../static/browser/skgif/pages/product.js"></script>
+    <script type="text/javascript" src="../static/browser/skgif/pages/person.js"></script>
     <script type="text/javascript" src="../static/browser/skgif/pages/org.js"></script>
     <script type="text/javascript" src="../static/browser/skgif/pages/venue.js"></script>
     <script type="text/javascript" src="../static/browser/skgif/pages/citation.js"></script>
@@ -57,17 +57,15 @@
       Lucinda.init({
           templates_url: "../static/browser/templates/",
           templates: [
-            "new_venue_browser",
-            "new_ci_browser",
-            "new_ra_browser",
-            "new_org_browser", // ra/ that is not a person (new_ra_browser checks /persons)
-            "new_br_any_browser",
-            "doc_citations",
-            "doc_references",
-            "doc_free_text",
-            "aut_free_text",
-            "venue_free_text",
-            "org_free_text" // Organisation search
+            "venue_record",
+            "citation_record",
+            "person_record",
+            "organisation_record", // ra/ that is not a person (person_record checks /persons)
+            "product_record",
+            "product_search",
+            "person_search",
+            "venue_search",
+            "organisation_search" // Organisation search
           ],
           verbose: true
       });

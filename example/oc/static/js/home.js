@@ -44,7 +44,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const category = categorySelect.value;
 
-    // Documents, authors, venues and organisations are searched with skgifSearch();
+    // Research products, persons, venues and organisations are searched with skgifSearch();
     // the Citation Record (OCI) is handled below
     if (category !== "citation") return skgifSearch(category, searchInput);
 
@@ -116,7 +116,7 @@ async function openLucinda(identifier, category) {
 # SKG-IF search panel
 ################################################################################
 */
-// Finds the OMID of a document ID through SKG-IF (/products).
+// Finds the OMID of a research product ID through SKG-IF (/products).
 // Used only by the Citation Record.
 const SKGIF_ID_LOOKUP = [
   { test: /^doi:|^10\.\d{4,9}\//i, scheme: "doi", entity: "products", field: "identifiers.id" },
@@ -143,9 +143,9 @@ async function skgifIdToOmid(identifier) {
 
 // Resources of the search panel: icon, name, label and placeholder.
 const SKGIF_CATEGORIES = {
-  document: { tab: "Document", icon: "fa-regular fa-file-lines", label: "Title", placeholder: "Enter a title" },
-  author: { tab: "Author", icon: "fa-solid fa-user-pen", label: "Name" },
-  venue: { tab: "Venue", icon: "fa-solid fa-building-columns", label: "Name", placeholder: "Enter a venue name" },
+  product: { tab: "Research product", icon: "fa-regular fa-file-lines", label: "Title", placeholder: "Enter a title" },
+  person: { tab: "Person", icon: "fa-solid fa-user-pen", label: "Name" },
+  venue: { tab: "Venue", icon: "fa-solid fa-building-columns", label: "Name", placeholder: "Enter a journal, book or conference name" },
   organisation: { tab: "Organisation", icon: "fa-solid fa-building", label: "Name", placeholder: "Enter an organisation name" },
   citation: { tab: "Citation", icon: "fa-solid fa-share-nodes", label: "OCI", placeholder: "Enter an OCI (ci/...)" }
 };
@@ -153,8 +153,8 @@ const SKGIF_CATEGORIES = {
 // ID schemes of the panel for each resource (SKG-IF list), with an example as placeholder.
 // The first one is the default.
 const SKGIF_ID_SCHEMES = {
-  document: { doi: "10.1007/s11192-019-03217-6", arxiv: "1909.01284", bibcode: "2019ApJ...882L..12A", handle: "11585/123456", isbn: "9780203417447", ivoid: "ivo://authority/resource", omid: "br/06010123732", openalex: "W4409315295", pmcid: "PMC7500415", pmid: "24936838", spase: "spase://NASA/...", url: "https://...", urn: "urn:nbn:...", w3id: "https://w3id.org/..." },
-  author: { orcid: "0000-0003-0530-4305", omid: "ra/0614010840729", openalex: "A5023888391", url: "https://...", viaf: "102333412", w3id: "https://w3id.org/..." },
+  product: { doi: "10.1007/s11192-019-03217-6", arxiv: "1909.01284", bibcode: "2019ApJ...882L..12A", handle: "11585/123456", isbn: "9780203417447", ivoid: "ivo://authority/resource", omid: "br/06010123732", openalex: "W4409315295", pmcid: "PMC7500415", pmid: "24936838", spase: "spase://NASA/...", url: "https://...", urn: "urn:nbn:...", w3id: "https://w3id.org/..." },
+  person: { orcid: "0000-0003-0530-4305", omid: "ra/0614010840729", openalex: "A5023888391", url: "https://...", viaf: "102333412", w3id: "https://w3id.org/..." },
   venue: { issn: "0138-9130", doi: "10.1007/...", eissn: "1588-2861", isbn: "9783662685099", lissn: "0138-9130", omid: "br/06010060186", openalex: "S148561398", url: "https://...", w3id: "https://w3id.org/..." },
   organisation: { crossref: "78", omid: "ra/0610116009", openalex: "I12345678", ror: "02mhbdp94", url: "https://...", viaf: "123456789", w3id: "https://w3id.org/..." }
 };
@@ -166,7 +166,7 @@ const SKGIF_ID_NAMES = {
   orcid: "ORCID", viaf: "VIAF", issn: "ISSN", eissn: "eISSN", lissn: "ISSN-L", crossref: "Crossref ID", ror: "ROR"
 };
 
-// Search panel. The tabs choose the resource; "Author" shows given and family name;
+// Search panel. The tabs choose the resource; "Person" shows given and family name;
 // all except "Citation" show the ID panel. Text and ID are alternatives: the side used
 // last is searched, the other one is faded.
 function skgifInitSearchFields(searchForm, searchInput, categorySelect) {
@@ -179,26 +179,66 @@ function skgifInitSearchFields(searchForm, searchInput, categorySelect) {
   const idSide = document.getElementById("idSide");
   const tabs = searchForm.querySelector(".oc-tabs");
   const textFields = searchForm.querySelectorAll(".text-field");
-  const authorFields = searchForm.querySelectorAll(".author-field");
+  const personFields = searchForm.querySelectorAll(".person-field");
   const idFields = searchForm.querySelectorAll(".id-field");
   const textInputs = [searchInput, givenInput, familyInput];
   const schemeDropdown = skgifDropdown(schemeSelect);
   const refines = searchForm.querySelectorAll(".oc-refine"); // optional filter of the search by name (Type of the venues)
   skgifDropdown(document.getElementById("venueType"));
 
-  // one tab for each option of the select
+  // one tab for each option of the select; "?" next to it when the page explains that resource in a card (#help-<category>)
   tabs.innerHTML = [...categorySelect.options].map(o => {
     const c = SKGIF_CATEGORIES[o.value] || { tab: o.text, icon: "fa-solid fa-magnifying-glass" };
-    return `<button type="button" class="oc-tab" role="tab" data-category="${o.value}"><i class="${c.icon}"></i>${c.tab}</button>`;
+    const help = document.getElementById(`help-${o.value}`)
+      ? `<button type="button" class="oc-tab-help" data-help="${o.value}" aria-label="What does “${c.tab}” mean?"><span aria-hidden="true">?</span></button>`
+      : "";
+    return `<div class="oc-tab-wrap"><button type="button" class="oc-tab" role="tab" data-category="${o.value}"><i class="${c.icon}"></i>${c.tab}</button>${help}</div>`;
   }).join("");
   tabs.addEventListener("click", e => {
-    const tab = e.target.closest(".oc-tab");
+    const help = e.target.closest(".oc-tab-help");
+    if (help) { // shows the card that explains the resource, highlighted for a moment
+      const card = document.getElementById(`help-${help.dataset.help}`);
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      card.classList.remove("oc-help-flash");
+      void card.offsetWidth; // restarts the highlight if clicked again
+      card.classList.add("oc-help-flash");
+      return;
+    }
+    const tab = e.target.closest(".oc-tab-wrap")?.querySelector(".oc-tab"); // the whole tab area selects it
     if (!tab || tab.dataset.category === categorySelect.value) return;
-    categorySelect.value = tab.dataset.category;
+    selectCategory(tab.dataset.category);
+    (categorySelect.value === "person" ? givenInput : searchInput).focus();
+  });
+
+  // Selects a resource in the search panel (tabs and resource cards).
+  function selectCategory(category) {
+    if (category === categorySelect.value) return;
+    categorySelect.value = category;
     idInput.value = ""; // the schemes change with the resource
     searchForm.dataset.side = "text";
     categorySelect.dispatchEvent(new Event("change"));
-    (categorySelect.value === "author" ? givenInput : searchInput).focus();
+  }
+
+  // Resource cards (home.html): a click selects that resource in the search panel and brings the panel on screen.
+  // The field gets the focus only with a mouse: on touch screens it would open the keyboard.
+  document.querySelectorAll('.resource-card[id^="help-"]').forEach(card => {
+    const category = card.id.slice("help-".length);
+    if (![...categorySelect.options].some(o => o.value === category)) return;
+    card.setAttribute("role", "button");
+    card.tabIndex = 0;
+    card.setAttribute("aria-label", `Search ${(SKGIF_CATEGORIES[category] || {}).tab || category}`);
+    const pick = () => {
+      selectCategory(category);
+      const panel = searchForm.closest(".oc-search") || searchForm;
+      if (panel.getBoundingClientRect().top < 0) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (window.matchMedia("(hover: hover)").matches) {
+        (category === "person" ? givenInput : searchInput).focus({ preventScroll: true });
+      }
+    };
+    card.addEventListener("click", pick);
+    card.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); }
+    });
   });
 
   function toggleFields() {
@@ -209,12 +249,12 @@ function skgifInitSearchFields(searchForm, searchInput, categorySelect) {
       t.classList.toggle("active", active);
       t.setAttribute("aria-selected", active);
     });
-    const isAuthor = category === "author";
-    textFields.forEach(el => el.classList.toggle("d-none", isAuthor));
-    authorFields.forEach(el => el.classList.toggle("d-none", !isAuthor));
+    const isPerson = category === "person";
+    textFields.forEach(el => el.classList.toggle("d-none", isPerson));
+    personFields.forEach(el => el.classList.toggle("d-none", !isPerson));
     searchForm.querySelector(".venue-filter").classList.toggle("d-none", category !== "venue");
     textLabel.textContent = c.label || "Search";
-    textLabel.htmlFor = isAuthor ? "givenName" : "searchQuery";
+    textLabel.htmlFor = isPerson ? "givenName" : "searchQuery";
     searchInput.placeholder = c.placeholder || "";
 
     const schemes = SKGIF_ID_SCHEMES[category];
@@ -348,9 +388,9 @@ function skgifDropdown(select) {
   return { render };
 }
 
-// Search of documents, authors, venues and organisations -> <category>/ + one of:
+// Search of research products, persons, venues and organisations -> <category>/ + one of:
 //   scheme=doi&id=10.1/...   ID panel
-//   given=...&family=...     given and family name of the author
+//   given=...&family=...     given and family name of the person
 //   <text>                   free text of the other categories
 //   text=...&type=...        venues with the Type filter
 function skgifSearch(category, searchInput) {
@@ -359,7 +399,7 @@ function skgifSearch(category, searchInput) {
   const id = document.getElementById("idQuery").value.trim();
   const given = document.getElementById("givenName").value.trim();
   const family = document.getElementById("familyName").value.trim();
-  const text = category === "author" ? given || family : searchInput.value.trim();
+  const text = category === "person" ? given || family : searchInput.value.trim();
   const useId = id && (form.dataset.side === "id" || !text);
 
   let query;
@@ -369,11 +409,11 @@ function skgifSearch(category, searchInput) {
     if (["orcid", "issn", "eissn", "lissn"].includes(scheme)) value = value.toUpperCase();
     query = new URLSearchParams({ scheme, id: value }).toString();
   } else if (!text) {
-    skgifShowHint(category === "author"
+    skgifShowHint(category === "person"
       ? "Please enter a given name, a family name or an identifier."
       : "Please enter a search text or an identifier.");
     return;
-  } else if (category === "author") {
+  } else if (category === "person") {
     const params = new URLSearchParams();
     if (given) params.set("given", given);
     if (family) params.set("family", family);

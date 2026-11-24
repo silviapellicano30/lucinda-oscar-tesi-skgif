@@ -2,22 +2,24 @@
 <div class="skgif-id-loading">Loading the resource<br><span class="loading-dots"><span>.</span><span>.</span><span>.</span> </span></div>
 <br>
 <div class="mb-3">
-  <a href="home2.html" class="btn  btn-sm">
+  <a href="home.html" class="btn  btn-sm">
     <i class="fas fa-arrow-left"></i> Home
   </a>
 </div>
 <div class="row">
 
+  <!-- TITLE CARD -->
   <div class="col-12 mb-4">
     <div class="card shadow-sm p-3 h-100">
+      <!-- Editable search bar, filled with the current search (_skgifSearchBar) -->
+      <form id="search-bar" class="skgif-search-bar" role="search"></form>
       <div class="card-header text-center">
         <!-- Count and query on one line; resource type in the controls row -->
         <h3><span id="search-total-count">[[Lucinda:skgif_num(search_count.total)]]</span> Results <span class="fw-normal">for:</span> <span id="search-query-label">[[Lucinda:skgif_text(search_count.label)]]</span></h3>
       </div>
-      <!-- Resource type, search filters (_skgifSearchRefine) and "Show [N] entries" -->
+      <!-- Resource type and "Show [N] entries" -->
       <div class="d-flex flex-wrap align-items-center gap-3 skgif-search-tools">
-        <div class="skgif-head-meta me-auto">Responsible Agent Records</div>
-        <div class="d-flex flex-wrap align-items-center gap-2" id="search-refine"></div>
+        <div class="skgif-head-meta me-auto">Research Product Records</div>
         <div class="d-flex align-items-center gap-2 d-none" id="search-perpage"><span class="small fw-bold">Show</span></div>
       </div>
     </div>
@@ -25,4 +27,4 @@
 
 </div>
 
-<div class="row" id="search-results-container"></div>
+<div class="row" id="search-results-container">[[Lucinda:skgif_search_cards(search_count.entity, search_count.total, search_count.items, search_count.label)]]</div>

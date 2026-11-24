@@ -1,23 +1,23 @@
 #id main
 #url value=br/{omid_digit}
 
-#id doc_meta
+#id product_meta
 #api [[skgif_api]]/products/[[id_base]]br/[[omid_digit]]
-#postprocess post_skgif_document(omid_digit)
+#postprocess post_skgif_product(omid_digit)
 
-#id doc_refs
+#id product_refs
 #api [[skgif_api]]/products?filter=cf.cited_by:[[id_base_enc]]br%2F[[omid_digit]]&page=1&page_size=1
 #postprocess post_skgif_total()
 
-#id doc_refs_page
+#id product_refs_page
 #api [[skgif_api]]/products?filter=cf.cited_by:[[id_base_enc]]br%2F[[omid_digit]]&page=1&page_size=10
 
-#id doc_cits
+#id product_cits
 #api [[skgif_api]]/products?filter=cf.cites:[[id_base_enc]]br%2F[[omid_digit]]&page=1&page_size=1
 #postprocess post_skgif_total()
 
-#id doc_cits_page
+#id product_cits_page
 #api [[skgif_api]]/products?filter=cf.cites:[[id_base_enc]]br%2F[[omid_digit]]&page=1&page_size=10
 
-#id document_record
-#callfun api_document_record_skgif()
+#id product_record
+#callfun api_product_record_skgif()

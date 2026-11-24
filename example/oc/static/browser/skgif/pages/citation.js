@@ -1,4 +1,4 @@
-// Citation record (new_ci_browser, OCI = <citing>-<cited>): the two works, their counts and charts, Citation overlap.
+// Citation record (citation_record, OCI = <citing>-<cited>): the two works, their counts and charts, Citation overlap.
 // Parallel #api blocks: the two /products, References/Citations of each, shared references
 // (cf.cited_by:a,cf.cited_by:b), co-citations (cf.cites:a,cf.cites:b).
 // "Citations per year" charts from the OpenCitations Index API.
@@ -11,30 +11,24 @@ function pre_skgif_oci(oci) {
   return parts ? { citing: parts[1], cited: parts[2] } : {};
 }
 
-// Lucinda #postprocess for the two documents: status (found/missing/failed), data and cited OMIDs.
-function post_skgif_ci_doc(res, id) {
-  const header = ['status', 'omid', 'title', 'agents_label', 'agents', 'date', 'ids', 'cites', 'source', 'type'];
+// Lucinda #postprocess for the two works: status (found/missing/failed), data and cited OMIDs.
+function post_skgif_ci_product(res, id) {
+  const header = ['status', 'omid', 'title', 'agents_label', 'agents', 'date', 'ids', 'cites', 'venue', 'type'];
   const omid = `br/${id}`;
-  const doc = res.ok ? ((res.json?.['@graph'] || [])[0] || {}) : res.status === 404 ? {} : null;
-  if (!doc?.local_identifier) return [header, [doc ? 'missing' : 'failed', omid, '', 'Authors', [], '', [], [], '', '']];
-  const venue = _skgifProductVenue(doc); // source with its IDs (as in the document page)
-  const agents = role => _skgifContributors(doc.contributions, role).map(by => ({
-    name: _skgifAgentPlainName(by),
-    omid: _skgifOmid(by.local_identifier),
-    orcid: _skgifArray(by.identifiers).find(i => i.scheme === 'orcid')?.value || ''
-  }));
-  const authors = agents('author');
-  const editors = authors.length ? [] : agents('editor'); // editors instead of authors when there are no authors
-  return [header, ['found', omid, _skgifProductTitle(doc), editors.length ? 'Editors' : 'Authors',
+  const product = res.ok ? ((res.json?.['@graph'] || [])[0] || {}) : res.status === 404 ? {} : null;
+  if (!product?.local_identifier) return [header, [product ? 'missing' : 'failed', omid, '', 'Authors', [], '', [], [], '', '']];
+  const authors = _skgifRecordAgents(product, 'author');
+  const editors = authors.length ? [] : _skgifRecordAgents(product, 'editor'); // editors instead of authors when there are no authors
+  return [header, ['found', omid, _skgifProductTitle(product), editors.length ? 'Editors' : 'Authors',
     authors.length ? authors : editors,
-    String(_skgifProductRawDate(doc) || '').slice(0, 10),
-    _skgifArray(doc.identifiers).map(i => ({ scheme: i.scheme, value: i.value })),
-    _skgifArray(doc.related_products?.cites),
-    venue ? { name: venue.name, omid: _skgifOmid(venue.local_identifier), identifiers: _skgifArray(venue.identifiers) } : '',
-    _skgifArray(doc.manifestations).map(m => m?.type?.labels?.en).find(Boolean) || '']];
+    String(_skgifProductRawDate(product) || '').slice(0, 10),
+    _skgifRecordIds(product),
+    _skgifArray(product.related_products?.cites),
+    _skgifRecordVenue(product),
+    _skgifArray(product.manifestations).map(m => m?.type?.labels?.en).find(Boolean) || '']];
 }
 
-// Record error (invalid OCI, missing document, non-existent citation): { text, type } or null.
+// Record error (invalid OCI, missing work, non-existent citation): { text, type } or null.
 function _skgifCiProblem(oci, citingStatus, citedStatus, cites) {
   const ids = pre_skgif_oci(oci);
   if (!ids.citing) return { text: 'This is not a valid OCI.', type: 'danger' };
@@ -61,9 +55,16 @@ const CI_OVERLAP = {
 };
 // Click/Enter on a "Citation overlap" box: opens or closes its list.
 function _ciOverlapToggle(e) {
-  if (e.type === 'click' && e.target.closest('.ci-overlap-hide')) { // "Hide": closes the list and goes back to the boxes
+  const hide = e.type === 'click' && e.target.closest('.ci-overlap-hide');
+  if (hide) { // "Hide": the list closes where it is, the page does not scroll and the footer rises
+    const box = document.querySelector('[data-ci-overlap].active');
+    const hideTop = hide.getBoundingClientRect().top;
+    const listTop = hide.closest('[id$="-pane"]').getBoundingClientRect().top;
+    _skgifKeepScroll();
     _ciOverlapShow(null);
-    document.getElementById('ci-overlap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Hide stuck at the top of the screen while the list was scrolled (sticky bar): the boxes end where Hide was
+    if (listTop < 0 && box) window.scrollTo({ top: Math.max(0, window.scrollY + box.getBoundingClientRect().bottom - hideTop), behavior: 'instant' });
+    _skgifReleaseHeight();
     return;
   }
   const box = e.target.closest('[data-ci-overlap]');
@@ -84,7 +85,7 @@ function _ciOverlapToggle(e) {
       emptyMessage: `No ${noun}s found.`,
       statusText: n => _skgifPlural(n, noun),
       scrollId: 'ci-overlap',
-      renderCard: _skgifWorkCard
+      renderCard: _skgifProductCard
     });
     _skgifInitPerPage(prefix, list);
     return list;
@@ -98,9 +99,23 @@ function _ciOverlapShow(box) {
     b.setAttribute('aria-expanded', String(on));
     const chevron = b.querySelector('.ci-overlap-chevron');
     if (chevron) chevron.innerHTML = on ? '&#9652;' : '&#9662;';
-    document.getElementById(`ci-${b.dataset.ciOverlap}-pane`)?.classList.toggle('d-none', !on);
+    const pane = document.getElementById(`ci-${b.dataset.ciOverlap}-pane`);
+    if (on && pane) _ciPlacePane(pane, b);
+    pane?.classList.toggle('d-none', !on);
   });
 }
+// Where the list opens: on phones (boxes one under the other) right under its box, on wider screens
+// (boxes side by side) under the whole strip.
+const CI_STACKED = window.matchMedia('(max-width: 575.98px)');
+function _ciPlacePane(pane, box) {
+  const anchor = CI_STACKED.matches ? box.closest('.row > *') : box.closest('.ci-overlap-strip');
+  if (anchor && anchor.nextElementSibling !== pane) anchor.after(pane);
+}
+CI_STACKED.addEventListener('change', () => {
+  const box = document.querySelector('[data-ci-overlap].active');
+  const pane = box && document.getElementById(`ci-${box.dataset.ciOverlap}-pane`);
+  if (pane) _ciPlacePane(pane, box);
+});
 document.addEventListener('click', _ciOverlapToggle);
 document.addEventListener('keydown', _ciOverlapToggle);
 
@@ -125,9 +140,9 @@ function api_citation_record_skgif(...args) {
   if (_skgifCiProblem(oci, _lucindaValue('citing_meta', 'status'), _lucindaValue('cited_meta', 'status'), _lucindaValue('citing_meta', 'cites'))) return;
   const { citing, cited } = pre_skgif_oci(oci);
   document.getElementById('ci-record')?.classList.remove('d-none');
-  // References/Citations -> Go to pages; Shared references/Co-citations -> list below.
-  [['citing', citing], ['cited', cited]].forEach(([who, id]) => [['refs', 'doc_ref'], ['cits', 'doc_cit']].forEach(([kind, page]) =>
-    _ciClickableCount(`${who}-${kind}`, box => { box.setAttribute('role', 'link'); box.dataset.skgifHref = `browser.html?value=${page}/br/${id}`; })));
+  // References/Citations -> matching tab of the research product record; Shared references/Co-citations -> list below.
+  [['citing', citing], ['cited', cited]].forEach(([who, id]) => [['refs', 'references'], ['cits', 'citations']].forEach(([kind, tab]) =>
+    _ciClickableCount(`${who}-${kind}`, box => { box.setAttribute('role', 'link'); box.dataset.skgifHref = `browser.html?value=br/${id}#${tab}`; })));
   [['ci-cited-by-both', 'shared'], ['ci-citing-both', 'cocit']].forEach(([numberId, kind]) =>
     _ciClickableCount(numberId, box => {
       box.setAttribute('role', 'button');

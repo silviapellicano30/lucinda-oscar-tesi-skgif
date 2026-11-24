@@ -1,4 +1,4 @@
-// Venue page (new_venue_browser): a br/ found in /venues. Name, type and IDs from /venues,
+// Venue page (venue_record): a br/ found in /venues. Name, type and IDs from /venues,
 // publishers/editors from /products; publications not available (SKG-IF has no venue filter).
 
 // Lucinda #postprocess for venue_meta: venue data (the HTML is built by the view functions).
