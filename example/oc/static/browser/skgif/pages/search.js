@@ -338,7 +338,7 @@ function _renderPersonCard(person) {
     || "Name not available";
 
   const orcidHtml = orcid
-    ? `<a href="https://orcid.org/${orcid}" target="_blank" class="text-dark text-decoration-none">${orcid}</a>`
+    ? `<a href="https://orcid.org/${orcid}" target="_blank" class="text-dark text-decoration-none"><span class="skgif-phone-only">orcid:</span>${orcid}</a>`
     : '<span class="skgif-none">Not available</span>';
 
   return `
@@ -354,7 +354,7 @@ function _renderPersonCard(person) {
           <div class="skgif-person-ids">
           <div class="mb-2${orcid ? '' : ' skgif-line-none'}">
             <span class="metadata-label fw-bold">ORCID:</span><br>
-            <span><span class="skgif-phone-only">orcid:</span>${orcidHtml}</span>
+            <span>${orcidHtml}</span>
           </div>
 
           <div class="mb-2">

@@ -1,9 +1,9 @@
 // Load-time measurement (test tool; remove it by deleting its line in browser.html).
-// Off by default: switched on only from tools/misure.html (sessionStorage 'skgifTiming', valid for the browser tab).
+// Off by default: switched on only from tools/measurements.html (sessionStorage 'skgifTiming', valid for the browser tab).
 // When on: every SKG-IF call bypasses the server cache (&preview=true), SKG-IF and Index calls bypass the browser
 // cache (no-store), and the Console shows the times: page/results shown, all citations/references/publications
 // downloaded, person citations and their chart, citation record charts.
-// Inside misure.html (iframe) it presses the "Load all" buttons by itself and sends the times to the measurement page.
+// Inside measurements.html (iframe) it presses the "Load all" buttons by itself and sends the times to the measurement page.
 // It does not touch the other files: it wraps fetch and _skgifPagedList, and detects page changes with a
 // MutationObserver (not throttled by Chrome in hidden tabs, unlike setInterval).
 // Every time carries the problems of its run (server error, items not downloaded, hidden tab, browser offline) and
@@ -17,7 +17,7 @@
   try { conf = JSON.parse(sessionStorage.getItem('skgifTiming') || 'null'); } catch (e) { conf = null; }
   if (!conf) return;
 
-  const embedded = window.parent !== window; // page opened by misure.html
+  const embedded = window.parent !== window; // page opened by measurements.html
   const now = () => performance.now(); // ms since the page was opened
   const sec = ms => Math.round(ms / 100) / 10;
   const apiBase = typeof SKGIF_API === 'string' ? SKGIF_API : 'https://api.opencitations.net/skg-if/';

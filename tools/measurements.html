@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- Load-time measurement (test tool, not part of the site).
      Open it through the local server: python -m http.server 5500 from the repository root, then
-     http://127.0.0.1:5500/tools/misure.html
+     http://127.0.0.1:5500/tools/measurements.html
      Results: tools/analysis.R reads the CSV downloaded from this page. -->
 <html lang="en">
 <head>
@@ -173,7 +173,7 @@ Chrome slows down hidden tabs. Runs made with the tab hidden or while the browse
   <label>Rounds (each case once per round, random order): <input type="number" id="opt-rounds" value="3" min="1" max="10"></label>
   <label>Time limit for each run (minutes): <input type="number" id="opt-timeout" value="15" min="1" max="60"></label>
   <label>Notes on this session (computer, network): <input type="text" id="opt-notes" placeholder="e.g. home laptop, Wi-Fi"></label>
-  <label>Version of the code measured (commit): <input type="text" id="opt-commit" placeholder="e.g. misure-v1 or the commit hash"></label>
+  <label>Version of the code measured (commit): <input type="text" id="opt-commit" placeholder="the commit hash, e.g. 9619e06"></label>
   <label><input type="checkbox" id="opt-pilot"> Pilot session (its runs are excluded from the analysis)</label>
 </fieldset>
 
@@ -214,7 +214,7 @@ const GROUPS = {
   'Research product record': 'Small, medium and large lists of citations and references, below and above the 250 threshold.',
   'Person record': 'Persons with few to many publications: all publications are always downloaded, then the citations received.',
   'Organisation record': 'Publishers with small to very large lists, below and above the 500 threshold.',
-  'Venue record': 'Venue record: metadata only (SKG-IF has no venue -> publications filter).',
+  'Venue record': 'Metadata only (SKG-IF has no venue -> publications filter).',
   'Citation record': 'Eight SKG-IF calls plus two Index charts: a small record and one whose cited work is very cited.',
   'Searches': 'First page of results of the four searches.'
 };

@@ -1,4 +1,4 @@
-# Analysis of the load-time measurements made with tools/misure.html.
+# Analysis of the load-time measurements made with tools/measurements.html.
 # Usage (from the repository root): Rscript tools/analysis.R <folder with the CSV files> [output folder]
 # Output: summary tables (CSV) and charts (PNG). Runs repeated in several CSV files are counted once.
 #
@@ -27,7 +27,7 @@ if (!length(files)) stop("No skgif-timing-runs*.csv file in ", in_dir)
 runs <- files |>
   lapply(read_csv, col_types = cols(.default = col_character()), na = "NA") |>
   bind_rows() |>
-  (\(d) { # columns added in later versions of misure.html: empty (NA) in older CSV files
+  (\(d) { # columns added in later versions of measurements.html: empty (NA) in older CSV files
     for (k in c("truncated_responses", "api_wait_ms", "long_tasks_ms", "longest_task_ms", "heap_peak_mb", "commit")) if (!k %in% names(d)) d[[k]] <- NA_character_
     for (k in c("browser_offline", "pilot")) if (!k %in% names(d)) d[[k]] <- "FALSE"
     d
