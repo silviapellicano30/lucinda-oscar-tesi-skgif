@@ -136,9 +136,10 @@ function _skgifListFilters(box, keys, onChange) {
       ...values[part.key].map(v => ({ value: v, text: `${part.def.text ? part.def.text(v) : v} (${_skgifNum(counts[v] || 0)})` }))]);
   });
   const yearListeners = []; // listeners of the Year range (the chart)
+  let pendingYear = false; // first bar of the chart clicked, waiting for the second one (end of the range)
   const changed = () => {
     recount();
-    yearListeners.forEach(listener => listener(chosen.from || '', chosen.to || ''));
+    yearListeners.forEach(listener => listener(chosen.from || '', chosen.to || '', pendingYear));
     const any = parts.some(isSet);
     clear.classList.toggle('d-none', !any);
     onChange(any ? product => passes(product, null) : null);
@@ -151,6 +152,7 @@ function _skgifListFilters(box, keys, onChange) {
     if (key === 'year') {
       const end = name => _skgifDropdown(`Filter by year: ${name.toLowerCase()}`, [{ value: '', text: name }], value => {
         chosen[name.toLowerCase()] = value;
+        pendingYear = false;
         changed();
       });
       const from = end('From');
@@ -178,6 +180,7 @@ function _skgifListFilters(box, keys, onChange) {
       if (!part.range) part.dropdown.select('');
     });
     chosen.from = chosen.to = '';
+    pendingYear = false;
     changed();
   });
   // Placed on the counter row ("5 of 6 publications  Clear filters"), where there is free space,
@@ -206,6 +209,7 @@ function _skgifListFilters(box, keys, onChange) {
     },
     clearYears() {
       chosen.from = chosen.to = '';
+      pendingYear = false;
       changed();
     },
     // The title search changes the counts.
@@ -213,12 +217,19 @@ function _skgifListFilters(box, keys, onChange) {
       match = newMatch;
       if (all.length) recount();
     },
+    // Returns true when the choice is complete (Year: after the second bar).
     select(key, value) {
       const part = parts.find(p => p.key === key);
-      if (!part || !part.dropdown.enabled() || !part.wrap.offsetParent) return false;
-      if (part.range) { // same year already selected: removes it
-        const same = chosen.from === value && chosen.to === value;
-        chosen.from = chosen.to = same ? '' : value;
+      if (!part || !part.dropdown.enabled() || part.wrap.classList.contains('d-none')) return false; // phones: works with the filter panel closed
+      if (part.range) { // first bar = that year; second bar = range between the two (same bar = that year only)
+        if (pendingYear) {
+          const first = chosen.from;
+          chosen.from = value < first ? value : first;
+          chosen.to = value < first ? first : value;
+        } else chosen.from = chosen.to = value;
+        pendingYear = !pendingYear;
+        changed();
+        return !pendingYear;
       } else {
         chosen[key] = part.dropdown.value() === value ? '' : value;
         part.dropdown.select(chosen[key]);
@@ -322,27 +333,31 @@ function _skgifYearChart(box, dates, label, emptyMessage, fill, onYear) {
   if (!onYear) return;
   // Under the chart: how to use it and the label of the selected years (✕ removes only the Year filter).
   box.insertAdjacentHTML('beforeend', `<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2 skgif-chart-foot">
-      <span class="small text-muted">Click a bar to filter the list by that year.</span>
+      <span class="small text-muted skgif-chart-hint">Click a bar to filter the list by that year, then a second bar for a range.</span>
       <button type="button" class="btn btn-sm skgif-year-chip d-none" aria-label="Remove the year filter"></button>
     </div>`);
   const chip = box.querySelector('.skgif-year-chip');
+  const hint = box.querySelector('.skgif-chart-hint');
+  const hintText = hint.textContent;
   chip.addEventListener('click', () => box.skgifClearYears?.());
   // Year filter: bars outside the from-to range are faded ('' = no limit).
-  box.skgifYears = (from, to) => {
+  box.skgifYears = (from, to, pending) => {
     chart.data.datasets[0].backgroundColor = years.map(y => (!from || y >= from) && (!to || y <= to) ? '#8f4ec7' : 'rgba(143, 78, 199, 0.2)');
     chart.update();
     const text = from && to ? (from === to ? from : `${from}–${to}`) : from ? `From ${from}` : to ? `Until ${to}` : '';
     chip.textContent = `${text} ✕`;
     chip.classList.toggle('d-none', !text);
+    hint.textContent = pending ? 'Click a second bar for a range, or the same bar again.' : hintText;
   };
 }
 
-// Shows the Year filter range in the chart `boxId`; clear removes the filter (✕ of the label).
-function _skgifChartYears(boxId, from, to, clear) {
+// Shows the Year filter range in the chart `boxId`; clear removes the filter (✕ of the label);
+// pending = first bar clicked, waiting for the end of the range.
+function _skgifChartYears(boxId, from, to, clear, pending) {
   const box = document.getElementById(boxId);
   if (!box) return;
   box.skgifClearYears = clear;
-  box.skgifYears?.(from, to);
+  box.skgifYears?.(from, to, pending);
 }
 
 // --- List export (texts built in cards.js) and "Open at publisher" ---
@@ -436,6 +451,8 @@ function _skgifInitTabs() {
   const tabs = document.querySelectorAll('[data-br-tab]');
   tabs.forEach(tab => tab.addEventListener('click', () => {
     _skgifKeepScroll(); // a shorter tab (e.g. 0 citations) does not make the page jump up
+    // a marked number follows the tab (e.g. Citations -> References)
+    if (document.querySelector('.skgif-count-current')) _skgifMarkCount(document.querySelector(`[data-br-goto-tab="${tab.dataset.brTab}"]`));
     tabs.forEach(t => {
       const active = t === tab;
       t.classList.toggle('active', active);

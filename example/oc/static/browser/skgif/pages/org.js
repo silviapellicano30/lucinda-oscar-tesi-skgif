@@ -40,7 +40,7 @@ function api_org_record_skgif(...args) {
       onYear: year => { // click on a year: the publications of that year
         if (filters.select('year', year)) document.getElementById('org-pubs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } });
-    filters.onYears((from, to) => _skgifChartYears('org-chart', from, to, filters.clearYears));
+    filters.onYears((from, to, pending) => _skgifChartYears('org-chart', from, to, filters.clearYears, pending));
   });
 }
 

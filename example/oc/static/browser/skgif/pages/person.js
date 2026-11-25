@@ -113,7 +113,7 @@ function _loadPersonProducts(source, firstPage, personOmid) {
   let show = () => {};
   let downloaded = false;
   const filters = _skgifListFilters(document.getElementById('ra-filters'), ['type', 'year', 'venue', 'role'], newKeep => { keep = newKeep; show(); });
-  filters.onYears((from, to) => _skgifChartYears('ra-pubs-chart', from, to, filters.clearYears));
+  filters.onYears((from, to, pending) => _skgifChartYears('ra-pubs-chart', from, to, filters.clearYears, pending));
 
   const hideTools = () => { // no publications: no filters, Sort by or search
     document.getElementById('ra-filters')?.parentElement.classList.add('d-none');

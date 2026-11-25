@@ -35,6 +35,8 @@
   /* --- Lines and shadows --- */
   --theme-line: #e6dcef;         /* thin lines and field borders */
   --theme-line-soft: #f0ecf6;    /* separators inside menus */
+  --theme-line-strong: #d9cde4;  /* line between the cards of a list (phones) */
+  --theme-stripe: #faf6fd;       /* every other card of a list (phones) */
   --theme-page-border: #ece3f3;  /* border of the page buttons (1 2 3 …) */
   --theme-footer-line: lightgray;/* line above the footer */
   --theme-shadow: 2px 5px 43px rgba(138, 164, 181, 0.28);

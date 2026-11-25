@@ -120,7 +120,8 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
 /* links in the card text: thinner, lighter underline */
 #__lucinda__ .ra-work-line a,
 #__lucinda__ .br-field a,
-#__lucinda__ .card-body > .mb-2 a {
+#__lucinda__ .card-body > .mb-2 a,
+#__lucinda__ .skgif-person-ids a {
   background-image: linear-gradient(180deg, color-mix(in srgb, var(--theme-highlight) 22%, transparent) 0%, transparent 100%) !important;
   background-size: 100% 0.18em !important;
 }
@@ -1519,7 +1520,7 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
   }
 
   /* --- Search cards of persons, venues, organisations: same rule as the research product cards
-     (no field labels, only Publisher/Editor are kept), much less white space --- */
+     (no field labels), much less white space --- */
   #search-results-container > .col-12.mb-3,
   #search-results-container > span > .col-12.mb-3 {
     margin-bottom: 0.5rem !important;
@@ -1542,18 +1543,6 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
   }
   #search-results-container .metadata-label {
     display: none;
-  }
-  /* roles (Publisher, Editor of the venues): inline label, like "Publisher:" in the research product cards */
-  #search-results-container .venue-agents .metadata-label {
-    display: inline;
-    font-size: 0.85rem;
-    letter-spacing: 0;
-    text-transform: none;
-    color: var(--theme-title);
-    padding: 0;
-  }
-  #search-results-container .venue-agents .metadata-label::after {
-    content: " ";
   }
   /* persons: "orcid:… · omid:ra/…" on one line */
   .skgif-person-ids > .mb-2 {
@@ -1636,7 +1625,7 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
     display: none;
   }
   #__lucinda__ > .mb-3 > a[href="home.html"]::before {
-    content: "‹ ";
+    content: "‹\00a0";
   }
   #__lucinda__ > .mb-3:has(> a[href="home.html"]) + .row {
     margin-top: 0;
@@ -2325,5 +2314,93 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
   #__lucinda__ .card .skgif-count-seg-stack .skgif-count-number {
     grid-column: 1;
     grid-row: 2;
+  }
+}
+
+/* Phones: cards of the lists and search results, "Home" link, clicked numbers */
+@media (max-width: 575.98px) {
+  /* no authors: "Authors not available" as plain text, without label */
+  .skgif-desktop-only {
+    display: none;
+  }
+  /* more space around the dot of "Citations: N • References: N" */
+  .ra-line-counts > .ra-count-sep {
+    padding: 0 0.3em;
+  }
+  /* cards of a list: darker line between them and every other card slightly tinted */
+  #search-results-container > .col-12 > .card,
+  #search-results-container > span > .col-12 > .card,
+  #__lucinda__ .card .card.ra-work {
+    border-bottom-color: var(--theme-line-strong);
+  }
+  #search-results-container > .col-12:nth-child(even) > .card,
+  #search-results-container > span > .col-12:nth-child(even) > .card,
+  #__lucinda__ .card .col-12:nth-child(even) > .card.ra-work {
+    background: var(--theme-stripe);
+  }
+  /* "‹ Home": same text, larger area to tap (about 44 px high) */
+  #__lucinda__ > .mb-3 > a[href="home.html"] {
+    display: inline-flex !important;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 1.2rem 0 0 !important;
+    font-size: 0.9rem;
+    margin: -0.6rem 0 -0.5rem;
+  }
+  /* clicked number (Citation metrics, Publications, Citations...): purple line below and arrow down,
+     until another number is clicked; same for the open Citation overlap box */
+  #__lucinda__ .card .skgif-count-current .skgif-count-number,
+  #__lucinda__ .card [data-ci-overlap].active .skgif-count-number {
+    text-decoration: underline 2px var(--theme-primary);
+    text-underline-offset: 5px;
+  }
+  #__lucinda__ .card .skgif-count-current > .card-header > span,
+  #__lucinda__ .card [data-ci-overlap].active > .card-header > span {
+    color: var(--theme-primary) !important;
+  }
+  #__lucinda__ .card .skgif-count-link.skgif-count-current > .card-body > .skgif-count-number::after,
+  #__lucinda__ .card .ra-count-box.skgif-count-current .skgif-count-number::after {
+    content: " \25BE";
+  }
+}
+
+/* Phones: fields of the record pages (Overview, Citing/Cited work) in two columns, label on the left and value
+   on the right, without lines */
+@media (max-width: 575.98px) {
+  #__lucinda__ .br-field {
+    display: grid;
+    grid-template-columns: 8rem minmax(0, 1fr);
+    column-gap: 0.6rem;
+    align-items: start;
+    margin-bottom: 0.6rem !important;
+  }
+  #__lucinda__ .br-field > .br-label {
+    margin-bottom: 0;
+    padding-top: 0.3rem;   /* level with the first line of the value */
+    letter-spacing: 0.5px;
+  }
+  #__lucinda__ .br-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  #__lucinda__ .br-grid .br-field,
+  #__lucinda__ .br-grid > span:nth-child(-n+2) .br-field:not(.br-wide) {
+    grid-column: 1 / -1;
+  }
+  /* IDs of the publication venue on their own line under its name, without brackets (a long first ID left
+     the "(" alone at the end of the line) */
+  #__lucinda__ .br-field .skgif-venue-ids {
+    display: block;
+    margin-top: 0.2rem;
+  }
+  #__lucinda__ .br-field .skgif-venue-paren {
+    display: none;
+  }
+  #__lucinda__ .card-body > hr:has(+ .br-grid) {
+    display: none;
+  }
+  /* Person: ORCID and Years active one under the other, like the other fields */
+  #__lucinda__ .card-body:has(> .br-field #ra-orcid) {
+    display: block !important;
   }
 }

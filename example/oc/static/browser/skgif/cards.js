@@ -188,7 +188,7 @@ function _skgifVenueHtml(name, venueOmid, identifiers) {
     ? `<a href="browser.html?value=${venueOmid}" class="text-dark text-decoration-none">${venueTitle}</a>`
     : venueTitle;
   const venueIds = _skgifIdList(identifiers, undefined, false, true); // record pages only (cards pass [])
-  return venueIds ? `${titleHtml}<span class="skgif-venue-ids"> (${venueIds})</span>` : titleHtml; // span = can be hidden on phones
+  return venueIds ? `${titleHtml}<span class="skgif-venue-ids"><span class="skgif-venue-paren"> (</span>${venueIds}<span class="skgif-venue-paren">)</span></span>` : titleHtml; // phones: IDs on their own line, without brackets
 }
 
 // --- Cards and lists shared by several pages ---
@@ -209,7 +209,10 @@ function _skgifProductCard(product, badgeOf = _skgifEditorBadge, airy = false, c
     const html = agentOmid ? `<a href="${_skgifAgentUrl(agentOmid)}">${name}</a>` : name;
     return by.local_identifier === _skgifProfileOmid ? `<strong>${html}</strong>` : html; // the person of the profile in bold
   });
-  const namesHtml = names.length ? _skgifShortNames(names, contributions, role) : '<span class="skgif-none">Not available</span>';
+  const namesHtml = names.length ? _skgifShortNames(names, contributions, role)
+    : '<span class="skgif-none skgif-desktop-only">Not available</span><span class="skgif-phone-only">Authors not available</span>'; // phones: no label, plain text
+  // phones: no "Editors:" label, "(ed.)"/"(eds.)" after the names as in a bibliography
+  const editorsNote = role === 'editor' && names.length ? `<span class="skgif-phone-only"> (${names.length === 1 ? 'ed.' : 'eds.'})</span>` : '';
   const venue = _skgifProductVenueHtml(product);
   const publisher = venue ? '' : _skgifAgents(contributions, 'publisher');
   const type = _skgifArray(product.manifestations).map(m => m?.type?.labels?.en).find(Boolean) || '';
@@ -226,7 +229,7 @@ function _skgifProductCard(product, badgeOf = _skgifEditorBadge, airy = false, c
             <h5 class="ra-work-title"><a href="browser.html?value=${omid}">${_skgifEscape(_skgifProductTitle(product))}</a></h5>
             <div class="d-flex gap-1 flex-shrink-0">${badges}</div>
           </div>
-          <div class="ra-work-line ra-line-authors"><span class="fw-bold${role === 'author' && names.length ? ' ra-label-phone-hide' : ''}">${role === 'author' || !names.length ? 'Authors' : 'Editors'}:</span> <span class="ra-work-value">${namesHtml}</span></div>
+          <div class="ra-work-line ra-line-authors"><span class="fw-bold ra-label-phone-hide">${role === 'author' || !names.length ? 'Authors' : 'Editors'}:</span> <span class="ra-work-value">${namesHtml}${editorsNote}</span></div>
           ${type ? `<div class="ra-work-line ra-line-type"><span class="fw-bold ra-label-phone-hide">Type:</span> <span class="ra-work-value">${_skgifEscape(type)}</span></div>` : ''}
           ${venue ? `<div class="ra-work-line ra-line-venue"><span class="fw-bold ra-label-phone-hide">Publication venue:</span> <span class="ra-work-value">${venue}</span></div>` : ''}
           ${publisher ? `<div class="ra-work-line ra-line-publisher"><span class="fw-bold">Publisher:</span> <span class="ra-work-value">${publisher}</span></div>` : ''}
@@ -275,6 +278,7 @@ function _skgifGoToList(e) {
   const box = e.target.closest('[data-skgif-goto], [data-skgif-href]');
   if (!box || (e.type === 'keydown' && e.key !== 'Enter')) return;
   if (box.dataset.skgifHref) return void (location.href = box.dataset.skgifHref); // box that opens another page
+  _skgifMarkCount(box);
   if (box.dataset.brGotoTab) document.querySelector(`[data-br-tab="${box.dataset.brGotoTab}"]`)?.click();
   const target = document.getElementById(box.dataset.skgifGoto);
   target?.querySelector('.skgif-fold')?.classList.add('skgif-unfolded'); // a closed section on phones is opened
@@ -284,6 +288,11 @@ function _skgifGoToList(e) {
   target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 document.addEventListener('click', _skgifGoToList);
+// The clicked number stays marked (phones), so that the user sees which list it opened.
+function _skgifMarkCount(box) {
+  document.querySelectorAll('.skgif-count-current').forEach(b => b.classList.remove('skgif-count-current'));
+  box?.classList.add('skgif-count-current');
+}
 document.addEventListener('keydown', _skgifGoToList);
 
 // The three header lines as text { title, line, meta }.

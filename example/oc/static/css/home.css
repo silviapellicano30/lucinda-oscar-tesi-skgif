@@ -126,7 +126,8 @@ html body {
   white-space: nowrap;
   transition: background-color .3s ease;
 }
-.oc-btn:focus { background: var(--theme-secondary); color: var(--theme-on-primary); }
+/* keyboard focus only: after a click (or going back to the page) the button keeps its colour */
+.oc-btn:focus-visible { background: var(--theme-secondary); color: var(--theme-on-primary); }
 @media (hover: hover) { .oc-btn:hover { background: var(--theme-secondary); color: var(--theme-on-primary); } }
 
 /* ID panel hidden (Citation) and the side not searched faded */
@@ -312,9 +313,41 @@ html body {
 .card.resource-card[role="button"] { cursor: pointer; }
 .card.resource-card[role="button"]:focus-visible { outline: 2px solid var(--theme-primary); outline-offset: 2px; }
 
+/* phones and small tablets: resource tabs as a grid of equal boxes, 2 + 2 + Citation on the whole row;
+   icon above the name, "?" in the top right corner */
 @media (max-width: 767.98px) {
-  .oc-tab { flex: 1 1 30%; padding: 8px 6px; font-size: .9rem; }
-  .oc-tab-wrap { flex: 1 1 30%; }
+  .oc-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    border-bottom: 0;
+  }
+  .oc-tab-wrap {
+    position: relative;
+    border: 1px solid var(--theme-line);
+    border-radius: 10px;
+    background: var(--theme-surface);
+  }
+  .oc-tab-wrap:has(.oc-tab.active) {
+    border-color: var(--theme-primary);
+    background: var(--theme-tint);
+  }
+  .oc-tab-wrap:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .oc-tab-wrap .oc-tab,
+  .oc-tab-wrap .oc-tab:has(+ .oc-tab-help) {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 10px 24px;
+    font-size: .88rem;
+    white-space: normal;
+    line-height: 1.2;
+  }
+  .oc-tab-wrap:last-child:nth-child(odd) .oc-tab { flex-direction: row; justify-content: center; }
+  .oc-tab i { margin-right: 0; font-size: 1.05rem; }
+  .oc-tab-help { position: absolute; top: 2px; right: 2px; }
 }
 /* phones and tablets (below 992px): fields one under the other (in a row they were too narrow on tablets) */
 @media (max-width: 991.98px) {

@@ -374,19 +374,14 @@ function api_search_product_skgif(...args) {
   _skgifRunSearch(plan, _skgifProductCardAiry);
 }
 
-// Venue search: /venues?filter=cf.search.name:...; publishers and editors from _loadVenueAgents().
+// Venue search: /venues?filter=cf.search.name:... (publishers and editors only in the venue record).
 function api_search_venue_skgif(...args) {
   const plan = _skgifSearchPlan('venues', _skgifUrlParam(args[1], 'search_query'));
   _skgifSearchBar('venue', plan);
-  document.querySelectorAll('.venue-agents[data-venue-omid]').forEach(box => _loadVenueAgents(box.dataset.venueOmid)); // first page (Lucinda)
-  _skgifRunSearch(plan, venue => { // next pages: the agents of each card are loaded once it is on screen
-    const html = _renderVenueCard(venue);
-    if (html) _loadVenueAgents(_skgifOmid(venue.local_identifier));
-    return html;
-  });
+  _skgifRunSearch(plan, _renderVenueCard);
 }
 
-// Card of a venue in the results; publishers and editors are added later in the .venue-agents box (_loadVenueAgents).
+// Card of a venue in the results: name, type and IDs.
 function _renderVenueCard(venue) {
   const omid = _skgifOmid(venue.local_identifier);
   if (!omid) return "";
@@ -404,7 +399,6 @@ function _renderVenueCard(venue) {
           </h5>
           <hr>
           ${type}
-          <div class="venue-agents" data-venue-omid="${omid}"></div>
           <div class="mb-2">
             <span class="metadata-label fw-bold">Identifiers:</span><br>
             <span>${_skgifIdList(venue.identifiers, omid)}</span>
@@ -413,22 +407,6 @@ function _renderVenueCard(venue) {
       </div>
     </div>`;
   return html;
-}
-
-// Publishers and editors of a venue: /products with the same OMID (/venues does not have them).
-function _loadVenueAgents(omid) {
-  skgifFetch(`${SKGIF_API}/products/${skgifFullId(omid)}`).then(data => { // one call per venue
-    const contributions = (data?.['@graph'] || [])[0]?.contributions;
-    const row = (role, label) => {
-      const agents = _skgifAgents(contributions, role);
-      return agents
-        ? `<div class="mb-2"><span class="metadata-label fw-bold">${label}:</span><br><span>${agents}</span></div>`
-        : '';
-    };
-    const html = row('publisher', 'Publisher') + row('editor', 'Editor');
-    document.querySelectorAll(`.venue-agents[data-venue-omid="${omid}"]`)
-      .forEach(box => { box.innerHTML = html; });
-  });
 }
 
 // Organisation search: /organisations?filter=cf.search.name:...

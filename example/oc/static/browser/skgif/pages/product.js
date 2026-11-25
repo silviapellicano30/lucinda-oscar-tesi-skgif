@@ -39,7 +39,7 @@ function api_product_record_skgif(...args) {
         document.querySelector('[data-br-tab="cits"]')?.click();
         if (filters.select('year', year)) document.getElementById('br-lists')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } });
-    filters.onYears((from, to) => _skgifChartYears('br-cits-chart', from, to, filters.clearYears));
+    filters.onYears((from, to, pending) => _skgifChartYears('br-cits-chart', from, to, filters.clearYears, pending));
     if (!cits.failed && cits.total && cits.total <= SKGIF_PRODUCT_AUTO_LOAD) return new Promise(done => cits.onLoaded(done));
   });
   skgifFirstPage(refsSource, SKGIF_DEFAULT_PAGE_SIZE).then(refsPage => {
