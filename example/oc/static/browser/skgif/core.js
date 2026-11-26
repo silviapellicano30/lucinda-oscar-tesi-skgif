@@ -3,13 +3,21 @@
 
 const SKGIF_DEFAULT_PAGE_SIZE = 10; // results per page (same as the API default)
 
+// Maximum wait per request: when it expires, the results are requested again in smaller pages.
+const SKGIF_PAGE_TIMEOUT = 35000;
+const SKGIF_SMALL_PAGE_TIMEOUT = 15000;
+const SKGIF_ITEM_TIMEOUT = 10000;
+const _skgifTimeout = size => size === 1 ? SKGIF_ITEM_TIMEOUT : size <= SKGIF_DEFAULT_PAGE_SIZE ? SKGIF_SMALL_PAGE_TIMEOUT : SKGIF_PAGE_TIMEOUT;
+
+// Phone layout (same breakpoint as the phone section of browser.css).
+const SKGIF_PHONE = window.matchMedia('(max-width: 575.98px)');
+const _skgifIsPhone = () => SKGIF_PHONE.matches;
+
+// --- Messages ---
+
 // Single message shown whenever the API does not answer (error, timeout, network).
 const SKGIF_UNAVAILABLE_TEXT = "The OpenCitations API is temporarily unable to answer (maintenance or high load). Please try again later.";
 const SKGIF_UNAVAILABLE_MESSAGE = `Service unavailable. ${SKGIF_UNAVAILABLE_TEXT}`; // plain text (Lucinda record pages)
-
-// Alphabetical comparison ignoring case and accents (titles, sources). Created once: String.localeCompare with
-// options builds a new collator at every call, which makes sorting long lists slow.
-const _skgifCompareText = new Intl.Collator(undefined, { sensitivity: 'base' }).compare;
 
 // "Service unavailable" box with a "Try again" button; search = adds a hint about long queries.
 function _skgifUnavailableHtml(search = false) {
@@ -17,41 +25,32 @@ function _skgifUnavailableHtml(search = false) {
     + `<strong>Service unavailable</strong><br>${SKGIF_UNAVAILABLE_TEXT}${search ? '<br>If the query is long, try a shorter one.' : ''}`
     + `<div class="mt-2"><button type="button" class="btn btn-sm skgif-search-reset skgif-retry">Try again</button></div></div></div>`;
 }
-
 document.addEventListener('click', e => {
   if (e.target.closest('.skgif-retry')) location.reload();
 });
 
+// Animated dots of the loading texts.
+const SKGIF_LOADING_DOTS = '<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>';
+
 // "Loading" text shown while a list is loading.
 const SKGIF_LOADING_HTML = "<div class='col-12 skgif-page-loading'>Loading the results<br><span class='loading-dots'><span>.</span><span>.</span><span>.</span> </span></div>";
 
-// Total number of results of a response (0 if missing).
-function skgifTotal(response) {
-  return response?.meta?.part_of?.total_items || 0;
+// Message shown instead of a list (e.g. no results): same look for every empty list.
+function _skgifMessageHtml(text) {
+  return `<div class="col-12"><p class="fst-italic text-muted">${text}</p></div>`;
 }
 
-// Writes a count only if Lucinda's own count failed ("–").
-function _skgifFallbackCount(elId, n) {
-  const el = document.getElementById(elId);
-  if (el && !/\d/.test(el.textContent)) el.textContent = _skgifNum(n);
-}
-
-// Reads a value from the table Lucinda stored for a block.
-function _lucindaValue(blockId, column) {
-  return Lucinda_util.getCol(Lucinda.data[blockId], column)[1];
-}
+// --- Requests ---
 
 // Cache of the responses already received, so the same call is never made twice.
 const _skgifResponseCache = {};
-
-function _skgifNormalizeUrl(url) { // makes two URLs comparable
-  let u = String(url || "").replace(/\+/g, " ");
-  try { u = decodeURIComponent(u); } catch (e) { /* keep as is */ }
-  return u.trim().toLowerCase();
-}
-
 // Calls in progress: a request for the same URL waits for the one already sent.
 const _skgifPendingRequests = {};
+
+// Makes two URLs comparable.
+function _skgifNormalizeUrl(url) {
+  return _skgifDecode(String(url || "").replace(/\+/g, " ")).trim().toLowerCase();
+}
 
 // Fetches an SKG-IF URL (reusing Lucinda's responses); null on failure, {} on 404 (no results).
 function skgifFetch(url, timeoutMs) {
@@ -96,26 +95,48 @@ function skgifFetchPatient(url, tries = 4, waitMs = 2000) {
     .finally(() => clearTimeout(timer));
 }
 
-// Keeps the "Loading" banner until the first results are ready.
-let _skgifHeldPage = null;
-
-function skgifHoldPage() { // hides the template and shows the banner
-  const root = document.getElementById('__lucinda__');
-  if (!root || _skgifHeldPage) return;
-  const children = Array.from(root.children).map(el => ({ el, display: el.style.display }));
-  children.forEach(({ el }) => { el.style.display = 'none'; });
-  const banner = document.createElement('div');
-  banner.id = 'lucinda_pendinghtml_main_loading';
-  banner.innerHTML = "Loading the resource<br><span class='loading-dots'><span>.</span><span>.</span><span>.</span> </span>";
-  root.appendChild(banner);
-  _skgifHeldPage = { banner, children };
+// Total number of results of a response (0 if missing).
+function skgifTotal(response) {
+  return response?.meta?.part_of?.total_items || 0;
 }
 
-function skgifReleasePage() { // removes the banner and shows the template again
-  if (!_skgifHeldPage) return;
-  _skgifHeldPage.banner.remove();
-  _skgifHeldPage.children.forEach(({ el, display }) => { el.style.display = display; });
-  _skgifHeldPage = null;
+// --- Pages of results ---
+
+// First page of a list: { total, items }; null if not even the total can be read.
+function skgifFirstPage(source, size) {
+  return _skgifFirstPageItems(source, size).then(_skgifWithFirstCounts); // the first cards already include their citation count
+}
+// First page; if it fails, a page of 1 still gives the total (items are then loaded in smaller pages).
+function _skgifFirstPageItems(source, size) {
+  return skgifFetch(`${source}&page=1&page_size=${size}`, _skgifTimeout(size)).then(data => {
+    if (data) return { total: skgifTotal(data), items: data['@graph'] || [] };
+    return skgifFetch(`${source}&page=1&page_size=1`, SKGIF_ITEM_TIMEOUT).then(one => {
+      if (!one) return null;
+      const total = skgifTotal(one);
+      return skgifSplitRange(source, 0, Math.min(size, total), size).then(items => ({ total, items }));
+    });
+  });
+}
+
+// Requests `count` results from `start`; if they do not arrive, retries with pages of 10 and then of 1 (missing = { _skgifMissing }).
+function skgifFetchRange(source, start, count, size, timeoutMs = _skgifTimeout(size)) {
+  return skgifFetch(`${source}&page=${start / size + 1}&page_size=${size}`, timeoutMs)
+    .then(data => data ? (data['@graph'] || []) : skgifSplitRange(source, start, count, size));
+}
+
+// A page of `size` that did not arrive: requests its results again in smaller pages (10, then 1).
+function skgifSplitRange(source, start, count, size, retried = false) {
+  if (size === 1) { // a single result: retried once, then marked as missing
+    if (retried) return Promise.resolve([{ _skgifMissing: true }]);
+    return skgifFetch(`${source}&page=${start + 1}&page_size=1`, SKGIF_ITEM_TIMEOUT)
+      .then(data => data ? (data['@graph'] || []) : skgifSplitRange(source, start, count, size, true));
+  }
+  const smaller = size > SKGIF_DEFAULT_PAGE_SIZE ? SKGIF_DEFAULT_PAGE_SIZE : 1;
+  const parts = [];
+  for (let from = 0; from < count; from += smaller) {
+    parts.push(skgifFetchRange(source, start + from, Math.min(smaller, count - from), smaller));
+  }
+  return Promise.all(parts).then(lists => lists.flat());
 }
 
 // Downloads all pages of a search; calls onPage(n, items) for each page, skips the pages in `have`.
@@ -139,65 +160,62 @@ function _skgifPool(todo, parallel, task) {
   return Promise.all(Array.from({ length: Math.min(parallel, queue.length) }, () => worker()));
 }
 
-// Maximum wait per page: when it expires, the results are requested again in smaller pages.
-const SKGIF_PAGE_TIMEOUT = 35000;
-const SKGIF_SMALL_PAGE_TIMEOUT = 15000;
-const SKGIF_ITEM_TIMEOUT = 10000;
-const _skgifTimeout = size => size === 1 ? SKGIF_ITEM_TIMEOUT : size <= SKGIF_DEFAULT_PAGE_SIZE ? SKGIF_SMALL_PAGE_TIMEOUT : SKGIF_PAGE_TIMEOUT;
+// --- "Loading the resource" banner ---
 
-// Requests `count` results from `start`; if they do not arrive, retries with pages of 10 and then of 1 (missing = { _skgifMissing }).
-function skgifFetchRange(source, start, count, size, timeoutMs = _skgifTimeout(size)) {
-  return skgifFetch(`${source}&page=${start / size + 1}&page_size=${size}`, timeoutMs)
-    .then(data => data ? (data['@graph'] || []) : skgifSplitRange(source, start, count, size));
+// Keeps the banner until the first results are ready.
+let _skgifHeldPage = null;
+
+// Hides the template and shows the banner.
+function skgifHoldPage() {
+  const root = document.getElementById('__lucinda__');
+  if (!root || _skgifHeldPage) return;
+  const children = Array.from(root.children).map(el => ({ el, display: el.style.display }));
+  children.forEach(({ el }) => { el.style.display = 'none'; });
+  const banner = document.createElement('div');
+  banner.id = 'lucinda_pendinghtml_main_loading';
+  banner.innerHTML = "Loading the resource<br><span class='loading-dots'><span>.</span><span>.</span><span>.</span> </span>";
+  root.appendChild(banner);
+  _skgifHeldPage = { banner, children };
 }
 
-// A page of `size` that did not arrive: requests its results again in smaller pages (10, then 1).
-function skgifSplitRange(source, start, count, size, retried = false) {
-  if (size === 1) { // a single result: retried once, then marked as missing
-    if (retried) return Promise.resolve([{ _skgifMissing: true }]);
-    return skgifFetch(`${source}&page=${start + 1}&page_size=1`, SKGIF_ITEM_TIMEOUT)
-      .then(data => data ? (data['@graph'] || []) : skgifSplitRange(source, start, count, size, true));
-  }
-  const smaller = size > SKGIF_DEFAULT_PAGE_SIZE ? SKGIF_DEFAULT_PAGE_SIZE : 1;
-  const parts = [];
-  for (let from = 0; from < count; from += smaller) {
-    parts.push(skgifFetchRange(source, start + from, Math.min(smaller, count - from), smaller));
-  }
-  return Promise.all(parts).then(lists => lists.flat());
+// Removes the banner and shows the template again.
+function skgifReleasePage() {
+  if (!_skgifHeldPage) return;
+  _skgifHeldPage.banner.remove();
+  _skgifHeldPage.children.forEach(({ el, display }) => { el.style.display = display; });
+  _skgifHeldPage = null;
 }
 
-// First page of a list: { total, items }; null if not even the total can be read.
-function skgifFirstPage(source, size) {
-  return _skgifFirstPageItems(source, size).then(_skgifWithFirstCounts); // the first cards already include their citation count
-}
-// First page; if it fails, a page of 1 still gives the total (items are then loaded in smaller pages).
-function _skgifFirstPageItems(source, size) {
-  return skgifFetch(`${source}&page=1&page_size=${size}`, _skgifTimeout(size)).then(data => {
-    if (data) return { total: skgifTotal(data), items: data['@graph'] || [] };
-    return skgifFetch(`${source}&page=1&page_size=1`, SKGIF_ITEM_TIMEOUT).then(one => {
-      if (!one) return null;
-      const total = skgifTotal(one);
-      return skgifSplitRange(source, 0, Math.min(size, total), size).then(items => ({ total, items }));
-    });
-  });
+// --- Lucinda data ---
+
+// Reads a value from the table Lucinda stored for a block.
+function _lucindaValue(blockId, column) {
+  return Lucinda_util.getCol(Lucinda.data[blockId], column)[1];
 }
 
 // Value of a parameter of the page URL (search_query, id...), decoded.
 function _skgifUrlParam(lucinda_main_data, key) {
-  let value = (lucinda_main_data || {})[key] || "";
-  value = String(Array.isArray(value) ? value[0] : value);
-  try { return decodeURIComponent(value); } catch (e) { return value; }
+  const value = (lucinda_main_data || {})[key] || "";
+  return _skgifDecode(Array.isArray(value) ? value[0] : value);
 }
 
-// Message shown instead of the results (e.g. empty search).
-function _skgifShowMessage(text, containerId = 'search-results-container') {
-  const container = document.getElementById(containerId);
-  if (container) container.innerHTML = _skgifMessageHtml(text);
+// Writes a count only if Lucinda's own count failed ("–").
+function _skgifFallbackCount(elId, n) {
+  const el = document.getElementById(elId);
+  if (el && !/\d/.test(el.textContent)) el.textContent = _skgifNum(n);
 }
-// HTML of the message: same look for every empty list.
-function _skgifMessageHtml(text) {
-  return `<div class="col-12"><p class="fst-italic text-muted">${text}</p></div>`;
+
+// --- Text utilities ---
+
+// URL-decoded text; kept as it is when it is not valid URL encoding.
+function _skgifDecode(value) {
+  const text = String(value ?? '');
+  try { return decodeURIComponent(text); } catch (e) { return text; }
 }
+
+// Alphabetical comparison ignoring case and accents (titles, venue names). Created once: String.localeCompare with
+// options builds a new collator at every call, which makes sorting long lists slow.
+const _skgifCompareText = new Intl.Collator(undefined, { sensitivity: 'base' }).compare;
 
 // An API field that should be a list: [] if missing.
 function _skgifArray(value) {
@@ -209,6 +227,11 @@ function _skgifNum(n) {
   return n === null || n === undefined || n === '' || isNaN(n) ? n : Number(n).toLocaleString('en-US');
 }
 
+// A number, or "–" if the call failed (null).
+function _skgifCount(n) {
+  return n === null ? '–' : String(n);
+}
+
 // "1 publication", "2 publications".
 function _skgifPlural(n, noun) {
   return `${_skgifNum(n)} ${noun}${n === 1 ? '' : 's'}`;
@@ -217,7 +240,7 @@ function _skgifPlural(n, noun) {
 // Characters that break the search filters (cf.search.*) become spaces.
 function _skgifSafeTerm(s) {
   return String(s || "").normalize('NFC')
-    .replace(/[,"'\\*&#%]/g, ' ') // characters that break the request
+    .replace(/[,"'\\*&#%]/g, ' ')
     .split(/\s+/).filter(Boolean).join(' ');
 }
 
@@ -231,9 +254,4 @@ function _skgifEscape(s) {
 function _skgifSetField(id, html) {
   const el = document.getElementById(id);
   if (el) el.innerHTML = html;
-}
-
-// A number, or "–" if the call failed (null).
-function _skgifCount(n) {
-  return n === null ? '–' : String(n);
 }

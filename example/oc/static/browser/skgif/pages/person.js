@@ -25,7 +25,7 @@ function api_person_record_skgif(...args) {
   const source = skgifFilterUrl('products', SKGIF_FILTER.contributor, `ra/${id}`);
 
   document.getElementById('ra-record')?.classList.remove('d-none');
-  _skgifInitTabs(); // chart tabs: Publications / Citations per year
+  _skgifInitTabs(); // chart tabs: Publications per year / Citations per year / Publications per venue
   _skgifSetField('ra-pubs-chart', '<em>Loading…</em>');
   _skgifSetField('ra-cits-chart', '<em>Loading…</em>');
   _skgifSetField('ra-cits-note', '<em>Loading…</em>'); // visible even when the chart tab is closed
@@ -49,13 +49,14 @@ function _loadPersonCitations(products) {
     _skgifSetField('ra-cits-note', '');
     return setChart('<em>No citations found.</em>');
   }
-  const loading = (done, what) => `<div class="mb-2 skgif-loading-note">Loading ${what}<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span> ${_skgifNum(done)}/${_skgifNum(omids.length)} publications</div>
-    <div class="progress br-chart-progress" style="height: 6px; width: 100%;"><div class="progress-bar" style="width: ${Math.round(done / omids.length * 100)}%"></div></div>`;
+  const n = omids.length;
+  const progress = done => `${SKGIF_LOADING_DOTS} ${_skgifNum(done)}/${_skgifNum(n)} publications`;
+  const loading = (done, what) => _skgifProgressHtml(`Loading ${what}${progress(done)}`, done / n);
   const indexes = omids.map((_, i) => i);
   // A single progress bar in the chart tab for both steps (SKG-IF count, then Index dates):
   // half each, so it does not restart from 0 when the count is ready.
-  const chartLoading = (step, done) => `<div class="mb-2 skgif-loading-note">Step ${step} of 2: ${step === 1 ? 'counting citations' : 'loading citation dates'}<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span> ${_skgifNum(done)}/${_skgifNum(omids.length)} publications</div>
-    <div class="progress br-chart-progress" style="height: 6px; width: 100%;"><div class="progress-bar" style="width: ${Math.round(((step - 1) * omids.length + done) / (2 * omids.length) * 100)}%"></div></div>`;
+  const chartLoading = (step, done) => _skgifProgressHtml(
+    `Step ${step} of 2: ${step === 1 ? 'counting citations' : 'loading citation dates'}${progress(done)}`, ((step - 1) * n + done) / (2 * n));
 
   // 1. Count (SKG-IF). The two steps run one after the other: in parallel they are slower and the
   // server's 429 responses make some citations get lost.
@@ -64,8 +65,8 @@ function _loadPersonCitations(products) {
   const setCounting = done => { setChart(chartLoading(1, done)); _skgifSetField('ra-cits-note', loading(done, 'citation counts')); };
   setCounting(0);
   _skgifPool(indexes, SKGIF_PERSON_CITATION_PARALLEL, i =>
-    _skgifCountCitations(omids[i], true).then(n => { // same number as "Citations (N)" in the cards (cards.js)
-      if (n !== null) total += n;
+    _skgifCountCitations(omids[i], true).then(count => { // same number as "Citations: N" in the cards (cards.js)
+      if (count !== null) total += count;
       else notCounted++;
       setCounting(++counted);
     })
@@ -74,7 +75,7 @@ function _loadPersonCitations(products) {
     _skgifSetField('ra-cits-note', notCounted ? `${_skgifPlural(notCounted, 'publication')} could not be counted.` : '');
     // "Most cited" in Sort by, now that the counts are known (publications not counted go last)
     const cited = document.querySelector('#ra-sort [data-order="cited"]');
-    if (cited && notCounted < omids.length && omids.length >= 2) cited.disabled = false;
+    if (cited && notCounted < n && n >= 2) cited.disabled = false;
 
     // 2. Chart (Index)
     const dates = [];
@@ -133,7 +134,7 @@ function _loadPersonProducts(source, firstPage, personOmid) {
   const total = firstPage.total;
   _skgifFallbackCount('search-total-count', total);
   if (!total) {
-    if (container) container.innerHTML = '<div class="col-12"><p class="fst-italic text-muted">No publications found.</p></div>';
+    if (container) container.innerHTML = _skgifMessageHtml('No publications found.');
     setChart('<em>No publications found.</em>');
     _loadPersonCitations([]);
     return _setPersonListStatus('No publications', null);
@@ -296,7 +297,7 @@ function _loadPersonProducts(source, firstPage, personOmid) {
   });
 }
 
-// "Search in titles" of the person record: filters the publications already downloaded, without calls.
+// "Search in titles" of the person record: the API while publications are arriving, then the downloaded list.
 let _onPersonSearch = null;
 
 // Connects the "Search in titles" form of the person record (search, clear, Enter).
@@ -345,21 +346,25 @@ function _raYearsActive(products) {
   document.getElementById('ra-active-field')?.classList.remove('d-none');
 }
 
-// "Top venues": the SKGIF_TOP_VENUES venues with most publications (name as given by the API); onPick(name) = filter.
+// "Publications per venue" tab: the SKGIF_TOP_VENUES venues with most publications (name as given by the API), as
+// horizontal bars (name above, bar as long as the number of publications); onPick(name) = filter.
 const SKGIF_TOP_VENUES = 5;
 function _raTopVenues(products, onPick) {
-  const box = document.getElementById('ra-top-venues');
+  const tab = document.getElementById('ra-venues-tab');
   const list = document.getElementById('ra-top-venues-list');
-  if (!box || !list) return;
+  if (!tab || !list) return;
   const counts = {};
   products.forEach(p => { const name = _skgifProductVenue(p)?.name; if (name) counts[name] = (counts[name] || 0) + 1; });
   const top = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, SKGIF_TOP_VENUES);
   if (!top.length) return;
-  list.innerHTML = top.map(([name, n]) => `<li><button type="button" class="skgif-top-item" data-venue="${_skgifEscape(name)}">
-      <span class="skgif-top-name">${_skgifEscape(name)}</span><span class="skgif-top-count">${_skgifPlural(n, 'publication')}</span></button></li>`).join('');
+  const max = top[0][1];
+  list.innerHTML = top.map(([name, n]) => `<li><button type="button" class="skgif-venue-bar" data-venue="${_skgifEscape(name)}" aria-label="${_skgifEscape(name)}: ${_skgifPlural(n, 'publication')}">
+      <span class="skgif-venue-bar-name">${_skgifEscape(name)}</span>
+      <span class="skgif-venue-bar-row"><span class="skgif-venue-bar-fill" style="width: ${n / max * 85}%"></span><span class="skgif-venue-bar-n">${_skgifNum(n)}</span></span>
+    </button></li>`).join('');
   list.addEventListener('click', e => {
     const item = e.target.closest('[data-venue]');
     if (item) onPick(item.dataset.venue);
   });
-  box.classList.remove('d-none');
+  tab.classList.remove('d-none');
 }

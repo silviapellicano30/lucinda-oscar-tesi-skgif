@@ -1,5 +1,7 @@
 // Load-time measurement (test tool; remove it by deleting its line in browser.html).
 // Off by default: switched on only from tools/measurements.html (sessionStorage 'skgifTiming', valid for the browser tab).
+// Every measure is also recorded as a W3C User Timing mark (performance.mark, same name as in the CSV; measures taken
+// from a "Load all" click also as performance.measure from the click), visible in the Performance panel of DevTools.
 // When on: every SKG-IF call bypasses the server cache (&preview=true), SKG-IF and Index calls bypass the browser
 // cache (no-store), and the Console shows the times: page/results shown, all citations/references/publications
 // downloaded, person citations and their chart, citation record charts.
@@ -7,8 +9,8 @@
 // It does not touch the other files: it wraps fetch and _skgifPagedList, and detects page changes with a
 // MutationObserver (not throttled by Chrome in hidden tabs, unlike setInterval).
 // Every time carries the problems of its run (server error, items not downloaded, hidden tab, browser offline) and
-// the counters of the API calls made so far (calls, HTTP errors, network errors and timeouts, cut answers, pages split
-// into smaller ones), the time spent waiting for the API (at least one call open) and the work of the page itself
+// the counters of the API calls made so far (calls and their types, HTTP errors, network errors and timeouts, cut answers,
+// pages split into smaller ones), the time spent waiting for the API (at least one call open) and the work of the page itself
 // (time the code kept the page busy, longest block, memory): together they separate the time of the interface from
 // the time of the API.
 
@@ -25,7 +27,23 @@
   // Counters since the page was opened. http_404 is not an error: it means "no results" (SKG-IF standard).
   // truncated_responses = answers with status 200 whose JSON is incomplete (the server cut the response).
   const stats = { skgif_calls: 0, index_calls: 0, http_404: 0, http_429: 0, http_other_errors: 0, network_errors: 0, truncated_responses: 0,
-    page_splits: 0, api_wait_ms: 0, long_tasks_ms: 0, longest_task_ms: 0, heap_peak_mb: null };
+    page_splits: 0, api_wait_ms: 0, long_tasks_ms: 0, longest_task_ms: 0, heap_peak_mb: null, calls_by_type: {} };
+
+  // Type of an API call, named as in the API: endpoint and filter names exactly as they appear in the URL, e.g.
+  // "products/{id}" (one record), "products?cf.cites" (citations of a product), "persons?cf.search.given_name,
+  // cf.search.family_name"; " [page_size=1]" is added to calls that read only the total; Index calls as "index/<operation>".
+  const callType = url => {
+    const [path, query = ''] = url.slice(url.startsWith(indexBase) ? indexBase.length : apiBase.length).split('?');
+    const parts = path.split('/').filter(Boolean);
+    if (url.startsWith(indexBase)) return `index/${parts[0] || ''}`;
+    if (parts.length > 1) return `${parts[0]}/{id}`;
+    const params = new URLSearchParams(query);
+    const filters = (params.get('filter') || '').split(',').map(f => f.split(':')[0]).filter(Boolean);
+    return `${parts[0] || ''}${filters.length ? '?' + filters.join(',') : ''}${params.get('page_size') === '1' ? ' [page_size=1]' : ''}`;
+  };
+  // "products?cf.cites [page_size=1]: 10; products/{id}: 1", most frequent types first.
+  const typesText = types => Object.entries(types).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([type, n]) => `${type}: ${n}`).join('; ');
 
   // Time spent waiting for the API: periods in which at least one SKG-IF or Index call is open, from the request to
   // the end of the reading of its answer (overlapping calls are counted once). The rest of the measured time belongs
@@ -74,6 +92,8 @@
     const index = url && url.startsWith(indexBase);
     if (!skgif && !index) return originalFetch(input, init);
     stats[skgif ? 'skgif_calls' : 'index_calls']++;
+    const type = callType(url);
+    stats.calls_by_type[type] = (stats.calls_by_type[type] || 0) + 1;
     callOpened();
     if (waitingRetry[url]) waitingRetry[url](); // the retry is open: the pause before it ends here
     let open = true;
@@ -133,19 +153,23 @@
     done[event] = true;
     problems = [...problems, ...pageProblems()];
     sampleHeap();
-    const entry = { event, ms: Math.round(now()), stats: { ...stats, api_wait_ms: Math.round(apiWait()) }, hidden: wasHidden,
+    const entry = { event, ms: Math.round(now()), stats: { ...stats, api_wait_ms: Math.round(apiWait()), calls_by_type: typesText(stats.calls_by_type) }, hidden: wasHidden,
       offline: wasOffline, problems, ...data };
     const waited = data.apiWaitFromClickMs != null ? data.apiWaitFromClickMs : entry.stats.api_wait_ms;
     const extra = [data.total != null ? `${data.total} items` : '', data.fromClickMs != null ? `${sec(data.fromClickMs)} s from the click` : '',
       `${sec(waited)} s waiting for the API`, `${stats.skgif_calls} SKG-IF calls`, stats.index_calls ? `${stats.index_calls} Index calls` : '',
       ...problems.map(p => '⚠ ' + p), wasHidden ? '⚠ tab hidden during the run' : '', wasOffline ? '⚠ browser offline during the run' : ''].filter(Boolean).join(', ');
-    console.log(`[SKG-IF timing] ${event}: ${sec(entry.ms)} s (${extra})`);
+    try {
+      performance.mark(event, { detail: { total: data.total ?? null, problems } });
+      if (data.fromClickMs != null) performance.measure(`${event} (from the click)`, { start: entry.ms - data.fromClickMs, end: entry.ms });
+    } catch (e) { /* browser without User Timing Level 3 */ }
+    console.log(`[SKG-IF timing] ${event}: ${sec(entry.ms)} s (${extra}) [calls: ${entry.stats.calls_by_type}]`);
     if (embedded) window.parent.postMessage({ skgifTiming: entry, href: location.href }, '*');
   };
   if (embedded) window.parent.postMessage({ skgifTiming: { event: 'start' } }, '*'); // the measurement page knows the tool is active
 
   // Paged lists (citations, references, publications): end of the full download.
-  const listNames = { 'br-cits': 'citations', 'br-refs': 'references', 'org-pubs': 'publications' };
+  const listNames = { 'br-cits': 'all_citations', 'br-refs': 'all_references', 'org-pubs': 'all_publications' };
   const loading = new Set(); // lists currently downloading
   if (typeof _skgifPagedList === 'function') {
     const originalPagedList = _skgifPagedList;
@@ -226,17 +250,17 @@
     if (document.querySelector('.skgif-id-loading')) { // search page: first page of results
       const results = document.getElementById('search-results-container');
       if (results && results.children.length && !results.querySelector('.skgif-page-loading')) {
-        report('results', { total: count('search-total-count') });
+        report('first_results', { total: count('search-total-count') });
         finished = true;
         observer.disconnect();
       }
       return;
     }
-    report('page');
+    report('page_shown');
     const sortButton = document.querySelector('#ra-sort button'); // person record: Sort by enabled = all publications arrived
-    if (sortButton && !sortButton.disabled && !done.person_publications) {
+    if (sortButton && !sortButton.disabled && !done.all_person_publications) {
       const missing = Number(((document.getElementById('ra-pubs-chart')?.textContent || '').match(/(\d+) publications? could not be loaded/) || [])[1]) || 0;
-      report('person_publications', { total: count('search-total-count') }, missing ? [`${missing} not downloaded`] : []);
+      report('all_person_publications', { total: count('search-total-count') }, missing ? [`${missing} not downloaded`] : []);
     }
     // Person record, citations received (after all publications): total count (SKG-IF), then per-year chart (Index);
     // total = number of publications, which drives the number of calls.

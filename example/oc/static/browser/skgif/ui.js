@@ -1,4 +1,6 @@
-// Interface components: dropdown menus, list filters, per-year chart, copy icon, export.
+// Interface components: dropdown menus, list filters, per-year charts, tabs, copy icon, export, singular labels.
+
+// --- Dropdown menus ---
 
 // Custom dropdown menu (replaces the browser's native <select>).
 function _skgifDropdown(ariaLabel, options, onChange) {
@@ -86,7 +88,9 @@ function _skgifDropdown(ariaLabel, options, onChange) {
   };
 }
 
-// List filters (Type, Year, Publication venue, Role).
+// --- List filters ---
+
+// Filters of the publication lists (Type, Year, Publication venue, Role).
 const SKGIF_FILTERS = {
   type: { label: 'Type', values: p => [_skgifProductType(p)], sort: (a, b) => a.localeCompare(b) },
   year: {
@@ -137,8 +141,16 @@ function _skgifListFilters(box, keys, onChange) {
   });
   const yearListeners = []; // listeners of the Year range (the chart)
   let pendingYear = false; // first bar of the chart clicked, waiting for the second one (end of the range)
+  // Active filter menus get a purple border and text (CSS class skgif-dd-set).
+  const mark = () => parts.forEach(part => {
+    if (part.range) {
+      part.from.el.classList.toggle('skgif-dd-set', !!chosen.from);
+      part.to.el.classList.toggle('skgif-dd-set', !!chosen.to);
+    } else part.dropdown.el.classList.toggle('skgif-dd-set', !!chosen[part.key]);
+  });
   const changed = () => {
     recount();
+    mark();
     yearListeners.forEach(listener => listener(chosen.from || '', chosen.to || '', pendingYear));
     const any = parts.some(isSet);
     clear.classList.toggle('d-none', !any);
@@ -220,7 +232,8 @@ function _skgifListFilters(box, keys, onChange) {
     // Returns true when the choice is complete (Year: after the second bar).
     select(key, value) {
       const part = parts.find(p => p.key === key);
-      if (!part || !part.dropdown.enabled() || part.wrap.classList.contains('d-none')) return false; // phones: works with the filter panel closed
+      // disabled or hidden filter (Role before the list is complete); the closed phone panel does not matter
+      if (!part || !part.dropdown.enabled() || part.wrap.classList.contains('d-none')) return false;
       if (part.range) { // first bar = that year; second bar = range between the two (same bar = that year only)
         if (pendingYear) {
           const first = chosen.from;
@@ -229,50 +242,68 @@ function _skgifListFilters(box, keys, onChange) {
         } else chosen.from = chosen.to = value;
         pendingYear = !pendingYear;
         changed();
+        if (!pendingYear) _skgifFlashFilter([part.from.el, part.to.el], box);
         return !pendingYear;
-      } else {
-        chosen[key] = part.dropdown.value() === value ? '' : value;
-        part.dropdown.select(chosen[key]);
       }
+      chosen[key] = part.dropdown.value() === value ? '' : value; // the same value again removes the filter
+      part.dropdown.select(chosen[key]);
       changed();
+      if (chosen[key]) _skgifFlashFilter([part.dropdown.el], box);
       return true;
     }
   };
 }
 
-// Icon to copy a value (record pages only, not cards); the click is handled below.
-const SKGIF_COPY_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 3.5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
-const SKGIF_COPIED_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
-function _skgifCopyButton(value) {
-  const v = _skgifEscape(value);
-  return `<button type="button" class="skgif-copy" data-copy="${v}" title="Copy ${v}" aria-label="Copy ${v}">${SKGIF_COPY_ICON}</button>`;
-}
-// Copies the value and shows a check mark and "Copied" for one and a half seconds.
-document.addEventListener('click', e => {
-  const btn = e.target.closest('.skgif-copy');
-  if (!btn) return;
-  navigator.clipboard.writeText(btn.dataset.copy).then(() => {
-    btn.innerHTML = SKGIF_COPIED_ICON;
-    btn.classList.add('copied');
-    clearTimeout(btn.skgifTimer);
-    btn.skgifTimer = setTimeout(() => { btn.innerHTML = SKGIF_COPY_ICON; btn.classList.remove('copied'); }, 1500);
+// Phone layout: filters, Export and "Show N entries" are in a panel opened by the "Filters (N)" button
+// (N = active filters); Sort by stays next to the button. On desktop the button is hidden by the CSS.
+function _skgifFilterToggle(row) {
+  if (!row || row.querySelector(':scope > .skgif-filter-toggle')) return;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn-sm skgif-filter-toggle';
+  button.setAttribute('aria-expanded', 'false');
+  button.innerHTML = 'Filters <span class="skgif-filter-count"></span>';
+  button.addEventListener('click', () => {
+    const open = row.classList.toggle('skgif-open');
+    button.setAttribute('aria-expanded', String(open));
   });
-});
+  row.prepend(button);
+}
+// Number of active filters (Year From/To counts as one) next to "Filters"; updated after every click
+// (menus, Clear filters, chart bars).
+function _skgifFilterCounts() {
+  document.querySelectorAll('.skgif-toolbar-row').forEach(row => {
+    const count = row.querySelector(':scope > .skgif-filter-toggle .skgif-filter-count');
+    if (!count) return;
+    const n = [...row.querySelectorAll('.skgif-filters > div')]
+      .filter(group => group.querySelector('.skgif-dd-item.selected:not([data-value=""])')).length;
+    count.textContent = n ? `(${n})` : '';
+    count.parentElement.classList.toggle('skgif-filter-on', n > 0);
+  });
+}
+document.addEventListener('click', () => setTimeout(_skgifFilterCounts, 0));
 
-// Header of the research product records (title, authors/year/venue, IDs): one line with "…" when too long;
-// a click/tap expands it to several lines, another click collapses it. Only when the line is actually cut.
-const SKGIF_HEAD_LINE = '.skgif-head div[class^="skgif-head-"]';
-const _skgifIsCut = el => el.scrollWidth > el.clientWidth;
-document.addEventListener('mouseover', e => {
-  const line = e.target.closest(SKGIF_HEAD_LINE);
-  if (line) line.classList.toggle('skgif-cut', _skgifIsCut(line) || line.classList.contains('skgif-head-open'));
-});
-document.addEventListener('click', e => {
-  const line = e.target.closest(SKGIF_HEAD_LINE);
-  if (!line || String(window.getSelection())) return; // do not collapse while the user is selecting text
-  if (line.classList.contains('skgif-head-open')) line.classList.remove('skgif-head-open');
-  else if (_skgifIsCut(line)) line.classList.add('skgif-head-open', 'skgif-cut');
-});
+// Filter set from a chart (year bar, venue bar): its menu, and on phones the "Filters (N)" button, glows for two
+// seconds once the page has scrolled down to the list, so that it is clear what changed. Afterwards the active menu
+// keeps only its purple border (skgif-dd-set).
+function _skgifFlashFilter(menus, box) {
+  const toggle = box?.closest('.skgif-toolbar-row')?.querySelector(':scope > .skgif-filter-toggle');
+  const targets = [...menus, toggle].filter(Boolean);
+  targets.forEach(el => el.classList.remove('skgif-flash'));
+  let started = false;
+  const start = () => {
+    if (started) return;
+    started = true;
+    targets.forEach(el => {
+      void el.offsetWidth; // restarts the animation
+      el.classList.add('skgif-flash');
+    });
+    // removed after the 2 s animation also where it did not run (hidden: closed phone panel, desktop "Filters" button)
+    setTimeout(() => targets.forEach(el => el.classList.remove('skgif-flash')), 2100);
+  };
+  document.addEventListener('scrollend', start, { once: true });
+  setTimeout(start, 900); // no scroll needed, or browsers without the scrollend event
+}
 
 // --- Charts ---
 
@@ -360,6 +391,73 @@ function _skgifChartYears(boxId, from, to, clear, pending) {
   box.skgifYears?.(from, to, pending);
 }
 
+// --- Tabs and collapsible sections ---
+
+// Tabs (data-br-tab): References / Citations of the research product record, charts of the person record.
+function _skgifInitTabs() {
+  const tabs = document.querySelectorAll('[data-br-tab]');
+  tabs.forEach(tab => tab.addEventListener('click', () => {
+    _skgifKeepScroll(); // a shorter tab (e.g. 0 citations) does not make the page jump up
+    // a marked number follows the tab (e.g. Citations -> References)
+    if (document.querySelector('.skgif-count-current')) _skgifMarkCount(document.querySelector(`[data-br-goto-tab="${tab.dataset.brTab}"]`));
+    tabs.forEach(t => {
+      const active = t === tab;
+      t.classList.toggle('active', active);
+      t.setAttribute('aria-selected', String(active));
+      document.getElementById(`br-${t.dataset.brTab}-pane`)?.classList.toggle('d-none', !active);
+    });
+  }));
+}
+
+// Collapsible sections on phones (cards with class skgif-fold, initially closed): clicking the header opens/closes
+// the section. Tabbed header (person record charts): a tab opens the section, the already active tab closes it.
+// On desktop the CSS hides nothing, so the class does not change the layout.
+document.addEventListener('click', e => {
+  const header = e.target.closest('.skgif-fold > .card-header');
+  if (!header) return;
+  const card = header.parentElement;
+  const tab = e.target.closest('[role="tab"]');
+  const open = card.classList.contains('skgif-unfolded');
+  if (tab && !tab.classList.contains('active')) card.classList.add('skgif-unfolded');
+  else if (tab || !e.target.closest('a, button')) card.classList.toggle('skgif-unfolded', !open);
+}, true); // capture phase: reads the active tab before the click changes it
+
+// --- Copy icon and record header ---
+
+// Icon to copy a value (record pages only, not cards); the click is handled below.
+const SKGIF_COPY_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 3.5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+const SKGIF_COPIED_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+function _skgifCopyButton(value) {
+  const v = _skgifEscape(value);
+  return `<button type="button" class="skgif-copy" data-copy="${v}" title="Copy ${v}" aria-label="Copy ${v}">${SKGIF_COPY_ICON}</button>`;
+}
+// Copies the value and shows a check mark and "Copied" for one and a half seconds.
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.skgif-copy');
+  if (!btn) return;
+  navigator.clipboard.writeText(btn.dataset.copy).then(() => {
+    btn.innerHTML = SKGIF_COPIED_ICON;
+    btn.classList.add('copied');
+    clearTimeout(btn.skgifTimer);
+    btn.skgifTimer = setTimeout(() => { btn.innerHTML = SKGIF_COPY_ICON; btn.classList.remove('copied'); }, 1500);
+  });
+});
+
+// Header of the research product records (title, authors/year/venue, IDs): one line with "…" when too long;
+// a click/tap expands it to several lines, another click collapses it. Only when the line is actually cut.
+const SKGIF_HEAD_LINE = '.skgif-head div[class^="skgif-head-"]';
+const _skgifIsCut = el => el.scrollWidth > el.clientWidth;
+document.addEventListener('mouseover', e => {
+  const line = e.target.closest(SKGIF_HEAD_LINE);
+  if (line) line.classList.toggle('skgif-cut', _skgifIsCut(line) || line.classList.contains('skgif-head-open'));
+});
+document.addEventListener('click', e => {
+  const line = e.target.closest(SKGIF_HEAD_LINE);
+  if (!line || String(window.getSelection())) return; // do not collapse while the user is selecting text
+  if (line.classList.contains('skgif-head-open')) line.classList.remove('skgif-head-open');
+  else if (_skgifIsCut(line)) line.classList.add('skgif-head-open', 'skgif-cut');
+});
+
 // --- List export (texts built in cards.js) and "Open at publisher" ---
 
 // Saves a text as a file.
@@ -376,47 +474,6 @@ function _skgifFileName(what) {
   const value = new URLSearchParams(location.search).get('value') || 'opencitations';
   return `${value.replace(/\W+/g, '_')}_${what}`;
 }
-// Phone layout: filters, Export and "Show N entries" are in a panel opened by the "Filters (N)" button
-// (N = active filters); Sort by stays next to the button. On desktop the button is hidden by the CSS.
-function _skgifFilterToggle(row) {
-  if (!row || row.querySelector(':scope > .skgif-filter-toggle')) return;
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'btn btn-sm skgif-filter-toggle';
-  button.setAttribute('aria-expanded', 'false');
-  button.innerHTML = 'Filters <span class="skgif-filter-count"></span>';
-  button.addEventListener('click', () => {
-    const open = row.classList.toggle('skgif-open');
-    button.setAttribute('aria-expanded', String(open));
-  });
-  row.prepend(button);
-}
-// Number of active filters (Year From/To counts as one) next to "Filters"; updated after every click
-// (menus, Clear filters, chart bars).
-function _skgifFilterCounts() {
-  document.querySelectorAll('.skgif-toolbar-row').forEach(row => {
-    const count = row.querySelector(':scope > .skgif-filter-toggle .skgif-filter-count');
-    if (!count) return;
-    const n = [...row.querySelectorAll('.skgif-filters > div')]
-      .filter(group => group.querySelector('.skgif-dd-item.selected:not([data-value=""])')).length;
-    count.textContent = n ? `(${n})` : '';
-  });
-}
-document.addEventListener('click', () => setTimeout(_skgifFilterCounts, 0));
-
-// Collapsible sections on phones (cards with class skgif-fold, initially closed): clicking the header opens/closes
-// the section. Tabbed header (person record charts): a tab opens the section, the already active tab closes it.
-// On desktop the CSS hides nothing, so the class does not change the layout.
-document.addEventListener('click', e => {
-  const header = e.target.closest('.skgif-fold > .card-header');
-  if (!header) return;
-  const card = header.parentElement;
-  const tab = e.target.closest('[role="tab"]');
-  const open = card.classList.contains('skgif-unfolded');
-  if (tab && !tab.classList.contains('active')) card.classList.add('skgif-unfolded');
-  else if (tab || !e.target.closest('a, button')) card.classList.toggle('skgif-unfolded', !open);
-}, true); // capture phase: reads the active tab before the click changes it
-
 // "Export: CSV BibTeX": downloads the list as shown (filters, title search, order), all pages.
 // enabled = false: buttons disabled until the whole list is loaded (re-enabled by the code that loads it).
 function _skgifExportControl(getItems, what, enabled = true) {
@@ -444,20 +501,22 @@ function _skgifProductActions(product, head) {
   label.insertAdjacentHTML('beforeend', `<a class="skgif-publisher-link" href="https://doi.org/${_skgifEscape(doi)}" target="_blank" rel="noopener">Open at publisher ↗</a>`);
 }
 
-// --- Tabs ---
-
-// Tabs (data-br-tab): References / Citations of the research product record, charts of the person record.
-function _skgifInitTabs() {
-  const tabs = document.querySelectorAll('[data-br-tab]');
-  tabs.forEach(tab => tab.addEventListener('click', () => {
-    _skgifKeepScroll(); // a shorter tab (e.g. 0 citations) does not make the page jump up
-    // a marked number follows the tab (e.g. Citations -> References)
-    if (document.querySelector('.skgif-count-current')) _skgifMarkCount(document.querySelector(`[data-br-goto-tab="${tab.dataset.brTab}"]`));
-    tabs.forEach(t => {
-      const active = t === tab;
-      t.classList.toggle('active', active);
-      t.setAttribute('aria-selected', String(active));
-      document.getElementById(`br-${t.dataset.brTab}-pane`)?.classList.toggle('d-none', !active);
-    });
-  }));
+// --- Count labels in the singular ---
+// "1 Citation", "Citation (1)": in the count boxes (label in the card header above .skgif-count-number) and in
+// the tabs ("Citations (<span id="...-total">)"). The numbers arrive at different times (Lucinda, later calls),
+// so the page is watched. The plural text is stored on the label the first time.
+function _skgifSingularLabel(node, n) {
+  if (!node) return;
+  if (node.skgifPlural === undefined) node.skgifPlural = node.textContent;
+  const text = n.trim() === '1' ? node.skgifPlural.replace(/s(\s*\(?\s*)$/, '$1') : node.skgifPlural;
+  if (node.textContent !== text) node.textContent = text;
 }
+function _skgifSingularLabels() {
+  document.querySelectorAll('.skgif-count-number').forEach(num =>
+    _skgifSingularLabel(num.closest('.card')?.querySelector('.card-header .fw-bold'), num.textContent));
+  document.querySelectorAll('.br-tab > span[id$="-total"]').forEach(num => {
+    const text = num.previousSibling;
+    if (text?.nodeType === Node.TEXT_NODE) _skgifSingularLabel(text, num.textContent);
+  });
+}
+new MutationObserver(_skgifSingularLabels).observe(document.body, { childList: true, subtree: true, characterData: true });

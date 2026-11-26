@@ -7,6 +7,7 @@
 # Statistics per commit, case and measure (runs "ok"): median, quartiles, SIQR (Jain, 1991), P10/P90, min, max,
 #   mean, sd, cv, runs needed for 10 % accuracy at 95 % confidence. Reliability: outcomes and API errors.
 # Interface vs API: api_wait_ms = time with at least one API call open; interface = the rest.
+# API calls by type (calls_by_type: endpoint and filter names from the URL, by timing.js): median per case and measure.
 # Optional inference: bootstrap 95 % CI of each median; Kruskal-Wallis by time slot, weekday and session,
 #   Holm-adjusted (Papadopoulos et al., 2021). Chart lines at 1 s and 10 s: Nielsen (1993).
 
@@ -14,6 +15,7 @@ suppressPackageStartupMessages({
   library(readr)
   library(dplyr)
   library(ggplot2)
+  library(tidyr)
 })
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -27,11 +29,6 @@ if (!length(files)) stop("No skgif-timing-runs*.csv file in ", in_dir)
 runs <- files |>
   lapply(read_csv, col_types = cols(.default = col_character()), na = "NA") |>
   bind_rows() |>
-  (\(d) { # columns added in later versions of measurements.html: empty (NA) in older CSV files
-    for (k in c("truncated_responses", "api_wait_ms", "long_tasks_ms", "longest_task_ms", "heap_peak_mb", "commit")) if (!k %in% names(d)) d[[k]] <- NA_character_
-    for (k in c("browser_offline", "pilot")) if (!k %in% names(d)) d[[k]] <- "FALSE"
-    d
-  })() |>
   distinct(session_id, round, case_id, measure, .keep_all = TRUE) |>
   mutate(
     across(c(round, order_in_round, list_size, hour, duration_s, skgif_calls, index_calls, http_404, http_429,
@@ -88,7 +85,7 @@ times <- ok |>
     mean = mean(duration_s), sd = sd(duration_s), cv = sd / mean,
     n_needed_10pct = ceiling((100 * z * sd / (r_pct * mean))^2),
     skgif_calls = median(skgif_calls), index_calls = median(index_calls),
-    # runs from older CSV files have no waiting/busy/memory values: left out of these columns
+    # browsers without the Long Tasks API or performance.memory (not Chrome) leave those columns empty
     api_wait_s = median(api_wait_ms, na.rm = TRUE) / 1000,
     interface_s = round(median(duration_s - api_wait_ms / 1000, na.rm = TRUE), 3),
     api_share = round(median(api_wait_ms / 1000 / duration_s, na.rm = TRUE), 3),
@@ -115,6 +112,26 @@ reliability <- valid |>
     .groups = "drop"
   )
 write_csv(reliability, file.path(out_dir, "reliability_summary.csv"))
+
+# API calls by type: "products?cf.cites [page_size=1]: 10; products/{id}: 1" split into one row per type; a type missing from a run
+# counts 0 in that run. Median, min and max over the runs "ok" of each case and measure.
+run_calls <- ok |>
+  filter(!is.na(calls_by_type), calls_by_type != "") |>
+  select(commit, case_group, case_id, measure, from_click, session_id, round, calls_by_type) |>
+  mutate(part = strsplit(calls_by_type, "; ", fixed = TRUE)) |>
+  unnest(part) |>
+  separate_wider_delim(part, ": ", names = c("call_type", "calls")) |>
+  mutate(calls = as.numeric(calls))
+if (nrow(run_calls)) {
+  calls_by_type <- run_calls |>
+    select(-calls_by_type) |>
+    complete(nesting(commit, case_group, case_id, measure, from_click, session_id, round), call_type, fill = list(calls = 0)) |>
+    group_by(commit, case_group, case_id, measure, from_click, call_type) |>
+    summarise(runs = n(), median_calls = median(calls), min_calls = min(calls), max_calls = max(calls), .groups = "drop") |>
+    filter(max_calls > 0) |>
+    arrange(commit, case_group, case_id, measure, desc(median_calls))
+  write_csv(calls_by_type, file.path(out_dir, "calls_by_type_summary.csv"))
+}
 
 # Kruskal-Wallis tests per case and measure: do the times differ by time slot (morning < 12, afternoon 12-18,
 # evening >= 18), weekday or session? Significant = p_holm < 0.05. Run only with 2+ groups of 3+ runs each.
@@ -205,7 +222,7 @@ split <- times |>
   mutate(case = factor(case_id, levels = levels(ok$case)), api = pmin(api_wait_s, median),
          interface = median - api) |>
   select(commit, case_group, case, measure, Interface = interface, `Waiting for the API` = api) |>
-  tidyr::pivot_longer(c(Interface, `Waiting for the API`), names_to = "part", values_to = "duration_s")
+  pivot_longer(c(Interface, `Waiting for the API`), names_to = "part", values_to = "duration_s")
 if (nrow(split)) {
   save_plot(ggplot(split, aes(x = case, y = duration_s, fill = part)) + geom_col() + coord_flip() +
     facet_wrap(~ commit) +

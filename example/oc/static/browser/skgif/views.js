@@ -45,18 +45,18 @@ Lucinda_view.prototype.skgif_product_link = function (...args) {
   return `<a href="browser.html?value=${_skgifEscape(omid)}">${_skgifEscape(title)}</a>`;
 };
 
-// Like skgif_agents, but only the first 5 + "+N more".
+// Names linking to their page: the first 5 (3 on phones) + "+N more", as in the cards.
 Lucinda_view.prototype.skgif_agents_short = function (...args) {
-  const names = _skgifArray(_lvCell(args[0])).map(agent => _skgifAgentHtml(agent));
+  const names = _skgifArray(_lvCell(args[0])).map(_skgifAgentHtml);
   return `<span>${_skgifShortNames(names, [], 'author')}</span>`;
 };
 
 // Names linking to their page, ORCID in brackets. On phones and tablets a long list shows the first
-// SKGIF_RECORD_NAMES_PHONE names + "+N more" (browser.css shows the full list on desktop screens).
-const SKGIF_RECORD_NAMES_PHONE = 5;
+// SKGIF_RECORD_NAMES_PHONE names + "+N more" (on desktop browser.css shows the full list).
+const SKGIF_RECORD_NAMES_PHONE = 3;
 Lucinda_view.prototype.skgif_agents = function (...args) {
   const names = _skgifArray(_lvCell(args[0])).map(_skgifAgentHtml);
-  if (names.length <= SKGIF_RECORD_NAMES_PHONE + 1) return names.join(' • '); // a single extra name is never hidden
+  if (names.length <= SKGIF_RECORD_NAMES_PHONE) return names.join(' • ');
   const hidden = names.length - SKGIF_RECORD_NAMES_PHONE;
   return `<span class="skgif-names-phone"><span class="skgif-names-short">${names.slice(0, SKGIF_RECORD_NAMES_PHONE).join(' • ')}</span>`
     + `<span class="skgif-names-full" hidden>${names.join(' • ')}</span> `
@@ -69,9 +69,9 @@ Lucinda_view.prototype.skgif_venue = function (...args) {
   return venue ? _skgifVenueHtml(venue.name, venue.omid, venue.identifiers) : '';
 };
 
-// Identifiers with links, DOI first.
+// Identifiers with links and copy icons, DOI first, omid (second argument, optional) last.
 Lucinda_view.prototype.skgif_ids = function (...args) {
-  return _skgifIdList(_lvCell(args[0]), args[1] ? _lvCell(args[1]) : undefined, false, true);
+  return _skgifIdList(_lvCell(args[0]), args[1] ? _lvCell(args[1]) : undefined, true);
 };
 
 // Cards of the first page of a search (entity, total and results from post_skgif_search); the next pages
@@ -89,10 +89,11 @@ Lucinda_view.prototype.skgif_num = function (...args) {
   return _skgifEscape(String(_skgifNum(_lvCell(args[0])) ?? ''));
 };
 
-// ORCID linking to orcid.org.
+// ORCID linking to orcid.org, with its copy icon.
 Lucinda_view.prototype.skgif_orcid = function (...args) {
-  const orcid = _skgifEscape(_lvCell(args[0]) ?? '');
-  return `<a href="https://orcid.org/${orcid}" target="_blank">${orcid} <sup><i class="fas fa-external-link-alt small"></i></sup></a>${_skgifCopyButton(_lvCell(args[0]) ?? '')}`;
+  const value = _lvCell(args[0]) ?? '';
+  const orcid = _skgifEscape(value);
+  return `<span class="text-nowrap"><a href="https://orcid.org/${orcid}" target="_blank">${orcid}</a>${_skgifCopyButton(value)}</span>`;
 };
 
 // Permanent URI of the citation (w3id.org/oc/index/ci/<oci>).
@@ -115,9 +116,7 @@ Lucinda_view.prototype.skgif_ci_title = function (...args) {
   return `<span class="skgif-ci-sentence">${work(citingOmid, citingTitle, citingDate)} <span class="skgif-ci-verb">cites</span> ${work(citedOmid, citedTitle, citedDate)}</span>`;
 };
 
-// "ci/<oci>" taken from the page URL.
+// "ci/<oci>" as written in the page URL.
 Lucinda_view.prototype.skgif_oci = function (...args) {
-  let oci = String(_lvCell(args[0]) ?? '');
-  try { oci = decodeURIComponent(oci); } catch (e) { /* keep as is */ }
-  return `ci/${_skgifEscape(oci.trim().replace(/^oci:/i, ''))}`;
+  return `ci/${_skgifEscape(_skgifDecode(_lvCell(args[0])).trim().replace(/^oci:/i, ''))}`;
 };

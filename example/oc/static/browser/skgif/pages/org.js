@@ -32,7 +32,7 @@ function api_org_record_skgif(...args) {
     const allPublications = _orgList(source, first);
     const filters = _skgifListTools({
       prefix: 'org-pubs', list: allPublications, source, autoLoad: SKGIF_CHART_AUTO_LOAD, noun: 'publication',
-      search: { noun: 'publication', statusNoun: 'publication', scrollId: 'org-pubs', renderCard: _orgCard }
+      search: { scrollId: 'org-pubs', renderCard: _orgCard }
     });
     _skgifListChart(allPublications, { boxId: 'org-chart', noun: 'publication', owner: 'organisation', label: '# Publications',
       buttonText: 'Load all publications',

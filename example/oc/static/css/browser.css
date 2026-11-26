@@ -130,8 +130,11 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
   background-image: linear-gradient(180deg, color-mix(in srgb, var(--theme-highlight) 50%, transparent) 0%, transparent 100%) !important;
   background-size: 100% 4px !important;
 }
-/* links on several lines (e.g. long venue name): underline under every line, as long as the text */
-#__lucinda__ .ra-work-line a {
+/* links on several lines (e.g. long venue, publisher or person name): underline under every line, as long as the text */
+#__lucinda__ .ra-work-line a,
+#__lucinda__ .br-field a,
+#__lucinda__ .card-body > .mb-2 a,
+#__lucinda__ .skgif-person-ids a {
   display: inline !important;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
@@ -250,6 +253,14 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
   padding-bottom: 0.8rem;
   margin-bottom: 0.7rem !important;
   border-bottom: 4px solid var(--theme-primary);
+}
+/* record pages (grey type above the title): the same small white space under the purple line
+   (person, venue, organisation) or under the last line (IDs of the research product, OCI of the citation) */
+#__lucinda__ .card.p-3 > .card-header:has(> p.text-muted) {
+  padding-bottom: 0.6rem !important;
+}
+#__lucinda__ .card.p-3 > .card-header:has(> p.text-muted) > h3 {
+  margin-bottom: 0 !important;
 }
 /* research product/citations/references: one line per item, "..." when too long */
 .skgif-head > div,
@@ -521,12 +532,37 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
 .skgif-dd-btn:disabled {
   opacity: 0.45;
 }
+/* active filter: purple border and text; just set from a chart: a two-second glow (_skgifFlashFilter) */
+.skgif-dd.skgif-dd-set .skgif-dd-btn,
+.skgif-filter-toggle.skgif-filter-on {
+  border-color: var(--theme-primary);
+  color: var(--theme-primary);
+}
+.skgif-dd.skgif-flash .skgif-dd-btn,
+.skgif-filter-toggle.skgif-flash {
+  animation: skgif-flash 2s ease-out;
+}
+@keyframes skgif-flash {
+  0%, 25% {
+    background: color-mix(in srgb, var(--theme-primary) 10%, var(--theme-surface));
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-primary) 22%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skgif-dd.skgif-flash .skgif-dd-btn,
+  .skgif-filter-toggle.skgif-flash {
+    animation: none;
+  }
+}
 .skgif-dd-menu {
   display: block;
   visibility: hidden;
   opacity: 0;
   transform: translateY(6px);
-  transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s;
+  transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s, display 0.3s allow-discrete;
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
@@ -573,11 +609,15 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
 .skgif-filter-venue .skgif-dd-item {
   white-space: normal;
 }
-/* phones and tablets: closed menu removed from the layout; even invisible, a wide one (Venue)
-   made the page wider than the screen */
-@media (max-width: 991.98px) {
-  .skgif-dd:not(.open) .skgif-dd-menu {
-    display: none;
+/* closed menu removed from the layout: even invisible, a wide one (Venue) near the right edge made the page
+   wider than the screen. The fade still works when it opens (@starting-style; older browsers: no fade) */
+.skgif-dd:not(.open) .skgif-dd-menu {
+  display: none;
+}
+@starting-style {
+  .skgif-dd.open .skgif-dd-menu {
+    opacity: 0;
+    transform: translateY(6px);
   }
 }
 /* check mark */
@@ -640,7 +680,6 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
 }
 /* year and role badges */
 .ra-year-badge,
-.ra-id-badge,
 .ra-role-badge {
   font-family: var(--theme-sans);
   font-size: 0.85rem;
@@ -713,7 +752,7 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
 #search-results-container > span {
   display: contents;
 }
-#search-results-container:has(> .col-12 > .card, > span > .col-12 > .card, > span > .col-12 > .skgif-empty) {
+#search-results-container:has(> .col-12 > .card, > span > .col-12 > .card, > span > .col-12 > .skgif-empty, > .col-12 > p.fst-italic, > span > .col-12 > p.fst-italic) {
   background: var(--theme-surface);
   box-shadow: var(--theme-shadow);
   border-radius: 6px;
@@ -721,6 +760,21 @@ h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
   padding: 0.25rem 0 0;
 }
 /* same id for the publications of the person record, which are already inside a card */
+/* a single message instead of the results (e.g. "No persons found for orcid: ..."): in the same white box, with the
+   inner space of the no-results suggestions (.skgif-empty) */
+#search-results-container:not(.card *) > .col-12 > p.fst-italic,
+#search-results-container:not(.card *) > span > .col-12 > p.fst-italic {
+  margin: 0;
+  padding: 1.25rem 1.75rem;
+}
+/* "Service unavailable" instead of the results: same edges as the white box (no box around the red one) */
+#search-results-container:has(> .col-12 > .skgif-unavailable, > span > .col-12 > .skgif-unavailable) {
+  margin: 0 0.95rem 1.5rem !important;
+}
+#search-results-container > .col-12:has(> .skgif-unavailable),
+#search-results-container > span > .col-12:has(> .skgif-unavailable) {
+  padding: 0;
+}
 .card #search-results-container {
   background: transparent !important;
   box-shadow: none !important;
@@ -1114,6 +1168,19 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
   .ra-work-title, .ra-work-title a, .ra-work .card-body {
     overflow-wrap: anywhere;
   }
+  /* record fields: the copy icon follows the last characters of its ID (a long ID wraps inside); after the
+     " • " separator, the next ID starts on a new line */
+  #__lucinda__ .br-field .text-nowrap:has(> .skgif-copy) {
+    font-size: 0.88em; /* IDs a little smaller than names, as in the cards */
+  }
+  #__lucinda__ .br-field .text-nowrap:has(> .skgif-copy) + .text-nowrap:has(> .skgif-copy)::before {
+    content: "\A";
+    white-space: pre;
+  }
+  #__lucinda__ .br-field a {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
   /* smaller footer and logo */
   body > footer {
     margin: 1em;
@@ -1180,36 +1247,92 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
 .skgif-export .skgif-action-btn {
   padding: 0.2rem 0.6rem !important;
 }
-/* Top venues of the person record: name on the left, number on the right, click = filter */
-.skgif-top-list {
-  padding-left: 1.4rem;
+/* person record charts: when the three tabs do not fit on one line (box narrower than about 680 px: phones,
+   tablets, small PC screens), each label goes on two lines ("Publications / per year") */
+#ra-charts > .card {
+  container-type: inline-size;
 }
-.skgif-top-list li + li {
-  border-top: 1px solid var(--theme-line);
+@container (max-width: 680px) {
+  #ra-charts .br-tab-sub {
+    display: block;
+  }
+  #ra-charts .br-tab {
+    line-height: 1.25;
+  }
 }
-.skgif-top-item {
+/* very narrow screens (320 px phones): three "Publications" labels and the fold arrow fit only with smaller
+   padding and text; otherwise the tab row is wider than the screen and the whole page is zoomed out */
+@container (max-width: 340px) {
+  #ra-charts .br-tab {
+    padding-left: 0.3rem;
+    padding-right: 0.3rem;
+    font-size: 0.8rem;
+  }
+}
+@container (max-width: 300px) { /* folded phones (280 px) */
+  #ra-charts .br-tab {
+    padding-left: 0.2rem;
+    padding-right: 0.2rem;
+    font-size: 0.72rem;
+  }
+}
+/* "Publications per venue" tab of the person record: one horizontal bar per venue, name above the bar,
+   number at its end; click = Publication venue filter. Same width and colours as the per-year charts */
+.skgif-venue-chart {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+}
+.skgif-venue-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.skgif-venue-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
   width: 100%;
   border: none;
   background: none;
-  padding: 0.45rem 0;
+  padding: 0;
   text-align: left;
   color: var(--theme-title);
+  font-size: 0.9rem;
 }
-@media (hover: hover) {
-  .skgif-top-item:hover .skgif-top-name {
-    color: var(--theme-primary);
-  }
-}
-.skgif-top-name {
+.skgif-venue-bar-name {
+  font-family: var(--theme-serif);
   font-style: italic;
 }
-.skgif-top-count {
-  flex-shrink: 0;
-  font-size: 0.85rem;
+.skgif-venue-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.skgif-venue-bar-fill {
+  flex: none;
+  height: 12px;
+  border-radius: 0 2px 2px 0;
+  background: var(--theme-primary);
+}
+.skgif-venue-bar-n {
+  font-size: 0.8rem;
   color: var(--theme-muted);
+}
+.skgif-venue-bar:focus-visible {
+  outline: 2px solid var(--theme-primary);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .skgif-venue-bar:hover .skgif-venue-bar-name {
+    color: var(--theme-primary);
+  }
+  .skgif-venue-bar:hover .skgif-venue-bar-fill {
+    background: var(--theme-secondary);   /* as the bars of the per-year charts */
+  }
 }
 
 /* "year · role · venue" line of the cards, phones only */
@@ -1269,15 +1392,11 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
   }
 }
 
-/* "Home" link above the first box aligned with the boxes and the logo (the arrow icon needs Font Awesome,
-   which browser.html does not load) */
+/* "Home" link above the first box, aligned with the boxes and the logo */
 @media (min-width: 576px) {
   #__lucinda__ > .mb-3 > a[href="home.html"] {
     margin-left: 15px;
     padding-left: 0 !important;
-  }
-  #__lucinda__ > .mb-3 > a[href="home.html"] > i {
-    display: none;
   }
 }
 
@@ -1560,10 +1679,6 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
   #__lucinda__ .skgif-count-seg.skgif-count-seg-tall {
     min-height: calc(3.125rem + 1.2 * min(1.3rem + 0.6vw, 1.75rem) + 2px); /* body py-2 */
   }
-  /* one box only: as wide as its content */
-  #__lucinda__ .skgif-count-seg:not(.skgif-count-seg-full):not(.ci-overlap-boxes) {
-    align-self: flex-start;
-  }
   #__lucinda__ .skgif-count-seg > * {
     width: auto;
     max-width: none;
@@ -1628,18 +1743,33 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
     content: " ›";
     color: var(--theme-primary);
   }
-  /* narrow column (Person Overview): name above the number, so the name and its arrow stay on one line */
-  #__lucinda__ .card .skgif-count-seg-stack .card {
+  /* record counters (Citation metrics, References / Citations, Publications / Citations, Publications): number on top,
+     name below, centred in each part of the frame; a single counter takes the whole width. Citation overlap keeps
+     number and name side by side (it also has a description line) */
+  #__lucinda__ .skgif-count-seg:not(.ci-overlap-boxes) {
+    align-self: stretch;
+  }
+  #__lucinda__ .skgif-count-seg:not(.ci-overlap-boxes) > * {
+    flex: 1 1 0 !important;
+  }
+  #__lucinda__ .card .skgif-count-seg:not(.ci-overlap-boxes) .card {
     grid-template-columns: auto;
+    justify-content: center;
+    justify-items: center;
+    row-gap: 0.2rem;
+    padding: 0.7rem 1rem;
   }
-  #__lucinda__ .card .skgif-count-seg-stack .card > .card-header {
-    grid-column: 1;
-    grid-row: 1;
-    white-space: nowrap;
-  }
-  #__lucinda__ .card .skgif-count-seg-stack .skgif-count-number {
+  #__lucinda__ .card .skgif-count-seg:not(.ci-overlap-boxes) .card > .card-header {
     grid-column: 1;
     grid-row: 2;
+    text-align: center !important;
+    white-space: nowrap;
+  }
+  #__lucinda__ .card .skgif-count-seg:not(.ci-overlap-boxes) .skgif-count-number {
+    grid-column: 1;
+    grid-row: 1;
+    font-size: 1.75rem;
+    line-height: 1.1;
   }
 }
 
@@ -1682,7 +1812,8 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
   .ra-line-counts > span {
     white-space: nowrap;
   }
-  /* tabs (person record charts, References/Citations): on one line on phones too */
+  /* tabs (person record charts, References/Citations): on one line on phones too; on very narrow screens
+     a long label goes on two lines instead of making the page wider than the screen */
   .br-tabs {
     flex-wrap: nowrap;
     gap: 0;
@@ -1691,7 +1822,7 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
   .br-tab {
     padding: 0.75rem 0.6rem;
     font-size: 0.9rem;
-    white-space: nowrap;
+    min-width: 0;
   }
   /* filters, Sort by and Export in a two-column grid, label above the menu
      (Type | Year, Venue | Role, Sort by | Export); the other items of the row (note, Load all, Show) full width */
@@ -1739,7 +1870,7 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
     padding: 1rem 1rem 0.5rem;
   }
   /* lilac sides reduced to a minimum on every page (record pages and searches) */
-  #search-results-container:has(> .col-12 > .card, > span > .col-12 > .card, > span > .col-12 > .skgif-empty) {
+  #search-results-container:has(> .col-12 > .card, > span > .col-12 > .card, > span > .col-12 > .skgif-empty, > .col-12 > p.fst-italic, > span > .col-12 > p.fst-italic) {
     margin: 0 6px 1.5rem !important;
   }
   #__lucinda__ .row:not(.card .row):not(#search-results-container) {
@@ -2023,9 +2154,6 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
     background: none !important;
     box-shadow: none !important;
   }
-  #__lucinda__ > .mb-3 > a[href="home.html"] > i {
-    display: none;
-  }
   #__lucinda__ > .mb-3 > a[href="home.html"]::before {
     content: "‹\00a0";
   }
@@ -2277,6 +2405,13 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
     gap: 0.75rem;
     padding: 1rem;
   }
+  #search-results-container:not(.card *) > .col-12 > p.fst-italic,
+  #search-results-container:not(.card *) > span > .col-12 > p.fst-italic {
+    padding: 1rem;
+  }
+  #search-results-container:has(> .col-12 > .skgif-unavailable, > span > .col-12 > .skgif-unavailable) {
+    margin: 0 6px 1.5rem !important;
+  }
   .skgif-empty .skgif-empty-links > span {
     flex-basis: 100%; /* label on its own line, pills below */
   }
@@ -2348,14 +2483,11 @@ html.skgif-id-pending #__lucinda__ > .skgif-id-loading {
   #__lucinda__ .br-grid > span:nth-child(-n+2) .br-field:not(.br-wide) {
     grid-column: 1 / -1;
   }
-  /* IDs of the publication venue on their own line under its name, without brackets (a long first ID left
-     the "(" alone at the end of the line) */
+  /* IDs of the publication venue in brackets on their own line under its name (after the name, a long first
+     ID left the "(" alone at the end of the line) */
   #__lucinda__ .br-field .skgif-venue-ids {
     display: block;
     margin-top: 0.2rem;
-  }
-  #__lucinda__ .br-field .skgif-venue-paren {
-    display: none;
   }
   #__lucinda__ .card-body > hr:has(+ .br-grid) {
     display: none;

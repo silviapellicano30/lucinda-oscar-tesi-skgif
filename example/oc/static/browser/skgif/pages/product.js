@@ -1,6 +1,9 @@
 // Research product record (product_record): metadata from /products/<omid> (Lucinda); References/Citations in pages
 // of 50, chart, filters, Sort by.
 
+// Automatic download of References/Citations up to this number each; above it with the button (everything, no limit).
+const SKGIF_PRODUCT_AUTO_LOAD = 250; // 250 citations + 250 references = same load as SKGIF_CHART_AUTO_LOAD
+
 // #callfun: Lucinda has already set data and counts; this shows the record, the lists and the chart.
 function api_product_record_skgif(...args) {
   if (!_lucindaValue('product_meta', 'found')) return; // missing research product or failed call: Lucinda has already written the message
@@ -27,12 +30,12 @@ function api_product_record_skgif(...args) {
   // First page from Lucinda; automatic downloads one after the other, citations first.
   const tools = (kind, list, source) => _skgifListTools({
     prefix: `br-${kind}`, list, source, autoLoad: SKGIF_PRODUCT_AUTO_LOAD, noun: kind === 'refs' ? 'reference' : 'citation',
-    search: { noun: kind === 'refs' ? 'reference' : 'citation', statusNoun: kind === 'refs' ? 'reference' : 'citation', scrollId: 'br-lists', renderCard: cardOf(kind) }
+    search: { scrollId: 'br-lists', renderCard: cardOf(kind) }
   });
   const citsLoaded = skgifFirstPage(citsSource, SKGIF_DEFAULT_PAGE_SIZE).then(citsPage => {
     const cits = _brList('cits', citsSource, citsPage, cardOf('cits'));
     const filters = tools('cits', cits, citsSource);
-    _skgifListChart(cits, { boxId: 'br-cits-chart', noun: 'citation', owner: 'document', label: '# Citations',
+    _skgifListChart(cits, { boxId: 'br-cits-chart', noun: 'citation', owner: 'research product', label: '# Citations',
       autoLoad: SKGIF_PRODUCT_AUTO_LOAD, buttonText: 'Load all citations',
       buttonNote: 'Load them all to see the chart and to sort and filter the list.', // below the threshold all citations are downloaded, above it the button is needed
       onYear: year => { // click on a year: the citations of that year
@@ -49,10 +52,7 @@ function api_product_record_skgif(...args) {
   });
 }
 
-// Research product record threshold: automatic download up to this number, above it with the button (everything, no limit).
-const SKGIF_PRODUCT_AUTO_LOAD = 250; // 250 citations + 250 references = same load as SKGIF_CHART_AUTO_LOAD
-
-// #postprocess of product_meta: one row of data ("" = hidden field).
+// Lucinda #postprocess for product_meta: one row of data ("" = hidden field).
 function post_skgif_product(res, id) {
   const header = ['found', 'message', 'omid', 'title', 'head_line', 'head_meta', 'authors', 'editors', 'publisher',
     'date', 'type', 'volume', 'issue', 'pages', 'venue', 'ids'];
@@ -62,8 +62,7 @@ function post_skgif_product(res, id) {
     const message = product ? `No record with OMID ${omid} was found.` : SKGIF_UNAVAILABLE_MESSAGE;
     return [header, ['', message, omid, '', '', '', [], [], [], '', '', '', '', '', '', []]];
   }
-  const manifestation = _skgifArray(product.manifestations)[0] || {};
-  const biblio = manifestation.biblio || {};
+  const biblio = (_skgifArray(product.manifestations)[0] || {}).biblio || {};
   const head = _skgifHeaderText(product, omid);
   const agents = role => _skgifRecordAgents(product, role);
   return [header, [
@@ -77,7 +76,7 @@ function post_skgif_product(res, id) {
     agents('editor'),
     agents('publisher'),
     String(_skgifProductRawDate(product) || '').slice(0, 10),
-    manifestation.type?.labels?.en || '',
+    _skgifProductRawType(product),
     biblio.volume || '',
     biblio.issue || '',
     _skgifPageRange(biblio, '-'),
@@ -87,7 +86,7 @@ function post_skgif_product(res, id) {
 }
 
 // References ('refs') or Citations ('cits') list of the research product record.
-function _brList(kind, source, first, renderCard = _skgifProductCard) {
+function _brList(kind, source, first, renderCard) {
   const noun = kind === 'refs' ? 'reference' : 'citation';
   return _skgifPagedList({
     prefix: `br-${kind}`, source, first, noun,

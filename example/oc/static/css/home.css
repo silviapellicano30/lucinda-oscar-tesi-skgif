@@ -108,7 +108,8 @@ html body {
   font-size: .78rem;
   font-weight: 600;
   text-transform: uppercase;
-  color: var(--theme-placeholder);
+  letter-spacing: 1px;
+  color: var(--theme-muted);
 }
 
 /* Search button: spaced capitals, light blue hover */
@@ -352,7 +353,10 @@ html body {
 /* phones and tablets (below 992px): fields one under the other (in a row they were too narrow on tablets) */
 @media (max-width: 991.98px) {
   .oc-search-row { flex-direction: column; align-items: stretch; }
-  .oc-or { height: auto; justify-content: center; }
+  /* "or" between two thin lines, same space above and below */
+  .oc-or { height: auto; justify-content: center; gap: 12px; margin: 6px 0; }
+  .oc-or::before,
+  .oc-or::after { content: ""; flex: 1 1 0; height: 1px; background: var(--theme-line-strong); }
   .oc-search-row .oc-refine { flex: none; }
   /* no reserved spaces (Type filter, ID panel of Citation): on phones they left gaps between the fields */
 }

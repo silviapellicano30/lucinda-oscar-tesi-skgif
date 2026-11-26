@@ -21,7 +21,7 @@ function _skgifScrollToList(el) {
 function _skgifSetNote(id, text, loading = false) {
   const note = document.getElementById(id);
   if (!note) return;
-  if (loading) note.innerHTML = _skgifEscape(text).replace('…', '<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>');
+  if (loading) note.innerHTML = _skgifEscape(text).replace('…', SKGIF_LOADING_DOTS);
   else note.textContent = text;
   note.classList.toggle('skgif-loading-note', loading);
   note.classList.toggle('text-muted', !loading);
@@ -32,6 +32,12 @@ function _skgifSetNote(id, text, loading = false) {
 // Keeps the height of the list while it loads, so the page does not jump.
 function _skgifHoldHeight(container) {
   if (container && !container.style.minHeight) container.style.minHeight = `${container.offsetHeight}px`;
+}
+
+// Loading text with a progress bar under it (charts); fraction from 0 to 1.
+function _skgifProgressHtml(text, fraction) {
+  return `<div class="mb-2 skgif-loading-note">${text}</div>
+    <div class="progress br-chart-progress" style="height: 6px; width: 100%;"><div class="progress-bar" style="width: ${Math.round(fraction * 100)}%"></div></div>`;
 }
 
 // Status text of a list and its progress bar (null = hidden).
@@ -59,6 +65,8 @@ const SKGIF_LIST_PARALLEL = 4;
 const SKGIF_CHART_AUTO_LOAD = 500;
 // Results per page chosen with "Show [N] entries", for each list.
 const _skgifPageSizes = {};
+// Paginator of each list container ({ goToPage, refresh }), used by the pagination bar and "Show [N] entries".
+const _skgifPaginators = {};
 
 // Paged list: downloads pages of 50 and shows 10/20/50/100; loadAll() downloads everything (chart, filters, Sort by).
 function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText, scrollId, renderCard, showTotal = true }) {
@@ -78,6 +86,10 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
   let all = null; // only the results received so far
   let loading = null;
   let page = 1;
+  let order = 'default';
+  let keep = null; // filter: function on the product, null = none
+  let term = ''; // words searched in the titles
+  let fullStatus = ''; // status of the whole list, once downloaded
   const pageSize = () => _skgifPageSizes[containerId] || SKGIF_DEFAULT_PAGE_SIZE;
 
   const paginator = { goToPage: p => show(p, true), refresh: () => show(1, true) };
@@ -123,7 +135,7 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
     _skgifTogglePerPage(prefix, first ? (ordered || inOrder || { length: total }).length : 0);
     if (!first || !total) container.style.minHeight = '';
     if (!first) return void (container.innerHTML = _skgifUnavailableHtml());
-    if (!total) return void (container.innerHTML = emptyMessage ? `<div class="col-12"><p class="fst-italic text-muted">${_skgifEscape(emptyMessage)}</p></div>` : '');
+    if (!total) return void (container.innerHTML = emptyMessage ? _skgifMessageHtml(_skgifEscape(emptyMessage)) : '');
     if (scroll) _skgifScrollToList(document.getElementById(scrollId));
     const render = items => {
       container.style.minHeight = '';
@@ -170,10 +182,6 @@ function _skgifPagedList({ prefix, source, first, emptyMessage, noun, statusText
   }
 
   // Applies sorting, filters and title search (only after loadAll()).
-  let order = 'default';
-  let keep = null; // filter: function on the product, null = none
-  let term = ''; // words searched in the titles
-  let fullStatus = '';
   function arrange() {
     if (!inOrder) return 0;
     const base = keep || term ? all.filter(p => (!keep || keep(p)) && (!term || _skgifTitleHas(p, term)))
@@ -236,8 +244,7 @@ function _skgifListChart(list, { boxId, noun, owner, label, autoLoad = SKGIF_CHA
     drawing = true;
     box.innerHTML = `<div class="mb-2">Loading ${noun}s…</div>`;
     list.onProgress((loaded, total) => {
-      box.innerHTML = `<div class="mb-2 skgif-loading-note">Loading ${noun}s<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span> ${_skgifNum(loaded)}/${_skgifNum(total)}</div>
-        <div class="progress br-chart-progress" style="height: 6px; width: 100%;"><div class="progress-bar" style="width: ${Math.round(loaded / total * 100)}%"></div></div>`;
+      box.innerHTML = _skgifProgressHtml(`Loading ${noun}s${SKGIF_LOADING_DOTS} ${_skgifNum(loaded)}/${_skgifNum(total)}`, loaded / total);
     });
     list.loadAll().then(() => {
       _skgifYearChart(box, list.items().map(_skgifProductRawDate), label, `No ${noun}s found.`, 200, onYear);
@@ -254,7 +261,7 @@ function _skgifListChart(list, { boxId, noun, owner, label, autoLoad = SKGIF_CHA
 
 // "Show [N] entries" menu (10, 20, 50, 100), hidden when one page is enough.
 const SKGIF_PER_PAGE = [10, 20, 50, 100];
-// Searches and Go to pages: one page = one call, and the API returns at most 50 results.
+// Searches: one page = one call, and the API returns at most 50 results.
 const SKGIF_SEARCH_PER_PAGE = [10, 20, 50];
 // Creates the "Show [N] entries" menu of a list (only when it has more than one page).
 function _skgifInitPerPage(prefix, list, containerId = `${prefix}-list`, sizes = SKGIF_PER_PAGE) {
@@ -277,6 +284,7 @@ function _skgifTogglePerPage(prefix, count) {
 }
 
 // Tools of a list: filters, Sort by, Show, Search in titles, "Load all" (filters and Sort by once the list is complete).
+// search = { scrollId, renderCard } of the lists built by "Search in titles".
 function _skgifListTools({ prefix, list, source, autoLoad, noun, search }) {
   const tools = document.getElementById(`${prefix}-tools`);
   const load = document.getElementById(`${prefix}-load`);
@@ -320,7 +328,7 @@ function _skgifListTools({ prefix, list, source, autoLoad, noun, search }) {
   const exportControl = _skgifExportControl(() => list.shown(), `${noun}s`, false);
   tools?.appendChild(exportControl);
   if (loadable) list.onLoaded(() => exportControl.querySelectorAll('button').forEach(b => { b.disabled = false; }));
-  _skgifListSearch(prefix, source, list, search, filters, searching => {
+  _skgifListSearch(prefix, source, list, { noun, ...search }, filters, searching => {
     state.searching = searching;
     update();
   });
@@ -328,7 +336,7 @@ function _skgifListTools({ prefix, list, source, autoLoad, noun, search }) {
 }
 
 // "Search in titles": local when the whole list is downloaded, otherwise cf.search.title.
-function _skgifListSearch(prefix, source, list, { noun, statusNoun, scrollId, renderCard }, filters, onSearching) {
+function _skgifListSearch(prefix, source, list, { noun, scrollId, renderCard }, filters, onSearching) {
   const form = document.getElementById(`${prefix}-search`);
   const input = document.getElementById(`${prefix}-search-input`);
   const reset = document.getElementById(`${prefix}-search-reset`);
@@ -387,7 +395,7 @@ function _skgifListSearch(prefix, source, list, { noun, statusNoun, scrollId, re
         prefix, source: searchSource, first, noun, scrollId, renderCard,
         showTotal: false, // the total stays the one of the whole list
         emptyMessage: '',
-        statusText: n => `${_skgifPlural(n, statusNoun)} with “${term}” in the title`
+        statusText: n => `${_skgifPlural(n, noun)} with “${term}” in the title`
       });
     });
   });
@@ -476,135 +484,51 @@ function _skgifMissingCard(noun) {
   return `<div class="col-12 mb-2"><div class="card shadow-sm"><div class="card-body text-muted">1 ${noun} could not be loaded.</div></div></div>`;
 }
 
-const _skgifPaginators = {};
+// Results of a search: the first page is built by Lucinda (firstPageShown adds the pagination bar), the next pages
+// here, one call each (page size = "Show [N] entries"). renderItem = card of a result; rankItems = optional reordering
+// of the results of a page.
+function skgifPaginatedSearch({ source, renderItem, rankItems = items => items }) {
+  const containerId = 'search-results-container';
+  let pageSize = _skgifPageSizes[containerId] || SKGIF_DEFAULT_PAGE_SIZE;
+  let total = null; // number of results, read from the first response
 
-/*
-Options of skgifPaginatedSearch():
-  sources        - SKG-IF search URLs without page/page_size; several sources are
-                   shown as a single list, one after the other
-  renderItem     - function building the HTML of a card
-  rankItems      - (optional) reorders the results of a page
-  emptyMessage   - (optional) text shown when there are no results
-  pageSize       - (optional) results per page (then "Show [N] entries")
-  containerId    - (optional) where to put the cards
-  totalCountId   - (optional) where to write the total
-  dedupeKey      - (optional) key used to remove duplicates
-*/
-function skgifPaginatedSearch(config) {
-  const containerId = config.containerId || 'search-results-container';
-  const totalCountId = config.totalCountId || 'search-total-count';
-  const dedupeKey = config.dedupeKey || (item => item.local_identifier || JSON.stringify(item));
-  let pageSize = _skgifPageSizes[containerId] || config.pageSize || SKGIF_DEFAULT_PAGE_SIZE; // changes with "Show [N] entries"
-  const sources = config.sources || [];
-  let sourceTotals = null; // total of each source
-  let listedTotal = 0; // sum of the totals of the sources
-
-  const pageUrl = (src, apiPage) => `${src}&page=${apiPage}&page_size=${pageSize}`; // URL of a page
-
-  // Downloads several pages; fails if one fails (so it does not look like an empty page).
-  const fetchAll = urls => Promise.all(urls.map(skgifFetch)).then(responses => {
-    if (responses.some(r => !r)) throw new Error('The API did not answer.');
-    return responses;
+  // Results of a page; fails when the API does not answer, so that it does not look like an empty page.
+  const itemsForPage = page => skgifFetch(`${source}&page=${page}&page_size=${pageSize}`).then(data => {
+    if (!data) throw new Error('The API did not answer.');
+    if (total === null) total = skgifTotal(data);
+    return _skgifArray(data['@graph']);
   });
-
-  // Writes the total in the title and shows the page.
-  function showCount() {
-    _skgifFallbackCount(totalCountId, listedTotal);
-    skgifReleasePage();
-  }
-
-  // Reads the total of each source from its first page.
-  function loadTotals() {
-    if (sourceTotals) return Promise.resolve();
-    return fetchAll(sources.map(src => pageUrl(src, 1))).then(responses => {
-      sourceTotals = responses.map(skgifTotal);
-      listedTotal = sourceTotals.reduce((a, b) => a + b, 0);
-    });
-  }
-
-  // Computes which results to show in the page, even across two sources.
-  function itemsForPage(page) {
-    const start = (page - 1) * pageSize;
-    const end = start + pageSize;
-    const parts = [];
-    let offset = 0;
-    sources.forEach((src, i) => {
-      const total = sourceTotals[i];
-      const from = Math.max(start, offset) - offset;
-      const to = Math.min(end, offset + total) - offset;
-      offset += total;
-      if (from >= to) return;
-      const firstApiPage = Math.floor(from / pageSize) + 1;
-      const lastApiPage = Math.floor((to - 1) / pageSize) + 1;
-      const urls = [];
-      for (let p = firstApiPage; p <= lastApiPage; p++) urls.push(pageUrl(src, p));
-      const pages = fetchAll(urls).then(responses => responses.flatMap(r => _skgifArray(r["@graph"])));
-      parts.push(pages.then(items => {
-        const skip = from - (firstApiPage - 1) * pageSize;
-        return items.slice(skip, skip + (to - from)); 
-      }));
-    });
-    return Promise.all(parts).then(lists => lists.flat());
-  }
+  const pageCount = () => Math.max(1, Math.ceil(total / pageSize));
+  const preloadNext = page => { if (page * pageSize < total) itemsForPage(page + 1).catch(() => {}); }; // Next is faster
 
   function fetchPage(page) {
     const container = document.getElementById(containerId);
-    if (container) {
-      _skgifHoldHeight(container); // the list keeps its height during "Loading": the page does not jump
-      container.innerHTML = SKGIF_LOADING_HTML;
-    }
-
-    loadTotals()
-      .then(() => itemsForPage(page))
-      .then(pageItems => {
-        const seen = new Set();
-        const items = pageItems.filter(item => {
-          const key = dedupeKey(item); // removes the duplicates of the page
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-        const ranked = config.rankItems ? config.rankItems(items) : items;
+    if (!container) return;
+    _skgifHoldHeight(container); // the list keeps its height during "Loading": the page does not jump
+    container.innerHTML = SKGIF_LOADING_HTML;
+    itemsForPage(page)
+      .then(items => {
+        const ranked = rankItems(_skgifDedupe(items));
         return _skgifWithFirstCounts({ items: ranked }).then(() => ranked); // first cards with their citation count
       })
-      .then(ranked => {
-        if (container) container.style.minHeight = '';
-        _render(container, ranked, page, listedTotal);
-        showCount();
-        if (page === 1) _skgifInitPerPage('search', { failed: false, total: listedTotal }, containerId, SKGIF_SEARCH_PER_PAGE);
-        // Preloads the next page, so Next is faster.
-        if (page * pageSize < listedTotal) itemsForPage(page + 1).catch(() => {});
+      .then(items => {
+        container.style.minHeight = '';
+        container.innerHTML = items.length
+          ? items.map(item => renderItem(item)).join('') + _skgifPaginationBar(containerId, page, pageCount())
+          : _skgifMessageHtml('No results found.');
+        _skgifFallbackCount('search-total-count', total);
+        preloadNext(page);
       })
       .catch(error => {
-        console.error("SKG-IF search failed:", error);
-        if (container) container.style.minHeight = '';
-        if (container) container.innerHTML = _skgifUnavailableHtml(true); // searches: hint about long queries
-        skgifReleasePage(); // the search failed
+        console.error('SKG-IF search failed:', error);
+        container.style.minHeight = '';
+        container.innerHTML = _skgifUnavailableHtml(true); // searches: hint about long queries
       });
-  }
-
-  function _render(container, items, page, totalItems) { // number of pages
-    if (!container) return;
-
-    if (items.length === 0) {
-      _skgifShowMessage(config.emptyMessage || 'No results found.', containerId);
-      return;
-    }
-
-    // The container is already a .row: the cards go directly inside.
-    let html = items.map(config.renderItem).join('');
-
-    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-    html += _skgifPaginationBar(containerId, page, totalPages);
-
-    container.innerHTML = html; // cards + pagination bar
-
   }
 
   // Changing page scrolls back to the top of the results.
   function goToPage(page) {
-    const countEl = document.getElementById(totalCountId);
-    const target = (countEl && countEl.closest('.card')) || document.getElementById(containerId);
+    const target = document.getElementById('search-total-count')?.closest('.card') || document.getElementById(containerId);
     if (target) {
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
@@ -620,25 +544,20 @@ function skgifPaginatedSearch(config) {
     fetchPage(1);
   };
   _skgifPaginators[containerId] = { goToPage, refresh };
+
   return {
-    // The search keeps the "Loading" banner until the total and the first results arrive.
-    search: () => {
-      skgifHoldPage();
-      fetchPage(1);
-    },
-    // First page already built by Lucinda (`items` = its results): keeps the banner until the first
-    // citation counts arrive (as fetchPage does), then adds the pagination bar and "Show [N] entries".
+    // First page already shown by Lucinda (`items` = its results): keeps the "Loading" banner until the first
+    // citation counts arrive, then adds the pagination bar and "Show [N] entries".
     firstPageShown: items => {
       skgifHoldPage();
       _skgifWithFirstCounts({ items })
-        .then(loadTotals)
+        .then(() => itemsForPage(1)) // same URL as Lucinda: read from its cache
         .then(() => {
-          const container = document.getElementById(containerId);
-          if (container) container.insertAdjacentHTML('beforeend', _skgifPaginationBar(containerId, 1, Math.max(1, Math.ceil(listedTotal / pageSize))));
-          _skgifInitPerPage('search', { failed: false, total: listedTotal }, containerId, SKGIF_SEARCH_PER_PAGE);
-          if (pageSize < listedTotal) itemsForPage(2).catch(() => {}); // preloads the next page, so Next is faster
+          document.getElementById(containerId)?.insertAdjacentHTML('beforeend', _skgifPaginationBar(containerId, 1, pageCount()));
+          _skgifInitPerPage('search', { failed: false, total }, containerId, SKGIF_SEARCH_PER_PAGE);
+          preloadNext(1);
         })
-        .catch(error => console.error("SKG-IF search failed:", error))
+        .catch(error => console.error('SKG-IF search failed:', error))
         .finally(skgifReleasePage);
     }
   };
@@ -714,7 +633,8 @@ function _skgifDedupe(products) {
   });
 }
 
-// "Back to top" button, visible when the user has scrolled past the top of the list listId.
+// List toolbar: "Sort by" as a dropdown menu and the "Back to top" button, visible once the user has scrolled
+// past the top of the list listId.
 function _skgifInitListUi(listId) {
   document.querySelectorAll('.ra-sort').forEach(_skgifSortAsDropdown); // "Sort by" as a dropdown menu
   const top = document.getElementById('ra-top');

@@ -8,7 +8,7 @@
 
     <div class="mb-3">
       <a href="home.html" class="btn  btn-sm">
-        <i class="fas fa-arrow-left"></i> Home
+        Home
       </a>
     </div>
 
@@ -48,7 +48,7 @@
             <div class="br-field mb-4 d-none" id="ra-active-field"><span class="br-label">Years active</span><span id="ra-active"></span></div>
 
             <!-- Publications (Lucinda) and Citations (sum of the SKG-IF totals of each publication, _loadPersonCitations) -->
-            <div class="d-flex flex-wrap gap-3 skgif-count-seg skgif-count-seg-full skgif-count-seg-stack">
+            <div class="d-flex flex-wrap gap-3 skgif-count-seg skgif-count-seg-full">
               <div class="card shadow-sm ra-count-box skgif-count-link flex-fill" role="button" tabindex="0" data-skgif-goto="ra-pubs">
                 <div class="card-header text-center py-1"><span class="fw-bold small">Publications</span></div>
                 <div class="card-body text-center py-1"><h3 class="my-1 skgif-count-number" id="search-total-count">[[Lucinda:skgif_num(person_products.total)]]</h3></div>
@@ -64,13 +64,16 @@
         </div>
       </div>
 
-      <!-- Per-year charts in two tabs: "Publications per year" (once all publications have arrived) and
-           "Citations per year" (Index, one call per publication, _loadPersonCitations) -->
+      <!-- Charts in three tabs: "Publications per year" (once all publications have arrived), "Citations per year"
+           (Index, one call per publication, _loadPersonCitations) and "Publications per venue" (the venues where the
+           person publishes most, from the downloaded publications; shown once they have arrived, _raTopVenues).
+           On phones the second part of each label ("per year") goes on its own line (.br-tab-sub) -->
       <div class="col-12 col-lg-8 mb-4" id="ra-charts">
         <div class="card shadow-sm skgif-fold h-100">
           <div class="card-header br-tabs justify-content-center" role="tablist">
-            <button type="button" class="br-tab active" role="tab" aria-selected="true" data-br-tab="ra-pubyear">Publications per year</button>
-            <button type="button" class="br-tab" role="tab" aria-selected="false" data-br-tab="ra-cityear">Citations per year</button>
+            <button type="button" class="br-tab active" role="tab" aria-selected="true" data-br-tab="ra-pubyear">Publications <span class="br-tab-sub">per year</span></button>
+            <button type="button" class="br-tab" role="tab" aria-selected="false" data-br-tab="ra-cityear">Citations <span class="br-tab-sub">per year</span></button>
+            <button type="button" class="br-tab d-none" role="tab" aria-selected="false" data-br-tab="ra-venues" id="ra-venues-tab">Publications <span class="br-tab-sub">per venue</span></button>
           </div>
           <div class="card-body text-center text-muted small d-flex flex-column justify-content-center" id="br-ra-pubyear-pane">
             <div id="ra-pubs-chart"></div>
@@ -78,16 +81,12 @@
           <div class="card-body text-center text-muted small d-flex flex-column justify-content-center d-none" id="br-ra-cityear-pane">
             <div id="ra-cits-chart"></div>
           </div>
-        </div>
-      </div>
-
-      <!-- The publication venues where the person publishes most (from the downloaded publications); click = Publication venue filter of the list -->
-      <div class="col-12 mb-4 d-none" id="ra-top-venues">
-        <div class="card shadow-sm skgif-fold">
-          <div class="card-header text-center">
-            <h5 class="my-1 fw-bold skgif-box-title">Top publication venues</h5>
+          <div class="card-body small d-flex flex-column justify-content-center d-none" id="br-ra-venues-pane">
+            <div class="skgif-venue-chart">
+              <ol class="skgif-venue-bars" id="ra-top-venues-list"></ol>
+              <div class="small text-muted mt-2 skgif-chart-foot">Click a bar to filter the list by that venue.</div>
+            </div>
           </div>
-          <div class="card-body px-4 py-3"><ol class="skgif-top-list mb-0" id="ra-top-venues-list"></ol></div>
         </div>
       </div>
 

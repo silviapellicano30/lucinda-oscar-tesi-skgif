@@ -91,7 +91,9 @@ Chrome slows down hidden tabs. Runs made with the tab hidden or while the browse
     excluded from the analysis (<code>pilot</code> column).</li>
 </ul>
 <h2>Measures</h2>
-<p class="note">Values of the <code>measure</code> column; the time is in <code>duration_s</code>.</p>
+<p class="note">Values of the <code>measure</code> column; the time is in <code>duration_s</code>. Each measure is also recorded
+as a W3C User Timing mark with the same name (<code>performance.mark</code>; from the "Load all" click also as a
+<code>performance.measure</code>), so it can be checked in the Performance panel of Chrome DevTools.</p>
 <div class="table-wrap"><table>
   <thead><tr><th>Measure</th><th>Meaning</th><th>Why it is measured</th></tr></thead>
   <tbody>
@@ -142,6 +144,10 @@ Chrome slows down hidden tabs. Runs made with the tab hidden or while the browse
     <tr><td>network_errors</td><td>Calls with no answer at all, including those aborted by the interface timeout (35/15/10 s)</td></tr>
     <tr><td>truncated_responses</td><td>Answers that arrived ("200 OK") but with incomplete data: the server cut the response</td></tr>
     <tr><td>page_splits</td><td>Pages that did not arrive and were requested again in smaller pages (50 &rarr; 10 &rarr; 1)</td></tr>
+    <tr><td>calls_by_type</td><td>The same calls by type, named as in the API: endpoint and filter names exactly as they appear
+      in the URL (e.g. <code>products?cf.cites [page_size=1]: 10; products/{id}: 1</code>). <code>{id}</code> = one record;
+      <code>[page_size=1]</code> = a call that reads only the total (e.g. the citation count of a card);
+      <code>index/citations</code> = Index API (per-year charts)</td></tr>
     <tr class="sub"><td colspan="2">Interface time against API time</td></tr>
     <tr><td>api_wait_ms</td><td>Milliseconds in which at least one SKG-IF or Index call was open (overlapping calls counted once):
       the time spent waiting for the API. Measured time minus this = time of the interface. The pause before asking again
@@ -220,40 +226,37 @@ const GROUPS = {
 };
 // Cases: id, group, name, URL value, expected measures.
 const CASES = [
-  { id: 'product-24', group: 'Research product record', name: 'Research product, 24 citations / 60 references', value: 'br/06702496683', wait: ['page', 'citations', 'references'] },
-  { id: 'product-136', group: 'Research product record', name: 'Research product, 136 citations / 13 references', value: 'br/062501777134', wait: ['page', 'citations', 'references'] },
-  { id: 'product-266', group: 'Research product record', name: 'Research product, 266 citations (button) / 55 references', value: 'br/061301512373', wait: ['page', 'citations', 'references'] },
-  { id: 'product-1041', group: 'Research product record', name: 'Research product, 1,041 citations (button) / 25 references', value: 'br/062501777136', wait: ['page', 'citations', 'references'] },
-  { id: 'product-1058', group: 'Research product record', name: 'Research product, 1,058 citations (button) / 334 references (button)', value: 'br/06250648328', wait: ['page', 'citations', 'references'] },
-  { id: 'product-3865', group: 'Research product record', name: 'Research product, 3,865 citations (button) / 20 references', value: 'br/061402112342', wait: ['page', 'citations', 'references'] },
-  { id: 'person-6', group: 'Person record', name: 'Person, 6 publications (Vincent Larivière, one of his records)', value: 'ra/06036206707', wait: ['page', 'person_publications', 'person_citations', 'person_citation_chart'] },
-  { id: 'person-18', group: 'Person record', name: 'Person, 18 publications (Vincent Larivière, another record)', value: 'ra/0614010840740', wait: ['page', 'person_publications', 'person_citations', 'person_citation_chart'] },
-  { id: 'person-115', group: 'Person record', name: 'Person, 115 publications (Silvio Peroni)', value: 'ra/0614010840729', wait: ['page', 'person_publications', 'person_citations', 'person_citation_chart'] },
-  { id: 'person-298', group: 'Person record', name: 'Person, 298 publications (Loet Leydesdorff)', value: 'ra/0619018217', wait: ['page', 'person_publications', 'person_citations', 'person_citation_chart'] },
-  { id: 'org-61', group: 'Organisation record', name: 'Organisation, 61 publications', value: 'ra/0670114898', wait: ['page', 'publications'] },
-  { id: 'org-302', group: 'Organisation record', name: 'Organisation, 302 publications', value: 'ra/061303831403', wait: ['page', 'publications'] },
-  { id: 'org-849', group: 'Organisation record', name: 'Organisation, 849 publications (button, Ubiquity Press)', value: 'ra/06011045248', wait: ['page', 'publications'] },
-  { id: 'org-3661', group: 'Organisation record', name: 'Organisation, 3,661 publications (button, The Open Journal)', value: 'ra/0640115183', wait: ['page', 'publications'] },
-  { id: 'venue-1', group: 'Venue record', name: 'Venue: Scientometrics', value: 'br/06010060186', wait: ['page'] },
-  { id: 'ci-small', group: 'Citation record', name: 'Citation record, citing work with 24 citations', value: 'ci/06702496683-061103399292', wait: ['page', 'ci_year_charts'] },
-  { id: 'ci-large', group: 'Citation record', name: 'Citation record, cited work with 3,865 citations', value: 'ci/06010022218-061402112342', wait: ['page', 'ci_year_charts'] },
-  { id: 'search-product', group: 'Searches', name: 'Research product search: "open citations"', value: 'product/' + encodeURIComponent('open citations'), wait: ['results'] },
-  { id: 'search-person', group: 'Searches', name: 'Person search: Silvio Peroni', value: 'person/' + encodeURIComponent('given=Silvio&family=Peroni'), wait: ['results'] },
-  { id: 'search-venue', group: 'Searches', name: 'Venue search: "scientometrics"', value: 'venue/' + encodeURIComponent('scientometrics'), wait: ['results'] },
-  { id: 'search-org', group: 'Searches', name: 'Organisation search: "ubiquity press"', value: 'organisation/' + encodeURIComponent('ubiquity press'), wait: ['results'] },
+  { id: 'product-24', group: 'Research product record', name: 'Research product, 24 citations / 60 references', value: 'br/06702496683', wait: ['page_shown', 'all_citations', 'all_references'] },
+  { id: 'product-136', group: 'Research product record', name: 'Research product, 136 citations / 13 references', value: 'br/062501777134', wait: ['page_shown', 'all_citations', 'all_references'] },
+  { id: 'product-266', group: 'Research product record', name: 'Research product, 266 citations (button) / 55 references', value: 'br/061301512373', wait: ['page_shown', 'all_citations', 'all_references'] },
+  { id: 'product-1041', group: 'Research product record', name: 'Research product, 1,041 citations (button) / 25 references', value: 'br/062501777136', wait: ['page_shown', 'all_citations', 'all_references'] },
+  { id: 'product-1058', group: 'Research product record', name: 'Research product, 1,058 citations (button) / 334 references (button)', value: 'br/06250648328', wait: ['page_shown', 'all_citations', 'all_references'] },
+  { id: 'product-3865', group: 'Research product record', name: 'Research product, 3,865 citations (button) / 20 references', value: 'br/061402112342', wait: ['page_shown', 'all_citations', 'all_references'] },
+  { id: 'person-6', group: 'Person record', name: 'Person, 6 publications (Vincent Larivière, one of his records)', value: 'ra/06036206707', wait: ['page_shown', 'all_person_publications', 'person_citations', 'person_citation_chart'] },
+  { id: 'person-18', group: 'Person record', name: 'Person, 18 publications (Vincent Larivière, another record)', value: 'ra/0614010840740', wait: ['page_shown', 'all_person_publications', 'person_citations', 'person_citation_chart'] },
+  { id: 'person-115', group: 'Person record', name: 'Person, 115 publications (Silvio Peroni)', value: 'ra/0614010840729', wait: ['page_shown', 'all_person_publications', 'person_citations', 'person_citation_chart'] },
+  { id: 'person-298', group: 'Person record', name: 'Person, 298 publications (Loet Leydesdorff)', value: 'ra/0619018217', wait: ['page_shown', 'all_person_publications', 'person_citations', 'person_citation_chart'] },
+  { id: 'org-61', group: 'Organisation record', name: 'Organisation, 61 publications', value: 'ra/0670114898', wait: ['page_shown', 'all_publications'] },
+  { id: 'org-302', group: 'Organisation record', name: 'Organisation, 302 publications', value: 'ra/061303831403', wait: ['page_shown', 'all_publications'] },
+  { id: 'org-849', group: 'Organisation record', name: 'Organisation, 849 publications (button, Ubiquity Press)', value: 'ra/06011045248', wait: ['page_shown', 'all_publications'] },
+  { id: 'org-3661', group: 'Organisation record', name: 'Organisation, 3,661 publications (button, The Open Journal)', value: 'ra/0640115183', wait: ['page_shown', 'all_publications'] },
+  { id: 'venue-1', group: 'Venue record', name: 'Venue: Scientometrics', value: 'br/06010060186', wait: ['page_shown'] },
+  { id: 'ci-small', group: 'Citation record', name: 'Citation record, citing work with 24 citations', value: 'ci/06702496683-061103399292', wait: ['page_shown', 'ci_year_charts'] },
+  { id: 'ci-large', group: 'Citation record', name: 'Citation record, cited work with 3,865 citations', value: 'ci/06010022218-061402112342', wait: ['page_shown', 'ci_year_charts'] },
+  { id: 'search-product', group: 'Searches', name: 'Research product search: "open citations"', value: 'product/' + encodeURIComponent('open citations'), wait: ['first_results'] },
+  { id: 'search-person', group: 'Searches', name: 'Person search: Silvio Peroni', value: 'person/' + encodeURIComponent('given=Silvio&family=Peroni'), wait: ['first_results'] },
+  { id: 'search-venue', group: 'Searches', name: 'Venue search: "scientometrics"', value: 'venue/' + encodeURIComponent('scientometrics'), wait: ['first_results'] },
+  { id: 'search-org', group: 'Searches', name: 'Organisation search: "ubiquity press"', value: 'organisation/' + encodeURIComponent('ubiquity press'), wait: ['first_results'] },
 ];
 // Warm-up page opened once at the start of every session and not recorded (a light page: venue Scientometrics).
-const WARM_UP_CASE = { id: 'warm-up', value: 'br/06010060186', wait: ['page'] };
+const WARM_UP_CASE = { id: 'warm-up', value: 'br/06010060186', wait: ['page_shown'] };
 // A session stops by itself when this many runs received a 429 "too many requests".
 const MAX_RUNS_WITH_429 = 2;
-// Event sent by timing.js -> name of the measure in the CSV.
-const MEASURES = {
-  page: 'page_shown', results: 'first_results', citations: 'all_citations', references: 'all_references',
-  publications: 'all_publications', person_publications: 'all_person_publications', person_citations: 'person_citations',
-  person_citation_chart: 'person_citation_chart', ci_year_charts: 'ci_year_charts'
-};
+// Measures sent by timing.js (same names in the CSV and in the User Timing marks), in the order of the results table.
+const MEASURES = ['page_shown', 'first_results', 'all_citations', 'all_references', 'all_publications', 'all_person_publications',
+  'person_citations', 'person_citation_chart', 'ci_year_charts'];
 const COUNTERS = ['skgif_calls', 'index_calls', 'http_404', 'http_429', 'http_other_errors', 'network_errors', 'truncated_responses',
-  'page_splits', 'api_wait_ms', 'long_tasks_ms', 'longest_task_ms', 'heap_peak_mb'];
+  'page_splits', 'calls_by_type', 'api_wait_ms', 'long_tasks_ms', 'longest_task_ms', 'heap_peak_mb'];
 const STORE = 'skgifTimingRunsV2'; // one record per measure of each run
 const $ = id => document.getElementById(id);
 
@@ -290,10 +293,9 @@ function render() {
     if (!byKey[key]) { byKey[key] = []; keys.push(key); }
     byKey[key].push(r);
   });
-  const measureOrder = Object.values(MEASURES);
   keys.sort((a, b) => {
     const [ca, ma] = a.split('|'), [cb, mb] = b.split('|');
-    return CASES.findIndex(c => c.id === ca) - CASES.findIndex(c => c.id === cb) || measureOrder.indexOf(ma) - measureOrder.indexOf(mb);
+    return CASES.findIndex(c => c.id === ca) - CASES.findIndex(c => c.id === cb) || MEASURES.indexOf(ma) - MEASURES.indexOf(mb);
   });
   $('results').innerHTML = keys.map(key => {
     const list = byKey[key];
@@ -329,7 +331,7 @@ function record(session, c, round, position, event, entry, startedAt) {
   const problems = entry ? (entry.problems || []) : [];
   const row = {
     session_id: session.id, session_notes: session.notes, commit: session.commit, pilot: session.pilot, user_agent: navigator.userAgent,
-    round, order_in_round: position, case_id: c.id, case_group: c.group, page_id: c.value, measure: MEASURES[event] || event,
+    round, order_in_round: position, case_id: c.id, case_group: c.group, page_id: c.value, measure: event,
     from_click: fromClick, list_size: entry && entry.total != null ? entry.total : null,
     timestamp: isoLocal(now), weekday: now.toLocaleDateString('en-GB', { weekday: 'short' }), hour: now.getHours(),
     duration_s: entry ? Math.round((fromClick ? entry.fromClickMs : entry.ms) / 100) / 10 : null,
@@ -375,7 +377,7 @@ function runOnce(c, timeoutMin, statusPrefix) {
     current.onEvent = () => { if (c.wait.every(ev => current.events[ev])) finish('ok'); };
     const tick = setInterval(() => {
       const elapsed = (Date.now() - startedAt) / 1000;
-      const have = c.wait.filter(ev => current && current.events[ev]).map(ev => MEASURES[ev]);
+      const have = c.wait.filter(ev => current && current.events[ev]);
       setStatus(`${statusPrefix} - ${Math.round(elapsed)} s${have.length ? ' - arrived: ' + have.join(', ') : ''}`);
       if (stopped) finish('stopped');
       else if (elapsed > timeoutMin * 60) finish('timeout');

@@ -5,13 +5,11 @@
 
 // Lucinda #preprocess: splits the OCI into { citing, cited }; {} if it is not valid.
 function pre_skgif_oci(oci) {
-  let value = String(oci || '');
-  try { value = decodeURIComponent(value); } catch (e) { /* keep as is */ }
-  const parts = value.trim().replace(/^oci:/i, '').match(/^(\d+)-(\d+)$/);
+  const parts = _skgifDecode(oci).trim().replace(/^oci:/i, '').match(/^(\d+)-(\d+)$/);
   return parts ? { citing: parts[1], cited: parts[2] } : {};
 }
 
-// Lucinda #postprocess for the two works: status (found/missing/failed), data and cited OMIDs.
+// Lucinda #postprocess of citing_meta/cited_meta: status (found/missing/failed), data and cited OMIDs of a work.
 function post_skgif_ci_product(res, id) {
   const header = ['status', 'omid', 'title', 'agents_label', 'agents', 'date', 'ids', 'cites', 'venue', 'type'];
   const omid = `br/${id}`;
@@ -25,10 +23,10 @@ function post_skgif_ci_product(res, id) {
     _skgifRecordIds(product),
     _skgifArray(product.related_products?.cites),
     _skgifRecordVenue(product),
-    _skgifArray(product.manifestations).map(m => m?.type?.labels?.en).find(Boolean) || '']];
+    _skgifProductRawType(product)]];
 }
 
-// Record error (invalid OCI, missing work, non-existent citation): { text, type } or null.
+// Record error: { text, type } (invalid OCI, missing work, citation not in the data), { unavailable } (failed call) or null.
 function _skgifCiProblem(oci, citingStatus, citedStatus, cites) {
   const ids = pre_skgif_oci(oci);
   if (!ids.citing) return { text: 'This is not a valid OCI.', type: 'danger' };
@@ -106,12 +104,11 @@ function _ciOverlapShow(box) {
 }
 // Where the list opens: on phones (boxes one under the other) right under its box, on wider screens
 // (boxes side by side) under the whole strip.
-const CI_STACKED = window.matchMedia('(max-width: 575.98px)');
 function _ciPlacePane(pane, box) {
-  const anchor = CI_STACKED.matches ? box.closest('.row > *') : box.closest('.ci-overlap-strip');
+  const anchor = _skgifIsPhone() ? box.closest('.row > *') : box.closest('.ci-overlap-strip');
   if (anchor && anchor.nextElementSibling !== pane) anchor.after(pane);
 }
-CI_STACKED.addEventListener('change', () => {
+SKGIF_PHONE.addEventListener('change', () => {
   const box = document.querySelector('[data-ci-overlap].active');
   const pane = box && document.getElementById(`ci-${box.dataset.ciOverlap}-pane`);
   if (pane) _ciPlacePane(pane, box);
@@ -152,6 +149,7 @@ function api_citation_record_skgif(...args) {
     }));
   _ciOverlapIds = { citing, cited };
   _ciAlignTitles();
+  _ciClampHeadTitles();
   _skgifCitationsPerYearChart('ci-citing-chart', citing); // per-year charts from the Index
   _skgifCitationsPerYearChart('ci-cited-chart', cited);
 }
@@ -167,6 +165,25 @@ function _ciAlignTitles() {
   };
   align();
   window.addEventListener('resize', align);
+}
+
+// Phones: each title of the header sentence ("<citing> (year) cites <cited> (year)") is cut to two lines with "…";
+// the full title stays in the tooltip and in the card below.
+function _ciClampHeadTitles() {
+  const links = [...document.querySelectorAll('#ci-oci .skgif-ci-sentence > a')];
+  links.forEach(link => { link.dataset.fullTitle = link.textContent; link.title = link.textContent; });
+  const clamp = () => links.forEach(link => {
+    link.textContent = link.dataset.fullTitle;
+    if (!_skgifIsPhone()) return;
+    const words = link.dataset.fullTitle.split(' ');
+    while (words.length > 1 && link.getClientRects().length > 2) {
+      words.pop();
+      link.textContent = `${words.join(' ').replace(/[\s,.:;–-]+$/, '')}…`;
+    }
+  });
+  clamp();
+  SKGIF_PHONE.addEventListener('change', clamp);
+  window.addEventListener('resize', clamp);
 }
 
 // "Citations per year" chart from the Index API (one call; citations without a date are skipped).

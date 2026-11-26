@@ -1,145 +1,28 @@
+// Home page: search panel (resource tabs, text and ID fields) and the Citation tab (OCI only).
 document.addEventListener("DOMContentLoaded", () => {
   const searchForm = document.getElementById("searchForm");
   const searchInput = document.getElementById("searchQuery");
   const categorySelect = searchForm.querySelector('select[name="category"]');
+  skgifInitSearchFields(searchForm, searchInput, categorySelect);
 
-  // --- 1. Placeholder Logic ---
-  // Tabs, labels and placeholders of the search panel are
-  // set by skgifInitSearchFields() (SKGIF_CATEGORIES, at the end of the file)
-  skgifInitSearchFields(searchForm, searchInput, categorySelect); // Resource tabs, given/family name fields + ID panel
-
-
-  // --- 2. Regex Definitions ---
-  // Lucinda native prefixes
-  // Only prefix + "/" + digits ("br/0605748453"; an OCI has a dash:
-  // "ci/06010572394-0605748453"), so that free text starting with the same
-  // letters ("brain tumor", "Veterinary Record") is not taken for an OMID.
-  const lucindaPrefixRegex = /^(br|ci|ra|ve)\/[\d-]+$/i;
-  
-  // External Identifiers
-  const doiRegex = /^(doi:)?10\.\d{4,9}\/[^\s]+$/i;
-  const pmidRegex = /^pmid:\d{1,8}$/i;
-  const openalexRegex = /^openalex:W\d{10}$/i;
-  
-  // New Identifiers (ORCID & ISSN)
-  // ORCID: 0000-0000-0000-0000 (16 digits, dashes, last can be X)
-  const orcidRegex = /^(orcid:)?\d{4}-\d{4}-\d{4}-\d{3}[0-9X]$/i;
-  // ISSN: 0000-0000 (8 digits, dash, last can be X)
-  const issnRegex = /^(issn:)?\d{4}-\d{3}[0-9X]$/i;
-
-  function isDirectLucindaQuery(query) {
-    return (
-      lucindaPrefixRegex.test(query) ||
-      doiRegex.test(query) ||
-      pmidRegex.test(query) ||
-      openalexRegex.test(query) ||
-      orcidRegex.test(query) ||
-      issnRegex.test(query)
-    );
-  }
-
-  // --- 3. Search Submission ---
-  searchForm.addEventListener("submit", async (event) => {
-    event.preventDefault(); 
-
+  searchForm.addEventListener("submit", event => {
+    event.preventDefault();
     const category = categorySelect.value;
-
-    // Research products, persons, venues and organisations are searched with skgifSearch();
-    // the Citation Record (OCI) is handled below
     if (category !== "citation") return skgifSearch(category, searchInput);
-
-    const query = searchInput.value.trim();
-
-    if (!query) {
-      skgifShowHint("Please enter an OCI."); // Message under the search bar
-      return;
-    }
-
-    // If it looks like an ID (DOI, ORCID, etc.), resolve it
-    if (isDirectLucindaQuery(query)) {
-      await openLucinda(query, category);
-      return;
-    }
-
-    // An OCI typed without "ci/" (or as "oci:...") opens the citation record
-    const bareOci = query.replace(/^oci:/i, "");
-    if (/^\d+-\d+$/.test(bareOci)) {
-      window.location.href = `browser.html?value=ci/${bareOci}`;
-      return;
-    }
-    skgifShowHint("This is not a valid OCI.");
+    skgifOpenOci(searchInput.value.trim());
   });
 });
 
-/**
- * Handles logic for Direct ID queries (Resolve -> Redirect)
- */
-async function openLucinda(identifier, category) {
-  try {
-    let omid;
-
-    // Regex Checkers (Redefined scope for clarity)
-    const doiRegex = /^(doi:)?10\.\d{4,9}\/[^\s]+$/i;
-    const pmidRegex = /^pmid:\d{1,8}$/i;
-    const openalexRegex = /^openalex:W\d{10}$/i;
-    const orcidRegex = /^(orcid:)?\d{4}-\d{4}-\d{4}-\d{3}[0-9X]$/i;
-    const issnRegex = /^(issn:)?\d{4}-\d{3}[0-9X]$/i;
-
-    // Check if resolution is needed
-    if (
-      doiRegex.test(identifier) ||
-      pmidRegex.test(identifier) ||
-      openalexRegex.test(identifier) ||
-      orcidRegex.test(identifier) ||
-      issnRegex.test(identifier)
-    ) {
-      omid = await skgifIdToOmid(identifier); // External ID -> OMID through SKG-IF
-    } else {
-      // Input is already a Lucinda ID (br/..., ra/...)
-      omid = identifier;
-    }
-
-    // Clean OMID (remove base URL if present)
-    const omidId = omid.replace("https://w3id.org/oc/meta/", "");
-
-    const lucindaUrl = `browser.html?value=${omidId}`;
-    window.location.href = lucindaUrl;
-
-  } catch (err) {
-    console.error("Error:", err.message);
-    alert("Error: " + err.message);
-  }
+// Citation tab: opens the citation record of an OCI, with or without "ci/" or "oci:" (e.g. 06101801781-06180334099);
+// anything else (DOI, ORCID, text...) gets a message under the search bar.
+function skgifOpenOci(query) {
+  if (!query) return skgifShowHint("Please enter an OCI.");
+  const oci = query.replace(/^(ci\/|oci:)/i, "");
+  if (/^\d+-\d+$/.test(oci)) window.location.href = `browser.html?value=ci/${oci}`;
+  else skgifShowHint("This is not a valid OCI.");
 }
 
-/*
-################################################################################
-# SKG-IF search panel
-################################################################################
-*/
-// Finds the OMID of a research product ID through SKG-IF (/products).
-// Used only by the Citation Record.
-const SKGIF_ID_LOOKUP = [
-  { test: /^doi:|^10\.\d{4,9}\//i, scheme: "doi", entity: "products", field: "identifiers.id" },
-  { test: /^pmid:/i, scheme: "pmid", entity: "products", field: "identifiers.id" },
-  { test: /^openalex:/i, scheme: "openalex", entity: "products", field: "identifiers.id" }
-];
-
-async function skgifIdToOmid(identifier) {
-  const lookup = SKGIF_ID_LOOKUP.find(l => l.test.test(identifier));
-  if (!lookup) throw new Error("Unknown identifier type: " + identifier);
-  const value = identifier.replace(new RegExp(`^${lookup.scheme}:`, "i"), "");
-
-  const url = `https://api.opencitations.net/skg-if/v1/${lookup.entity}` +
-    `?filter=identifiers.scheme:${lookup.scheme},${lookup.field}:${encodeURIComponent(value)}&page_size=1`;
-  const response = await fetch(url);
-  if (!response.ok && response.status !== 404) { // 404 = no record with that ID
-    throw new Error(`The SKG-IF API returned an error (${response.status}).`);
-  }
-
-  const omid = response.ok ? (await response.json())["@graph"]?.[0]?.local_identifier : null;
-  if (!omid) throw new Error(`No OMID found for ${identifier}`);
-  return omid;
-}
+// --- Search panel ---
 
 // Resources of the search panel: icon, name, label and placeholder.
 const SKGIF_CATEGORIES = {

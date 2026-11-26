@@ -79,11 +79,15 @@ function _skgifSearchHref(category, { text = '', given = '', family = '', type =
 }
 
 // The same search text moved to another resource: to persons, last word = family name and the others = given
-// name (as _personSearchFields); from persons, "given family".
+// name; from persons, "given family".
 function _skgifCarryText(state, category) {
   const text = state.category === 'person' ? [state.given, state.family].filter(Boolean).join(' ') : state.text;
-  if (category !== 'person') return { text };
-  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+  return category === 'person' ? _skgifSplitName(text) : { text };
+}
+
+// Free text as a person name: last word = family name, the others = given name.
+function _skgifSplitName(text) {
+  const words = String(text || '').normalize('NFC').trim().split(/\s+/).filter(Boolean);
   return { given: words.slice(0, -1).join(' '), family: words[words.length - 1] || '' };
 }
 
@@ -195,9 +199,7 @@ function _skgifEmptySearchHtml(entity, label) {
 
 // Lucinda #preprocess for searches: search_url ("" = no call) and search_label.
 function pre_skgif_search(entity, searchQuery) {
-  let query = String(searchQuery || '');
-  try { query = decodeURIComponent(query); } catch (e) { /* keep as is */ }
-  const plan = _skgifSearchPlan(entity, query);
+  const plan = _skgifSearchPlan(entity, _skgifDecode(searchQuery));
   const url = plan.omidUrl || (plan.source ? `${plan.source}&page=1&page_size=${SKGIF_DEFAULT_PAGE_SIZE}` : '');
   if (plan.isId && url) document.documentElement.classList.add('skgif-id-pending'); // page hidden: the record page may open straight away
   return { search_url: url, search_label: plan.label };
@@ -214,15 +216,9 @@ function post_skgif_search(res, searchUrl, searchLabel, entity, searchQuery) {
     total = items.length ? 1 : (res.ok || res.status === 404 ? 0 : '–');
   }
   else total = post_skgif_total(res)[1][0];
-  const seen = new Set();
-  items = items.filter(item => {
-    const key = item.local_identifier || JSON.stringify(item);
-    return !seen.has(key) && seen.add(key);
-  });
+  items = _skgifDedupe(items);
   if (entity === 'persons') {
-    let query = String(searchQuery || '');
-    try { query = decodeURIComponent(query); } catch (e) { /* keep as is */ }
-    const fields = _skgifSearchPlan('persons', query).fields;
+    const fields = _skgifSearchPlan('persons', _skgifDecode(searchQuery)).fields;
     if (fields) items = _rankPersonsByQuery(items, fields);
   }
   return [['total', 'label', 'entity', 'items'], [String(total), searchLabel, entity, items]];
@@ -230,10 +226,10 @@ function post_skgif_search(res, searchUrl, searchLabel, entity, searchQuery) {
 
 // Card function of each entity: first page (view function skgif_search_cards) and next pages (skgifPaginatedSearch).
 const SKGIF_SEARCH_CARDS = {
-  products: product => _skgifProductCardAiry(product),
-  persons: person => _renderPersonCard(person),
-  venues: venue => _renderVenueCard(venue),
-  organisations: org => _renderOrgCard(org)
+  products: _skgifProductCardAiry,
+  persons: _renderPersonCard,
+  venues: _renderVenueCard,
+  organisations: _renderOrgCard
 };
 
 // Entity of the API for each resource of the search bar.
@@ -271,7 +267,7 @@ function _skgifRunSearch(plan, renderItem, rankItems) {
   if (plan.omidUrl || !plan.source) return; // single record or empty query: no other pages
   if (_lucindaValue('search_count', 'total') === '–') return; // failed call: Lucinda has shown the message
   _skgifLoadEmptyCounts(); // no results: numbers of the other resources
-  skgifPaginatedSearch({ sources: [plan.source], rankItems, renderItem })
+  skgifPaginatedSearch({ source: plan.source, rankItems, renderItem })
     .firstPageShown(_lucindaValue('search_count', 'items'));
 }
 
@@ -295,12 +291,9 @@ function api_search_person_skgif(...args) {
   _skgifRunSearch(plan, _renderPersonCard, plan.fields && (items => _rankPersonsByQuery(items, plan.fields))); // exact matches first
 }
 
-// Reads {given, family} from search_query.
+// Reads {given, family} from search_query ("given=...&family=..." or free text).
 function _personSearchFields(query) {
-  if (!query.includes('=')) { // free text: last word = family name, the others = given name
-    const words = query.normalize('NFC').trim().split(/\s+/).filter(Boolean);
-    return { given: words.slice(0, -1).join(' '), family: words[words.length - 1] || "" };
-  }
+  if (!query.includes('=')) return _skgifSplitName(query);
   const params = new URLSearchParams(query);
   const get = key => (params.get(key) || "").normalize('NFC').trim();
   return { given: get('given'), family: get('family') };
@@ -337,6 +330,7 @@ function _renderPersonCard(person) {
     || `${person.given_name || ""} ${person.family_name || ""}`.trim()
     || "Name not available";
 
+  // on phones ORCID and the other IDs go on one line, without labels (the ORCID prefixed by "orcid:")
   const orcidHtml = orcid
     ? `<a href="https://orcid.org/${orcid}" target="_blank" class="text-dark text-decoration-none"><span class="skgif-phone-only">orcid:</span>${orcid}</a>`
     : '<span class="skgif-none">Not available</span>';
@@ -350,7 +344,6 @@ function _renderPersonCard(person) {
           </h5>
           <hr>
 
-          <!-- on phones ORCID and other IDs on one line, without labels (prefixed by "orcid:") -->
           <div class="skgif-person-ids">
           <div class="mb-2${orcid ? '' : ' skgif-line-none'}">
             <span class="metadata-label fw-bold">ORCID:</span><br>
@@ -390,7 +383,7 @@ function _renderVenueCard(venue) {
     ? `<div class="mb-2"><span class="metadata-label fw-bold">Type:</span><br><span>${_skgifEscape(venue.type)}</span></div>`
     : '';
 
-  const html = `
+  return `
     <div class="col-12 mb-3">
       <div class="card shadow-sm p-2">
         <div class="card-body p-3 d-flex flex-column">
@@ -406,7 +399,6 @@ function _renderVenueCard(venue) {
         </div>
       </div>
     </div>`;
-  return html;
 }
 
 // Organisation search: /organisations?filter=cf.search.name:...
