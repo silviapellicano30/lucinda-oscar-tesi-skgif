@@ -81,7 +81,14 @@ Chrome slows down hidden tabs. Runs made with the tab hidden or while the browse
   <li>Above the automatic thresholds (250 citations or references in the research product record, 500 publications in the organisation record)
     the "Load all" buttons are pressed automatically and the time is measured <b>from the click</b>.</li>
   <li>Every session starts with one <b>warm-up</b> page, not recorded: it opens the connection to the API, so that cost does not fall on the first measured case.</li>
-  <li>A session <b>stops by itself</b> when two runs receive a 429 "too many requests": the agreed load is exceeded.</li>
+  <li>After a run with many API calls (100 or more) or with a 429 "too many requests", a <b>pause of 60 s</b> before the next run:
+    the API limits the requests per minute, and without the pause the next case would be slowed down by that limit.</li>
+  <li>A session <b>never stops by itself</b> for a 429 "too many requests" or an incomplete run: they are recorded
+    (<code>http_429</code>, <code>outcome</code>, <code>problems</code>), listed at the end, and the collection goes on.
+    The times of a run with a 429 include the waits before asking again, as for a real user: the analysis keeps them
+    in the time statistics and counts these runs in the reliability table (<code>runs_with_429</code>).</li>
+  <li>When the API does not answer in 3 runs in a row (no measure arrived, or "service unavailable"), a <b>pause of 5 min</b>,
+    then the collection goes on.</li>
   <li>Each run has a time limit; a measure that does not arrive in time is recorded as <code>timeout</code>.</li>
   <li><b>Interface time against API time:</b> <code>api_wait_ms</code> is the time in which at least one API call was open
     (from the request to the end of the reading of its answer); the rest of the measured time belongs to the interface
@@ -118,7 +125,8 @@ as a W3C User Timing mark with the same name (<code>performance.mark</code>; fro
     <tr><td>session_notes</td><td>Notes written before the start (computer, network)</td></tr>
     <tr><td>commit</td><td>Version of the code measured</td></tr>
     <tr><td>pilot</td><td>TRUE = run of the pilot session, excluded from the analysis</td></tr>
-    <tr><td>user_agent</td><td>Browser and operating system</td></tr>
+    <tr><td>browser</td><td>Browser name and version, from <code>user_agent</code> (e.g. Chrome 158)</td></tr>
+    <tr><td>user_agent</td><td>Browser and operating system as the browser declares them (it starts with "Mozilla/5.0" in every browser)</td></tr>
     <tr class="sub"><td colspan="2">Run</td></tr>
     <tr><td>round</td><td>Round of the session (1, 2, 3...)</td></tr>
     <tr><td>order_in_round</td><td>Position of the case in the random order of its round</td></tr>
@@ -151,7 +159,7 @@ as a W3C User Timing mark with the same name (<code>performance.mark</code>; fro
     <tr class="sub"><td colspan="2">Interface time against API time</td></tr>
     <tr><td>api_wait_ms</td><td>Milliseconds in which at least one SKG-IF or Index call was open (overlapping calls counted once):
       the time spent waiting for the API. Measured time minus this = time of the interface. The pause before asking again
-      after a 429 counts as waiting (at most 7 s).</td></tr>
+      after a 429 counts as waiting (at most 12 s).</td></tr>
     <tr><td>long_tasks_ms</td><td>Milliseconds in which the interface code kept the page busy (blocks of more than 50 ms, Long Tasks API):
       the part of the interface time that blocks the page</td></tr>
     <tr><td>longest_task_ms</td><td>Longest of those blocks: how long the page stopped reacting to clicks at most</td></tr>
@@ -250,8 +258,14 @@ const CASES = [
 ];
 // Warm-up page opened once at the start of every session and not recorded (a light page: venue Scientometrics).
 const WARM_UP_CASE = { id: 'warm-up', value: 'br/06010060186', wait: ['page_shown'] };
-// A session stops by itself when this many runs received a 429 "too many requests".
-const MAX_RUNS_WITH_429 = 2;
+// After this many runs in a row without an answer from the API, a long pause before going on.
+const MAX_RUNS_UNANSWERED = 3;
+const API_DOWN_PAUSE_MS = 300000;
+// Pause after a run with at least COOL_DOWN_CALLS API calls or with a 429, so the API request limit is reset
+// before the next run; otherwise a short pause.
+const COOL_DOWN_CALLS = 100;
+const COOL_DOWN_MS = 60000;
+const SHORT_PAUSE_MS = 1500;
 // Measures sent by timing.js (same names in the CSV and in the User Timing marks), in the order of the results table.
 const MEASURES = ['page_shown', 'first_results', 'all_citations', 'all_references', 'all_publications', 'all_person_publications',
   'person_citations', 'person_citation_chart', 'ci_year_charts'];
@@ -324,13 +338,22 @@ function isoLocal(d) {
     + `${offset >= 0 ? '+' : '-'}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`;
 }
 
+// Browser name and version from the user agent (Edge and Opera also contain "Chrome/", so they are checked first).
+const BROWSER_NAME = (() => {
+  const ua = navigator.userAgent;
+  const tests = [['Edge', /Edg\/(\d+)/], ['Opera', /OPR\/(\d+)/], ['Firefox', /Firefox\/(\d+)/], ['Chrome', /Chrome\/(\d+)/],
+    ['Safari', /Version\/(\d+).*Safari\//]];
+  for (const [name, re] of tests) { const m = ua.match(re); if (m) return `${name} ${m[1]}`; }
+  return 'unknown';
+})();
+
 // Records one measure of a run (entry = message of timing.js, or null when the measure did not arrive in time).
 function record(session, c, round, position, event, entry, startedAt) {
   const now = new Date(startedAt); // start of the run
   const fromClick = entry && entry.fromClickMs != null;
   const problems = entry ? (entry.problems || []) : [];
   const row = {
-    session_id: session.id, session_notes: session.notes, commit: session.commit, pilot: session.pilot, user_agent: navigator.userAgent,
+    session_id: session.id, session_notes: session.notes, commit: session.commit, pilot: session.pilot, browser: BROWSER_NAME, user_agent: navigator.userAgent,
     round, order_in_round: position, case_id: c.id, case_group: c.group, page_id: c.value, measure: event,
     from_click: fromClick, list_size: entry && entry.total != null ? entry.total : null,
     timestamp: isoLocal(now), weekday: now.toLocaleDateString('en-GB', { weekday: 'short' }), hour: now.getHours(),
@@ -411,7 +434,7 @@ $('start').onclick = async () => {
   $('start').disabled = true;
   $('stop').disabled = false;
   const problems = [];
-  let runsWith429 = 0;
+  let runsWith429 = 0, runsUnanswered = 0;
   const sessionStart = Date.now();
   // Warm-up run, not recorded: the first page of a session also pays for opening the connection to the API
   // (DNS, TLS) and for loading the site files; those costs must not fall on the first measured case.
@@ -427,17 +450,32 @@ $('start').onclick = async () => {
       if (reason === 'stopped') break; // a run interrupted by Stop is not recorded
       c.wait.forEach(ev => record(session, c, round, i + 1, ev, got[ev] || null, startedAt));
       if (reason === 'timeout') problems.push(`${c.name}, round ${round}: time limit exceeded`);
-      // Repeated 429 (too many requests): the agreed load is exceeded, the collection stops.
-      if (Object.values(got).some(e => e.stats && e.stats.http_429 > 0) && ++runsWith429 >= MAX_RUNS_WITH_429) {
-        problems.push(`429 "too many requests" in ${runsWith429} runs: collection stopped, tell the professor`);
-        stopped = true;
+      // 429 (too many requests) and incomplete runs are recorded and listed at the end; the collection goes on.
+      const entries = Object.values(got);
+      const stats = entries.map(e => e.stats || {});
+      const had429 = stats.some(st => st.http_429 > 0);
+      if (had429) runsWith429++;
+      if (entries.some(e => (e.problems || []).length)) problems.push(`${c.name}, round ${round}: incomplete`);
+      // API not answering: no measure arrived, or the page says the service is unavailable.
+      const unanswered = !entries.length || entries.some(e => (e.problems || []).includes('server unavailable'));
+      runsUnanswered = unanswered ? runsUnanswered + 1 : 0;
+      const calls = Math.max(0, ...stats.map(st => (st.skgif_calls || 0) + (st.index_calls || 0)));
+      const last = round === rounds && i === order.length - 1;
+      const apiDown = runsUnanswered >= MAX_RUNS_UNANSWERED;
+      if (apiDown) {
+        problems.push(`API not answering in ${runsUnanswered} runs in a row (round ${round}): pause of ${API_DOWN_PAUSE_MS / 60000} min`);
+        runsUnanswered = 0;
       }
-      await new Promise(res => setTimeout(res, 1500)); // short pause between runs
+      const pause = last ? 0 : apiDown ? API_DOWN_PAUSE_MS : had429 || calls >= COOL_DOWN_CALLS ? COOL_DOWN_MS : SHORT_PAUSE_MS;
+      if (pause === API_DOWN_PAUSE_MS && !stopped) setStatus(`The API does not answer: pause of ${API_DOWN_PAUSE_MS / 60000} min, then the collection goes on...`);
+      else if (pause === COOL_DOWN_MS && !stopped) setStatus(`Pause of ${COOL_DOWN_MS / 1000} s after ${had429 ? 'a 429 "too many requests"' : `${calls} API calls`}, so the API request limit is reset...`);
+      for (let waited = 0; waited < pause && !stopped; waited += 500) await new Promise(res => setTimeout(res, 500));
     }
   }
   $('start').disabled = false;
   $('stop').disabled = true;
   const minutes = Math.round((Date.now() - sessionStart) / 60000);
+  if (runsWith429) problems.push(`429 "too many requests" in ${runsWith429} runs (column http_429)`);
   setStatus(`${stopped ? 'Stopped' : 'Finished'} after ${minutes} min. Download the CSV now.` + (problems.length ? ' Problems: ' + problems.join('; ') : ''));
 };
 $('stop').onclick = () => { stopped = true; };
@@ -450,7 +488,7 @@ $('clear').onclick = () => {
 };
 
 // CSV for R: comma-separated, decimal point, one row per measure of each run, snake_case header, UTF-8.
-const COLUMNS = ['session_id', 'session_notes', 'commit', 'pilot', 'user_agent', 'round', 'order_in_round', 'case_id', 'case_group', 'page_id', 'measure',
+const COLUMNS = ['session_id', 'session_notes', 'commit', 'pilot', 'browser', 'user_agent', 'round', 'order_in_round', 'case_id', 'case_group', 'page_id', 'measure',
   'from_click', 'list_size', 'timestamp', 'weekday', 'hour', 'duration_s', 'outcome', 'tab_hidden', 'browser_offline', ...COUNTERS, 'items_missing', 'problems'];
 $('csv').onclick = () => {
   const cell = v => {
@@ -463,7 +501,8 @@ $('csv').onclick = () => {
   const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `skgif-timing-runs-${isoLocal(new Date()).slice(0, 16).replace(':', '')}.csv`;
+  const pilot = runs.length && runs.every(r => r.pilot) ? 'pilot-' : ''; // file with pilot runs only
+  a.download = `skgif-timing-runs-${pilot}${isoLocal(new Date()).slice(0, 16).replace(':', '')}.csv`;
   a.click();
 };
 

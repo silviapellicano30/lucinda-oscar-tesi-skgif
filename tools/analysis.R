@@ -4,7 +4,8 @@
 #
 # Excluded runs: tab hidden or browser offline, pilot session, runs listed in excluded_runs.csv (input folder;
 #   columns session_id, round, case_id, measure, reason; empty = all). Counts in excluded_summary.csv.
-# Statistics per commit, case and measure (runs "ok"): median, quartiles, SIQR (Jain, 1991), P10/P90, min, max,
+# Statistics per commit, case and measure (runs "ok", also with a 429: the waits before asking again are part of the time
+#   the user waits): median, quartiles, SIQR (Jain, 1991), P10/P90, min, max,
 #   mean, sd, cv, runs needed for 10 % accuracy at 95 % confidence. Reliability: outcomes and API errors.
 # Interface vs API: api_wait_ms = time with at least one API call open; interface = the rest.
 # API calls by type (calls_by_type: endpoint and filter names from the URL, by timing.js): median per case and measure.
@@ -55,7 +56,7 @@ runs <- runs |>
                               !is.na(manual) ~ paste("by hand:", manual), TRUE ~ NA_character_))
 write_csv(runs |> filter(!is.na(excluded)) |> count(excluded, name = "runs"), file.path(out_dir, "excluded_summary.csv"))
 valid <- runs |> filter(is.na(excluded))
-ok <- valid |> filter(outcome == "ok")
+ok <- valid |> filter(outcome == "ok") # also with a 429: see runs_with_429 in the reliability table
 cat(sprintf("%d files, %d sessions, %d measures (%d excluded: see excluded_summary.csv)\n",
             length(files), n_distinct(runs$session_id), nrow(runs), sum(!is.na(runs$excluded))))
 
@@ -105,6 +106,7 @@ reliability <- valid |>
     runs = n(),
     ok = sum(outcome == "ok"), incomplete = sum(outcome == "incomplete"), timeout = sum(outcome == "timeout"),
     pct_ok = round(100 * ok / runs, 1),
+    runs_with_429 = sum(http_429 > 0, na.rm = TRUE),
     http_429 = sum(http_429, na.rm = TRUE), http_other_errors = sum(http_other_errors, na.rm = TRUE),
     network_errors = sum(network_errors, na.rm = TRUE), truncated_responses = sum(truncated_responses, na.rm = TRUE),
     page_splits = sum(page_splits, na.rm = TRUE),

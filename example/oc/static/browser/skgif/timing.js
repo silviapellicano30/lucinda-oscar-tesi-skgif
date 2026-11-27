@@ -83,7 +83,7 @@
   // A call stays open until its answer is read; an error answer (often not read) closes it when it arrives.
   // After a 429 the interface waits before asking again: that pause is caused by the API, so the call stays open
   // until the same URL is requested again (or at most RETRY_PAUSE_MS, when no retry follows).
-  const RETRY_PAUSE_MS = 7000;
+  const RETRY_PAUSE_MS = 12000;
   const waitingRetry = {}; // url -> function that closes the call answered with 429
   const originalFetch = window.fetch.bind(window);
   window.fetch = (input, init) => {

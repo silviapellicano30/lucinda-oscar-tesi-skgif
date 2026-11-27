@@ -4,3 +4,6 @@ __local__*
 
 # Local editor settings (VS Code)
 .vscode/
+
+# Output of tools/validate_timing.py
+timing-validation/

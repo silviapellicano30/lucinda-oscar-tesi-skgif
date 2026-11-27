@@ -37,7 +37,8 @@ function api_person_record_skgif(...args) {
 // count = sum of the SKG-IF totals of each publication (cf.cites, page_size=1, 404 = 0 citations);
 // per-year chart = OpenCitations Index, one call per publication (citation date in `creation`; SKG-IF has no dates
 // without downloading every citing publication). A citation is a pair: a publication citing 3 publications of the person counts 3.
-// Few calls at a time: with too many the server answers 429 (skgifFetchPatient retries).
+// Few calls at a time: with too many the server answers 429 (skgifFetchPatient retries). For the Index step this is
+// the maximum: _skgifAdaptivePool lowers it after a 429.
 const SKGIF_PERSON_CITATION_PARALLEL = 3;
 
 function _loadPersonCitations(products) {
@@ -61,11 +62,13 @@ function _loadPersonCitations(products) {
   // 1. Count (SKG-IF). The two steps run one after the other: in parallel they are slower and the
   // server's 429 responses make some citations get lost.
   let total = 0, counted = 0, notCounted = 0;
+  const counts = []; // citations of each publication (null = not counted)
   // progress also under the Citations box (the chart tab is usually closed)
   const setCounting = done => { setChart(chartLoading(1, done)); _skgifSetField('ra-cits-note', loading(done, 'citation counts')); };
   setCounting(0);
   _skgifPool(indexes, SKGIF_PERSON_CITATION_PARALLEL, i =>
     _skgifCountCitations(omids[i], true).then(count => { // same number as "Citations: N" in the cards (cards.js)
+      counts[i] = count;
       if (count !== null) total += count;
       else notCounted++;
       setCounting(++counted);
@@ -77,11 +80,12 @@ function _loadPersonCitations(products) {
     const cited = document.querySelector('#ra-sort [data-order="cited"]');
     if (cited && notCounted < n && n >= 2) cited.disabled = false;
 
-    // 2. Chart (Index)
+    // 2. Chart (Index): publications with 0 citations in step 1 are not requested (no dates to read)
     const dates = [];
-    let read = 0, notRead = 0;
-    setChart(chartLoading(2, 0));
-    return _skgifPool(indexes, SKGIF_PERSON_CITATION_PARALLEL, i =>
+    const toRead = indexes.filter(i => counts[i] !== 0);
+    let read = n - toRead.length, notRead = 0;
+    setChart(chartLoading(2, read));
+    return _skgifAdaptivePool(toRead, SKGIF_PERSON_CITATION_PARALLEL, 'index', i =>
       skgifFetchPatient(`${OC_INDEX_API}/citations/omid:${omids[i]}`).then(data => {
         if (Array.isArray(data)) data.forEach(c => dates.push(c.creation));
         else if (!data || Object.keys(data).length) notRead++; // {} = 404, no citations

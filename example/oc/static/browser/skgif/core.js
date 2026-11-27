@@ -79,20 +79,33 @@ function _skgifFetchUrl(url, timeoutMs) {
     });
 }
 
-// For long series of calls (e.g. one per publication): on 429 (too many requests) waits 2, 4, 6 s and retries.
+// Time (ms since epoch) until which skgifFetchPatient sends no call to a server ('index' or 'skgif') after a 429.
+const _skgifPausedUntil = {};
+// Number of 429 answers received by skgifFetchPatient from each server (read by _skgifAdaptivePool).
+const _skgif429 = {};
+
+// For long series of calls (e.g. one per publication): on 429 (too many requests) all the skgifFetchPatient calls
+// to the same server stop for 2, 4, 6, 8, 10 s, then the call is retried (6 tries in all).
 // Returns the JSON, {} on 404 (no results), null on failure. Does not use the skgifFetch cache.
-function skgifFetchPatient(url, tries = 4, waitMs = 2000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SKGIF_PAGE_TIMEOUT);
-  return fetch(url, { signal: controller.signal })
-    .then(r => {
-      if (r.status === 429 && tries > 1) {
-        return new Promise(done => setTimeout(done, waitMs)).then(() => skgifFetchPatient(url, tries - 1, waitMs + 2000));
-      }
-      return r.ok ? r.json() : r.status === 404 ? {} : null;
-    })
-    .catch(() => null)
-    .finally(() => clearTimeout(timer));
+function skgifFetchPatient(url, tries = 6, waitMs = 2000) {
+  const server = url.startsWith(OC_INDEX_API) ? 'index' : 'skgif';
+  const pause = (_skgifPausedUntil[server] || 0) - Date.now();
+  const ready = pause > 0 ? new Promise(done => setTimeout(done, pause)) : Promise.resolve();
+  return ready.then(() => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), SKGIF_PAGE_TIMEOUT);
+    return fetch(url, { signal: controller.signal })
+      .then(r => {
+        if (r.status === 429) _skgif429[server] = (_skgif429[server] || 0) + 1;
+        if (r.status === 429 && tries > 1) {
+          _skgifPausedUntil[server] = Math.max(_skgifPausedUntil[server] || 0, Date.now() + waitMs);
+          return skgifFetchPatient(url, tries - 1, waitMs + 2000);
+        }
+        return r.ok ? r.json() : r.status === 404 ? {} : null;
+      })
+      .catch(() => null)
+      .finally(() => clearTimeout(timer));
+  });
 }
 
 // Total number of results of a response (0 if missing).
@@ -158,6 +171,31 @@ function _skgifPool(todo, parallel, task) {
     return n === undefined ? Promise.resolve() : task(n).then(worker);
   };
   return Promise.all(Array.from({ length: Math.min(parallel, queue.length) }, () => worker()));
+}
+
+// Like _skgifPool, but the number of tasks at a time follows the server ('index' or 'skgif'): it starts at `max`,
+// goes down by one (to 1) when skgifFetchPatient receives a 429 from that server, and up by one (to `max`)
+// after SKGIF_ADAPTIVE_RAISE_AFTER tasks in a row finished without a 429.
+const SKGIF_ADAPTIVE_RAISE_AFTER = 10;
+function _skgifAdaptivePool(todo, max, server, task) {
+  const queue = [...todo];
+  let limit = max, running = 0, streak = 0, seen = _skgif429[server] || 0;
+  return new Promise(resolve => {
+    const next = () => {
+      const now = _skgif429[server] || 0;
+      if (now > seen) { limit = Math.max(1, limit - 1); streak = 0; seen = now; }
+      if (!queue.length && !running) return resolve();
+      while (running < limit && queue.length) {
+        running++;
+        task(queue.shift()).catch(() => null).then(() => { // a failed task does not block the others
+          running--;
+          if ((_skgif429[server] || 0) === seen && ++streak >= SKGIF_ADAPTIVE_RAISE_AFTER && limit < max) { limit++; streak = 0; }
+          next();
+        });
+      }
+    };
+    next();
+  });
 }
 
 // --- "Loading the resource" banner ---
