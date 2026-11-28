@@ -485,7 +485,7 @@ const _skgifPersonText = a => a.family ? [a.family, a.given].filter(Boolean).joi
 // SKG-IF type -> BibTeX type and field for the journal/book; any other type = @misc.
 const SKGIF_BIBTEX_TYPES = {
   'journal article': ['article', 'journal'], 'book': ['book', ''], 'book chapter': ['incollection', 'booktitle'],
-  'proceedings article': ['inproceedings', 'booktitle'], 'dissertation': ['phdthesis', ''], 'report': ['techreport', '']
+  'proceedings paper': ['inproceedings', 'booktitle'], 'dissertation': ['phdthesis', ''], 'report': ['techreport', '']
 };
 
 // BibTeX entry of a publication.
@@ -498,7 +498,7 @@ function _skgifBibtex(product) {
     ['author', names(f.authors)], ['editor', names(f.editors)], ['title', f.title && esc(f.title)],
     [venueField, f.venue && esc(f.venue)], ['publisher', esc(f.publishers.join(', '))],
     ['year', f.date.slice(0, 4)], ['volume', esc(f.volume)], ['number', esc(f.issue)],
-    ['pages', esc(f.pages('--'))], ['doi', esc(f.doi)]
+    ['pages', esc(f.pages('--'))], ['doi', f.doi] // the DOI is read verbatim by BibTeX tools: no escaping
   ].filter(([key, value]) => key && value);
   const key = (f.omid || 'product').replace(/\W/g, '');
   return `@${kind}{${key},\n${fields.map(([k, v]) => `  ${k} = {${v}}`).join(',\n')}\n}`;

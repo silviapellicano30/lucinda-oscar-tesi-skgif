@@ -7,3 +7,6 @@ __local__*
 
 # Output of tools/validate_timing.py
 timing-validation/
+
+# Private drafts of the user test (not published)
+user-test/bozze/

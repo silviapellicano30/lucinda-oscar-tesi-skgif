@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>User test – Lucinda</title>
+  <meta name="robots" content="noindex">
+  <!-- Task sheet of the user test: opened in a second tab of the same browser as the website, so that the participant
+       can copy the identifiers without leaving the shared browser. One task at a time, Italian or English. -->
+  <link rel="stylesheet" href="../example/oc/static/css/theme.css">
+  <style>
+    :root {
+      --c-primary: var(--theme-primary, #8f4ec7);
+      --c-text: var(--theme-title, #2c3847);
+      --c-muted: var(--theme-muted, #6c727a);
+      --c-bg: var(--theme-bg, #f0def7);
+      --c-surface: var(--theme-surface, #fff);
+      --c-line: var(--theme-line, #e6dcef);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--c-bg);
+      color: var(--c-text);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-size: 17px;
+      line-height: 1.5;
+    }
+    main { max-width: 640px; margin: 0 auto; padding: 16px; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+    header .brand { font-weight: 600; color: var(--c-primary); }
+    .lang-switch button {
+      border: 1px solid var(--c-line); background: var(--c-surface); color: var(--c-text);
+      padding: 4px 10px; font: inherit; font-size: 14px; cursor: pointer;
+    }
+    .lang-switch button:first-child { border-radius: 6px 0 0 6px; }
+    .lang-switch button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+    .lang-switch button[aria-pressed="true"] { background: var(--c-primary); border-color: var(--c-primary); color: #fff; }
+    .card { background: var(--c-surface); border: 1px solid var(--c-line); border-radius: 10px; padding: 20px; }
+    h1 { font-size: 22px; margin: 0 0 12px; line-height: 1.3; }
+    .step { color: var(--c-muted); font-size: 15px; margin: 0 0 6px; }
+    .task-text { font-size: 19px; margin: 0 0 16px; }
+    .copy-box { border: 1px solid var(--c-line); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; }
+    .copy-box .label { display: block; color: var(--c-muted); font-size: 14px; }
+    .copy-row { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
+    .copy-row .value { flex: 1; min-width: 0; font-family: Consolas, Menlo, monospace; font-size: 16px; overflow-wrap: anywhere; user-select: all; }
+    .copy-row .btn { flex: none; }
+    button.btn, a.btn {
+      display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 16px;
+      border-radius: 8px; border: 1px solid var(--c-primary); font: inherit; font-size: 16px; cursor: pointer; text-decoration: none;
+    }
+    .btn-primary { background: var(--c-primary); color: #fff; }
+    .btn-outline { background: var(--c-surface); color: var(--c-primary); }
+    .btn-small { min-height: 36px !important; padding: 4px 12px !important; font-size: 15px !important; }
+    .btn.copied { background: #e7f6ec; border-color: #2e7d32; color: #2e7d32; }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 20px; }
+    .actions .spacer { flex: 1; }
+    .survey { text-align: center; margin: 0 0 16px; }
+    .text-link { color: var(--c-primary); text-decoration: underline; text-underline-offset: 3px; }
+    .site-intro { text-align: center; margin: 24px 0 8px; font-size: 19px; }
+    .site-again { flex: 1; text-align: center; font-size: 15px; }
+    @media (max-width: 440px) { /* narrow phones: the link goes on its own line under Back / Next */
+      .site-again { order: 3; flex-basis: 100%; }
+      #next { margin-left: auto; }
+    }
+    .lang-choice { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+    .lang-choice .btn { flex: 1; min-width: 140px; }
+    .fallback { margin: 16px 0 0; color: var(--c-muted); font-size: 14px; }
+    .fallback a { color: inherit; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <span class="brand">Lucinda · User test</span>
+    <span class="lang-switch hidden" id="lang-switch">
+      <button type="button" data-lang="it" aria-pressed="false">IT</button><button type="button" data-lang="en" aria-pressed="false">EN</button>
+    </span>
+  </header>
+
+  <!-- Language choice -->
+  <section class="card" id="screen-lang">
+    <h1>Scegli la lingua · Choose the language</h1>
+    <div class="lang-choice">
+      <button type="button" class="btn btn-primary" data-lang="it">Italiano</button>
+      <button type="button" class="btn btn-primary" data-lang="en">English</button>
+    </div>
+  </section>
+
+  <!-- Introduction -->
+  <section class="card hidden" id="screen-intro">
+    <h1 data-t="introTitle"></h1>
+    <p class="site-intro"><a class="text-link" href="../example/oc/html_template/home.html" target="lucinda-site" data-t="openSite"></a></p>
+    <div class="actions"><span class="spacer"></span><button type="button" class="btn btn-primary" id="start" data-t="start"></button></div>
+  </section>
+
+  <!-- One task -->
+  <section class="card hidden" id="screen-task">
+    <p class="step" id="task-step"></p>
+    <p class="task-text" id="task-text"></p>
+    <div id="task-copies"></div>
+    <div class="actions">
+      <button type="button" class="btn btn-outline" id="prev" data-t="prev"></button>
+      <a class="text-link site-again" id="site-again" href="../example/oc/html_template/home.html" target="lucinda-site" data-t="openSiteAgain"></a>
+      <button type="button" class="btn btn-primary" id="next" data-t="next"></button>
+    </div>
+    <p class="fallback hidden" id="task-fallback"><span data-t="fallbackLabel"></span> <a id="fallback-link" target="lucinda-site" data-t="fallbackButton"></a></p>
+  </section>
+
+  <!-- End -->
+  <section class="card hidden" id="screen-end">
+    <h1 data-t="endTitle"></h1>
+    <p data-t="surveyText"></p>
+    <p class="survey"><a class="btn btn-primary" id="survey-link" target="_blank" rel="noopener" data-t="surveyButton"></a></p>
+    <div class="actions"><button type="button" class="btn btn-outline" id="back-last" data-t="prev"></button></div>
+  </section>
+</main>
+
+<script>
+// Interface texts.
+const TEXT = {
+  it: {
+    introTitle: 'Benvenuto/a',
+    openSite: 'Apri il sito ↗',
+    openSiteAgain: 'Vai al sito ↗',
+    start: 'Inizia',
+    step: (n, tot) => `Compito ${n} di ${tot}`,
+    copy: 'Copia',
+    copied: 'Copiato ✓',
+    prev: 'Indietro',
+    next: 'Compito successivo',
+    last: 'Questionario',
+    endTitle: 'Questionario',
+    surveyText: 'Rispondi a 10 brevi domande sul sito.',
+    surveyButton: 'Apri il questionario',
+    fallbackLabel: 'Link di partenza:',
+    fallbackButton: 'premi qui per aprire la pagina da cui parte il compito'
+  },
+  en: {
+    introTitle: 'Welcome',
+    openSite: 'Open the website ↗',
+    openSiteAgain: 'Go to the website ↗',
+    start: 'Start',
+    step: (n, tot) => `Task ${n} of ${tot}`,
+    copy: 'Copy',
+    copied: 'Copied ✓',
+    prev: 'Back',
+    next: 'Next task',
+    last: 'Questionnaire',
+    endTitle: 'Questionnaire',
+    surveyText: 'Answer 10 short questions about the website.',
+    surveyButton: 'Open the questionnaire',
+    fallbackLabel: 'Starting link:',
+    fallbackButton: 'click here to open the page this task starts from'
+  }
+};
+
+// Tasks. copy = values to paste in the website (label in the two languages);
+// fallback = page this task starts from, for when the previous task failed.
+const SITE = '../example/oc/html_template/';
+// SUS questionnaire (Microsoft Forms, one bilingual form).
+const SURVEY = 'https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=3EeW6QgbSkW_jGmRgbOJq53mzi97cB5HvkZhLwoyJkZURFU4UjBOQUdSVEFLVTBQUDU4QjAxWFFNTC4u';
+const TASKS = [
+  {
+    it: 'Cerca per DOI l\'articolo «Recent Trends In Word Sense Disambiguation: A Survey» (DOI 10.24963/ijcai.2021/593). Quante volte è stato citato?',
+    en: 'Search by DOI for the article "Recent Trends In Word Sense Disambiguation: A Survey" (DOI 10.24963/ijcai.2021/593). How many times has it been cited?',
+    copy: [{ it: 'DOI', en: 'DOI', value: '10.24963/ijcai.2021/593' }]
+  },
+  {
+    it: 'Cerca per titolo l\'articolo «Random Walks For Knowledge-Based Word Sense Disambiguation». In quale anno le opere del suo primo autore hanno ricevuto più citazioni?',
+    en: 'Search by title for the article "Random Walks For Knowledge-Based Word Sense Disambiguation". In which year did the works of its first author receive the most citations?',
+    copy: [{ it: 'Titolo', en: 'Title', value: 'Random Walks For Knowledge-Based Word Sense Disambiguation' }]
+  },
+  {
+    it: 'Cerca per DOI l\'articolo «Entity Linking Meets Word Sense Disambiguation: A Unified Approach» (DOI 10.1162/tacl_a_00179). Salva in un file BibTeX le opere che lo citano pubblicate nel 2015 e nel 2016.',
+    en: 'Search by DOI for the article "Entity Linking Meets Word Sense Disambiguation: A Unified Approach" (DOI 10.1162/tacl_a_00179). Save to a BibTeX file the works that cite it and were published in 2015 or 2016.',
+    copy: [{ it: 'DOI', en: 'DOI', value: '10.1162/tacl_a_00179' }]
+  },
+  {
+    it: 'Resta sulla pagina dell\'articolo del compito 3. Quanti capitoli di libro lo citano in totale, considerando tutti gli anni?',
+    en: 'Stay on the page of the article from task 3. How many book chapters cite it in total, across all years?',
+    copy: [],
+    fallback: { url: SITE + 'browser.html?value=br/062302198193#citations' }
+  },
+  {
+    it: 'Cerca per ORCID l\'autore Jorge Vivaldi (ORCID 0000-0003-1491-8691). Qual è l\'identificativo Crossref della casa editrice che ha pubblicato la sua opera più vecchia?',
+    en: 'Search by ORCID for the author Jorge Vivaldi (ORCID 0000-0003-1491-8691). What is the Crossref identifier of the publisher of the author\'s oldest work?',
+    copy: [{ it: 'ORCID', en: 'ORCID', value: '0000-0003-1491-8691' }]
+  },
+  {
+    it: 'Cerca per DOI l\'articolo «Nasari: Integrating Explicit Knowledge And Corpus Statistics For A Multilingual Representation Of Concepts And Entities» (DOI 10.1016/j.artint.2016.07.005). Tra le opere che lo citano c\'è «An Overview Of Word And Sense Similarity»: quante opere sono citate sia da questo articolo sia da «An Overview Of Word And Sense Similarity»?',
+    en: 'Search by DOI for the article "Nasari: Integrating Explicit Knowledge And Corpus Statistics For A Multilingual Representation Of Concepts And Entities" (DOI 10.1016/j.artint.2016.07.005). Among the works that cite it there is "An Overview Of Word And Sense Similarity": how many works are cited by both this article and "An Overview Of Word And Sense Similarity"?',
+    copy: [
+      { it: 'DOI', en: 'DOI', value: '10.1016/j.artint.2016.07.005' },
+      { it: 'Titolo dell\'altra opera', en: 'Title of the other work', value: 'An Overview Of Word And Sense Similarity' }
+    ]
+  }
+];
+
+const $ = id => document.getElementById(id);
+// Position kept in the tab (reload-safe): screen 'lang' | 'intro' | 'task' | 'end', task index, language.
+const KEY = 'lucindaUserTest';
+let state = { lang: null, screen: 'lang', task: 0 };
+try { state = Object.assign(state, JSON.parse(sessionStorage.getItem(KEY) || '{}')); } catch (e) { /* storage not available */ }
+const save = () => { try { sessionStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* storage not available */ } };
+
+function copyText(value, button) {
+  const done = () => {
+    const t = TEXT[state.lang];
+    button.textContent = t.copied;
+    button.classList.add('copied');
+    setTimeout(() => { button.textContent = t.copy; button.classList.remove('copied'); }, 1800);
+  };
+  const fallback = () => { // older browsers: select a hidden field and copy
+    const area = document.createElement('textarea');
+    area.value = value;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    try { document.execCommand('copy'); done(); } catch (e) { /* the value stays selectable by hand */ }
+    area.remove();
+  };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(value).then(done, fallback);
+  else fallback();
+}
+
+function render() {
+  const t = state.lang ? TEXT[state.lang] : null;
+  ['lang', 'intro', 'task', 'end'].forEach(s => $('screen-' + s).classList.toggle('hidden', state.screen !== s));
+  $('lang-switch').classList.toggle('hidden', !t);
+  if (!t) return;
+  document.documentElement.lang = state.lang;
+  document.querySelectorAll('#lang-switch button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lang === state.lang)));
+  document.querySelectorAll('[data-t]').forEach(el => { if (typeof t[el.dataset.t] === 'string') el.textContent = t[el.dataset.t]; });
+  $('survey-link').href = SURVEY;
+  if (state.screen === 'task') {
+    const task = TASKS[state.task];
+    $('task-step').textContent = t.step(state.task + 1, TASKS.length);
+    $('task-text').textContent = task[state.lang];
+    $('task-copies').innerHTML = '';
+    task.copy.forEach(c => {
+      const box = document.createElement('div');
+      box.className = 'copy-box';
+      box.innerHTML = '<span class="label"></span><div class="copy-row"><span class="value"></span></div>';
+      box.querySelector('.label').textContent = c[state.lang];
+      box.querySelector('.value').textContent = c.value;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-outline btn-small';
+      button.textContent = t.copy;
+      button.addEventListener('click', () => copyText(c.value, button));
+      box.querySelector('.copy-row').appendChild(button);
+      $('task-copies').appendChild(box);
+    });
+    const fallback = $('task-fallback');
+    fallback.classList.toggle('hidden', !task.fallback);
+    if (task.fallback) $('fallback-link').href = task.fallback.url;
+    $('next').textContent = state.task === TASKS.length - 1 ? t.last : t.next;
+  }
+  window.scrollTo(0, 0);
+}
+
+const go = changes => { Object.assign(state, changes); save(); render(); };
+
+document.querySelectorAll('[data-lang]').forEach(b => b.addEventListener('click', () =>
+  go({ lang: b.dataset.lang, screen: state.screen === 'lang' ? 'intro' : state.screen })));
+$('start').addEventListener('click', () => go({ screen: 'task', task: 0 }));
+$('prev').addEventListener('click', () => go(state.task === 0 ? { screen: 'intro' } : { task: state.task - 1 }));
+$('next').addEventListener('click', () => go(state.task === TASKS.length - 1 ? { screen: 'end' } : { task: state.task + 1 }));
+// "Go to the website": switch to the open website tab without reloading it; open the home page only if the tab is gone.
+$('site-again').addEventListener('click', e => {
+  const w = window.open('', 'lucinda-site');
+  if (!w) return; // pop-up blocked: the link opens the home page normally
+  e.preventDefault();
+  let blank = true;
+  try { blank = w.location.href === 'about:blank'; } catch (err) { /* other origin: the tab exists */ blank = false; }
+  if (blank) w.location.href = e.currentTarget.href;
+  w.focus();
+});
+$('back-last').addEventListener('click', () => go({ screen: 'task', task: TASKS.length - 1 }));
+
+render();
+</script>
+</body>
+</html>
